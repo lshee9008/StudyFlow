@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/project_model.dart';
 import '../../core/theme.dart';
 import '../../providers/project_provider.dart';
 
@@ -10,6 +11,7 @@ class AddProjectDialog extends ConsumerStatefulWidget {
 
 class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
   final _controller = TextEditingController();
+  List<Chip> chipTags = []; 
 
   @override
   Widget build(BuildContext context) {
@@ -51,11 +53,20 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
               ),
             ),
             SizedBox(height: 16),
-            Chip(
-              label: Text("새 태그 추가 +"),
-              backgroundColor: Color(0xFF333333),
-              labelStyle: TextStyle(color: Colors.white),
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ...chipTags,
+                ActionChip(
+                  label: Text(
+                    "+ 태그 추가",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: Color(0xFF333333),
+                  onPressed: _buildAddTag,
+                ),
+              ],
             ),
             SizedBox(height: 32),
             Align(
@@ -69,10 +80,20 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
                   ),
                 ),
                 onPressed: () {
+                  String tags = chipTags
+                      .map((chip) => (chip.label as Text).data!)
+                      .toList()
+                      .join('*');
+                  ProjectModel newProject = ProjectModel(
+                    id: "임시 id",
+                    name: _controller.text,
+                    tags: tags,
+                    createdAt: DateTime.now(),
+                  );
                   if (_controller.text.isNotEmpty) {
                     ref
                         .read(projectProvider.notifier)
-                        .addProject(_controller.text);
+                        .addProject(newProject);
                     Navigator.pop(context);
                   }
                 },
@@ -89,6 +110,76 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _buildAddTag() async {
+    await showDialog(
+      context: context,
+      builder: (context) {
+        final tagController = TextEditingController();
+        return AlertDialog(
+          backgroundColor: AppTheme.cardGrey,
+          title: Text(
+            "태그 추가",
+            style: TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: tagController,
+            style: TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: "태그 이름을 입력하세요",
+              hintStyle: TextStyle(color: Colors.grey),
+              filled: true,
+              fillColor: Colors.black,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text(
+                "취소",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                if (tagController.text.isNotEmpty) {
+                  setState(() {
+                    chipTags.add(_buildTagChip(tagController.text));
+                  });
+                  Navigator.pop(context);
+                }
+              },
+              child: Text(
+                "추가",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Chip _buildTagChip(String tag) {
+    return Chip(
+      label: Text(tag),
+      backgroundColor: Color(0xFF555555),
+      labelStyle: TextStyle(color: Colors.white),
+      onDeleted: () => setState(() {
+        chipTags.removeWhere( (chip) => (chip.label as Text).data == tag);
+      },),
     );
   }
 }

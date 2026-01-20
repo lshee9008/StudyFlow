@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
+import '../models/project_model.dart';
+
 class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._init();
   static Database? _database;
@@ -20,10 +22,18 @@ class LocalDatabase {
 
   Future _createDB(Database db, int version) async {
     // PDF 스키마에 맞춘 로컬 테이블
+    await db.execute(''' 
+    CREATE TABLE user (
+      id TEXT PRIMARY KEY,
+      name TEXT
+    )
+    ''');
+
     await db.execute('''
-    CREATE TABLE folders (
+    CREATE TABLE projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      tags TEXT,
       created_at TEXT NOT NULL
     )
     ''');
@@ -38,5 +48,16 @@ class LocalDatabase {
       FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE CASCADE
     )
     ''');
+  }
+
+  Future<List<ProjectModel>> selectProjects() async {
+    final db = await instance.database;
+    final result = await db.query('projects');
+    return result.map((projects) => ProjectModel.fromJson(projects)).toList();
+  }
+
+  Future<void> deleteProject(ProjectModel project) async {
+    final db = await instance.database;
+    await db.delete('projects', where: 'id = ?', whereArgs: [project.id]);
   }
 }
