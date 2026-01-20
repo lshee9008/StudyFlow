@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:study_flow/screens/note_editor_screen.dart';
 import 'core/theme.dart';
 import 'features/home/home_screen.dart';
 
@@ -19,7 +20,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: HomeScreen(),
+      home: NotionEditorScreen(),
+      // home: HomeScreen(),
     );
   }
 }
