@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:study_flow/models/project_model.dart';
 
 import '../../core/theme.dart';
-import '../../core/local_db_helper.dart';
+import '../project/add_project_dialog.dart';
+import '../project/project_screen.dart';
 import '../../providers/project_provider.dart';
 import '../../providers/user_provider.dart';
-import '../project/add_project_dialog.dart';
-import '../file/add_file_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   @override
@@ -71,14 +71,19 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildProjectCard(BuildContext context, project) {
+  Widget _buildProjectCard(BuildContext context, ProjectModel project) {
     return InkWell(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AddFileScreen(projectName: project.name),
-        ),
-      ),
+      onTap: () async {
+        ProjectModel previousProject = project.deepCopy();
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ProjectScreen(project: project)),
+        );
+        if (!previousProject.equals(project) && context.mounted) {
+          final ref = ProviderScope.containerOf(context);
+          await ref.read(projectProvider.notifier).updateProject(project);
+        }
+      },
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -92,57 +97,80 @@ class HomeScreen extends ConsumerWidget {
               flex: 3,
               child: Row(
                 children: [
-                  Text(
-                    project.name,
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    flex: 7,
+                    child: Text(
+                      project.name,
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  IconButton(
-                    onPressed: () async {
-
-
-                    },
-                    icon: Icon(Icons.delete, color: Colors.grey),
+                  Expanded(
+                    flex: 3,
+                    child: IconButton(
+                      onPressed: () async {
+                        final ref = ProviderScope.containerOf(context);
+                        await ref
+                            .read(projectProvider.notifier)
+                            .deleteProject(project);
+                      },
+                      icon: Icon(Icons.delete, color: Colors.grey),
+                    ),
                   ),
                 ],
               ),
             ),
             Expanded(
-              flex: 3,
-              child: SizedBox.expand(
-                child: Wrap(
-                  children: [
-                    for (var tag in project.tags.split(','))
-                      Container(
-                        margin: EdgeInsets.only(right: 6, bottom: 6),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          tag,
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+              flex: 4,
+              child: SizedBox(
+                child: ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: (Rect bounds) {
+                    return LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black, Colors.transparent],
+                      stops: [0.7, 1.0],
+                    ).createShader(bounds);
+                  },
+                  child: ClipRect(
+                    child: project.tags.isEmpty
+                        ? SizedBox()
+                        : Wrap(
+                            children: [
+                              for (var tag in project.tags.split(','))
+                                Container(
+                                  margin: EdgeInsets.only(right: 6, bottom: 3),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[300],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    tag,
+                                    style: TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
             ),
             Expanded(
-              flex: 4,
+              flex: 3,
               child: Text(
                 "• 1주차 강의 정리\n• 2주차 강의 정리",
                 style: TextStyle(
@@ -158,21 +186,3 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 }
-
-/*
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        project.tags,
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-*/

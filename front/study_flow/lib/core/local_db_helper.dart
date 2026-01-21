@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:study_flow/models/project_file_model.dart';
 
 import '../models/project_model.dart';
 
@@ -24,14 +25,14 @@ class LocalDatabase {
     // PDF 스키마에 맞춘 로컬 테이블
     await db.execute(''' 
     CREATE TABLE user (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
       name TEXT
     )
     ''');
 
     await db.execute('''
     CREATE TABLE projects (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       tags TEXT,
       created_at TEXT NOT NULL
@@ -39,13 +40,13 @@ class LocalDatabase {
     ''');
 
     await db.execute('''
-    CREATE TABLE notes (
-      id TEXT PRIMARY KEY,
-      folder_id TEXT,
-      title TEXT NOT NULL,
-      content_raw TEXT,
+    CREATE TABLE files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT,
+      name TEXT NOT NULL,
+      tags TEXT,
       created_at TEXT NOT NULL,
-      FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE CASCADE
+      FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
     )
     ''');
   }
@@ -56,8 +57,9 @@ class LocalDatabase {
     return result.map((projects) => ProjectModel.fromJson(projects)).toList();
   }
 
-  Future<void> deleteProject(ProjectModel project) async {
+  Future<List<ProjectFileModel>> selectProjectFiles(int projectId) async {
     final db = await instance.database;
-    await db.delete('projects', where: 'id = ?', whereArgs: [project.id]);
+    final result = await db.query('files', where: 'project_id = ?', whereArgs: [projectId]);
+    return result.map((files) => ProjectFileModel.fromJson(files)).toList();
   }
 }

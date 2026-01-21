@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 
-class AddFileScreen extends StatelessWidget {
+class FileScreen extends StatelessWidget {
   final String projectName;
-  const AddFileScreen({Key? key, this.projectName = "새 프로젝트"})
+  const FileScreen({Key? key, this.projectName = "새 프로젝트"})
     : super(key: key);
 
   @override

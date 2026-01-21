@@ -11,7 +11,7 @@ class AddProjectDialog extends ConsumerStatefulWidget {
 
 class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
   final _controller = TextEditingController();
-  List<Chip> chipTags = []; 
+  List<Chip> chipTags = [];
 
   @override
   Widget build(BuildContext context) {
@@ -59,10 +59,7 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
               children: [
                 ...chipTags,
                 ActionChip(
-                  label: Text(
-                    "+ 태그 추가",
-                    style: TextStyle(color: Colors.white),
-                  ),
+                  label: Text("+ 태그 추가", style: TextStyle(color: Colors.white)),
                   backgroundColor: Color(0xFF333333),
                   onPressed: _buildAddTag,
                 ),
@@ -83,17 +80,14 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
                   String tags = chipTags
                       .map((chip) => (chip.label as Text).data!)
                       .toList()
-                      .join('*');
+                      .join(',');
                   ProjectModel newProject = ProjectModel(
-                    id: "임시 id",
                     name: _controller.text,
                     tags: tags,
                     createdAt: DateTime.now(),
                   );
                   if (_controller.text.isNotEmpty) {
-                    ref
-                        .read(projectProvider.notifier)
-                        .addProject(newProject);
+                    ref.read(projectProvider.notifier).addProject(newProject);
                     Navigator.pop(context);
                   }
                 },
@@ -120,10 +114,7 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
         final tagController = TextEditingController();
         return AlertDialog(
           backgroundColor: AppTheme.cardGrey,
-          title: Text(
-            "태그 추가",
-            style: TextStyle(color: Colors.white),
-          ),
+          title: Text("태그 추가", style: TextStyle(color: Colors.white)),
           content: TextField(
             controller: tagController,
             style: TextStyle(color: Colors.white),
@@ -136,21 +127,12 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 16,
-              ),
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text(
-                "취소",
-                style: TextStyle(color: Colors.white),
-              ),
+              onPressed: () => Navigator.pop(context),
+              child: Text("취소", style: TextStyle(color: Colors.white)),
             ),
             TextButton(
               onPressed: () {
@@ -161,10 +143,7 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
                   Navigator.pop(context);
                 }
               },
-              child: Text(
-                "추가",
-                style: TextStyle(color: Colors.white),
-              ),
+              child: Text("추가", style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -178,8 +157,8 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
       backgroundColor: Color(0xFF555555),
       labelStyle: TextStyle(color: Colors.white),
       onDeleted: () => setState(() {
-        chipTags.removeWhere( (chip) => (chip.label as Text).data == tag);
-      },),
+        chipTags.removeWhere((chip) => (chip.label as Text).data == tag);
+      }),
     );
   }
 }
