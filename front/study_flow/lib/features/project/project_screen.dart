@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/local_db_helper.dart';
 import '../../core/theme.dart';
@@ -16,7 +17,7 @@ class ProjectScreen extends StatefulWidget {
 
 class _ProjectScreenState extends State<ProjectScreen> {
   final _projectNameController = TextEditingController();
-  late Future<List<ProjectFileModel>> projectFiles;
+  late Future<List<FileModel>> projectFiles;
 
   @override
   void initState() {
@@ -98,7 +99,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                   color: Color(0xFF262626),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: FutureBuilder<List<ProjectFileModel>>(
+                child: FutureBuilder<List<FileModel>>(
                   future: projectFiles,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
@@ -127,7 +128,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                         final file = files[index];
                         return ListTile(
                           title: Text(
-                            file.name ?? "제목 없음",
+                            file.title ?? "제목 없음",
                             style: TextStyle(color: Colors.white),
                           ), // ProjectFileModel에 name이 있다고 가정
                           // onTap: () => 파일 상세 이동 로직,
@@ -193,26 +194,43 @@ class _ProjectScreenState extends State<ProjectScreen> {
   Widget _addFileButton() {
     return GestureDetector(
       onTap: () async {
-        // [수정됨] Navigator.push는 Future를 반환하므로 await 사용
+        // 1. 고유 ID 생성 (uuid가 없으면 DateTime.now().toString() 사용)
+        final String newFileId = const Uuid().v4();
+
+        // 2. 초기 파일 모델 생성 (DB에 넣을 껍데기)
+        final newFile = FileModel(
+          id: newFileId,
+          projectId: widget.project.id, // 현재 프로젝트 ID 연결
+          title: "제목 없음",
+          content: "", // 내용은 비어있음 -> Editor에서 초기화됨
+          tags: "",
+          createdAt: DateTime.now(),
+        );
+
+        // 3. DB에 저장 (이래야 FileScreen에서 load/save가 가능)
+        await LocalDatabase.instance.insertFile(newFile);
+
+        // 4. 화면 이동 (fileId 전달)
+        if (!mounted) return;
         await Navigator.push(
           context,
           MaterialPageRoute(
-            // FileScreen 생성자에 projectId 전달 (그래야 파일을 어디에 저장할지 알 수 있음)
-            builder: (_) => FileScreen(projectId: widget.project.id),
+            // ✅ 수정된 부분: projectId 대신 fileId 전달
+            builder: (_) => FileScreen(fileId: newFileId),
           ),
         );
 
-        // 갔다 오면 목록 새로고침
+        // 5. 돌아오면 목록 새로고침
         _loadFiles();
       },
       child: Container(
-        margin: EdgeInsets.symmetric(vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: 8),
         height: 50,
         decoration: BoxDecoration(
-          color: Color(0xFF3C3C3C),
+          color: const Color(0xFF3C3C3C),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Center(child: Icon(Icons.add, color: Colors.white70)),
+        child: const Center(child: Icon(Icons.add, color: Colors.white70)),
       ),
     );
   }
