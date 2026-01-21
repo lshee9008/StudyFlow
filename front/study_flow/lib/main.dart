@@ -20,8 +20,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: NotionEditorScreen(),
-      // home: HomeScreen(),
+      // home: NotionEditorScreen(),
+      home: HomeScreen(),
     );
   }
 }
