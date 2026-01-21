@@ -1,15 +1,16 @@
+import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/block_model.dart';
-import 'file_provider.dart'; // FileNotifier가 있는 파일 import
+import 'file_provider.dart';
+import '../../core/theme.dart'; // 테마 임포트
 
 class FileScreen extends ConsumerStatefulWidget {
-  // [중요] 파일을 저장하고 불러오려면 ID가 꼭 필요합니다.
   final String fileId;
-
   const FileScreen({Key? key, required this.fileId}) : super(key: key);
 
   @override
@@ -17,46 +18,47 @@ class FileScreen extends ConsumerStatefulWidget {
 }
 
 class _FileScreenState extends ConsumerState<FileScreen> {
-  // UI 컨트롤러
   final TextEditingController _titleController = TextEditingController(
-    text: "새 페이지",
+    text: "제목 없음",
   );
   final TextEditingController _tagsController = TextEditingController();
   final TextEditingController _aiPromptController = TextEditingController();
+  String _createdDate = DateFormat('yyyy. MM. dd').format(DateTime.now());
 
-  String _createdDate = DateFormat('yyyy년 MM월 dd일').format(DateTime.now());
-
-  // 메뉴(Overlay) 관련 변수
   OverlayEntry? _overlayEntry;
   int _activeBlockIndex = -1;
   int _menuSelectedIndex = 0;
   List<Map<String, dynamic>> _currentFilteredOptions = [];
 
-  // 메뉴 옵션
   final List<Map<String, dynamic>> _allMenuOptions = [
     {
       'type': BlockType.h1,
       'label': '제목 1',
-      'sub': 'H1',
+      'sub': '대제목',
       'icon': Icons.looks_one,
     },
     {
       'type': BlockType.h2,
       'label': '제목 2',
-      'sub': 'H2',
+      'sub': '중제목',
       'icon': Icons.looks_two,
     },
-    {'type': BlockType.h3, 'label': '제목 3', 'sub': 'H3', 'icon': Icons.looks_3},
+    {
+      'type': BlockType.h3,
+      'label': '제목 3',
+      'sub': '소제목',
+      'icon': Icons.looks_3,
+    },
     {
       'type': BlockType.text,
       'label': '텍스트',
       'sub': '기본',
-      'icon': Icons.text_fields,
+      'icon': Icons.short_text,
     },
     {
       'type': BlockType.bullet,
       'label': '글머리 기호',
-      'sub': '목록',
+      'sub': '리스트',
       'icon': Icons.format_list_bulleted,
     },
     {
@@ -71,17 +73,15 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   @override
   void initState() {
     super.initState();
-    // [수정] 데이터를 불러오고 나서 -> 컨트롤러에 값을 채워넣음!
     Future.microtask(() async {
       final fileModel = await ref
           .read(fileProvider.notifier)
           .loadFile(widget.fileId);
-
       if (fileModel != null) {
         setState(() {
-          _titleController.text = fileModel.title; // 제목 연결
-          _tagsController.text = fileModel.tags; // 태그 연결
-          // _createdDate = ... (필요하다면 날짜도 연결)
+          _titleController.text = fileModel.title;
+          _tagsController.text = fileModel.tags;
+          _createdDate = DateFormat('yyyy. MM. dd').format(fileModel.createdAt);
         });
       }
     });
@@ -96,21 +96,18 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     super.dispose();
   }
 
-  // [핵심] 뒤로가기 시 자동 저장
-  // [수정] 저장할 때 제목과 태그도 같이 보냄
   Future<bool> _onWillPop() async {
     await ref
         .read(fileProvider.notifier)
         .saveFile(
           fileId: widget.fileId,
-          title: _titleController.text, // 현재 입력된 제목
-          tags: _tagsController.text, // 현재 입력된 태그
+          title: _titleController.text,
+          tags: _tagsController.text,
         );
     return true;
   }
 
-  // --- Helper Methods ---
-
+  // --- Helpers ---
   void _addNewBlock(int index) {
     ref.read(fileProvider.notifier).addBlock(index);
     _moveFocus(index);
@@ -146,7 +143,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     });
   }
 
-  // AI 요약 실행
   Future<void> _handleAIRequest() async {
     final success = await ref
         .read(fileProvider.notifier)
@@ -155,9 +151,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           tags: _tagsController.text,
           prompt: _aiPromptController.text,
         );
-
     if (success && mounted) {
-      // AI 결과가 추가되었으니, 현재 상태(제목, 태그 포함)로 전체 저장 한번 수행
       await ref
           .read(fileProvider.notifier)
           .saveFile(
@@ -165,108 +159,433 @@ class _FileScreenState extends ConsumerState<FileScreen> {
             title: _titleController.text,
             tags: _tagsController.text,
           );
-
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("✨ 요약 완료 및 저장됨!")));
     }
   }
 
-  // --- Overlay Logic (기존 유지) ---
-  void _showOverlay(BuildContext context, int index, String query) {
-    _activeBlockIndex = index;
-    final blocks = ref.read(fileProvider).blocks;
-    final block = blocks[index];
-
-    _currentFilteredOptions = _allMenuOptions.where((option) {
-      final label = (option['label'] as String).toLowerCase();
-      final sub = (option['sub'] as String).toLowerCase();
-      final q = query.toLowerCase();
-      return label.contains(q) || sub.contains(q);
-    }).toList();
-
-    if (_currentFilteredOptions.isEmpty) {
-      _removeOverlay();
-      return;
-    }
-    if (_overlayEntry == null) _menuSelectedIndex = 0;
-
-    _overlayEntry?.remove();
-    _overlayEntry = _createOverlayEntry(block);
-    Overlay.of(context).insert(_overlayEntry!);
+  // --- Icon Logic ---
+  void _addRandomIcon() {
+    final emojis = [
+      "📝",
+      "🚀",
+      "💡",
+      "🔥",
+      "✅",
+      "🎨",
+      "💻",
+      "📚",
+      "🪐",
+      "🍎",
+      "☘️",
+    ];
+    final randomEmoji = emojis[Random().nextInt(emojis.length)];
+    ref.read(fileProvider.notifier).updateIcon(randomEmoji);
   }
 
-  OverlayEntry _createOverlayEntry(Block block) {
-    return OverlayEntry(
-      builder: (context) => Positioned(
-        width: 280,
-        child: CompositedTransformFollower(
-          link: block.layerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0, 30),
-          child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(6),
-            color: const Color(0xFF252525),
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 300),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.withOpacity(0.2)),
-                borderRadius: BorderRadius.circular(6),
+  void _removeIcon() {
+    ref.read(fileProvider.notifier).updateIcon(null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fileState = ref.watch(fileProvider);
+    final blocks = fileState.blocks;
+    final isLoading = fileState.isLoading;
+    final pageIcon = fileState.icon;
+    final bool isWideScreen = MediaQuery.of(context).size.width > 800;
+
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        // 배경색은 테마에서 자동 적용됨
+        appBar: AppBar(
+          leading: BackButton(
+            onPressed: () async {
+              await _onWillPop();
+              Navigator.pop(context);
+            },
+          ),
+          title: Text(
+            _titleController.text.isEmpty ? "제목 없음" : _titleController.text,
+            style: TextStyle(
+              fontSize: 16,
+              color: AppTheme.textPrimary.withOpacity(0.8),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          actions: [
+            IconButton(icon: const Icon(Icons.more_horiz), onPressed: () {}),
+            if (isWideScreen) const SizedBox(width: 20),
+          ],
+        ),
+        floatingActionButton: isWideScreen
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: isLoading ? null : _handleAIRequest,
+                backgroundColor: AppTheme.bgSecondary,
+                label: Text(
+                  isLoading ? "분석 중" : "AI 요약",
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                icon: Icon(Icons.auto_awesome, color: AppTheme.aiAccentColor),
               ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: _currentFilteredOptions.length,
-                itemBuilder: (context, i) {
-                  final option = _currentFilteredOptions[i];
-                  final isSelected = i == _menuSelectedIndex;
-                  return Container(
-                    color: isSelected ? Colors.white.withOpacity(0.1) : null,
-                    child: ListTile(
-                      dense: true,
-                      visualDensity: VisualDensity.compact,
-                      leading: Icon(
-                        option['icon'],
-                        size: 18,
-                        color: Colors.grey[400],
-                      ),
-                      title: Text(
-                        option['label'],
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
+        body: GestureDetector(
+          onTap: _removeOverlay,
+          child: Row(
+            children: [
+              // [LEFT] Editor Area
+              Expanded(
+                flex: 3,
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 60,
+                        ), // 여백 조정
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 1. Page Icon Header
+                            const SizedBox(height: 40),
+                            if (pageIcon != null) ...[
+                              GestureDetector(
+                                onTap: _addRandomIcon,
+                                child: Text(
+                                  pageIcon,
+                                  style: const TextStyle(fontSize: 72),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                            ] else
+                              GestureDetector(
+                                onTap: _addRandomIcon,
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 24),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.add_reaction_outlined,
+                                        color: AppTheme.textSecondary,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "아이콘 추가",
+                                        style: AppTheme.caption.copyWith(
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            // 2. Title Input
+                            TextField(
+                              controller: _titleController,
+                              style: AppTheme.titleHuge, // 테마 스타일 적용
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                filled: false, // 배경색 제거
+                                hintText: '제목 없음',
+                                hintStyle: TextStyle(color: AppTheme.textHint),
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              onChanged: (val) {},
+                            ),
+
+                            // 3. Properties
+                            const SizedBox(height: 24),
+                            _buildPropertyRow(
+                              Icons.calendar_today_outlined,
+                              "작성일",
+                              _createdDate,
+                            ),
+                            _buildPropertyRow(
+                              Icons.person_outline,
+                              "작성자",
+                              "이승희",
+                            ), // 실제 사용자 정보로 대체 필요
+                            if (pageIcon != null)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8.0,
+                                ),
+                                child: GestureDetector(
+                                  onTap: _removeIcon,
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.remove_circle_outline,
+                                        size: 18,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        "아이콘 삭제",
+                                        style: AppTheme.caption.copyWith(
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            const SizedBox(height: 24),
+                            const Divider(), // 테마 디바이더 적용
+                            const SizedBox(height: 24),
+                          ],
                         ),
                       ),
-                      trailing: Text(
-                        option['sub'],
-                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                    ),
+
+                    // 4. Block List
+                    SliverPadding(
+                      padding: const EdgeInsets.only(
+                        left: 60,
+                        right: 60,
+                        bottom: 120,
                       ),
-                      onTap: () => _applyTypeChange(
-                        index: _activeBlockIndex,
-                        newType: option['type'],
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          return HoverBlockItem(
+                            key: ValueKey(blocks[index].id),
+                            index: index,
+                            block: blocks[index],
+                            onEnter: _handleKeyEvent,
+                            onChanged: _handleTextChanged,
+                            onDelete: () => _deleteBlock(index),
+                            onOptions: () => _showBlockOptionMenu(index),
+                            onToggleCheckbox: (val) {
+                              ref
+                                  .read(fileProvider.notifier)
+                                  .toggleCheckbox(index, val);
+                            },
+                            getStyle: _getStyleForBlock,
+                            getHint: _getHintText,
+                          );
+                        }, childCount: blocks.length),
                       ),
                     ),
-                  );
-                },
+                  ],
+                ),
               ),
-            ),
+
+              // [RIGHT] Sidebar (Desktop Only)
+              if (isWideScreen)
+                Container(
+                  width: 320,
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgSecondary, // 사이드바 배경색 적용
+                    border: Border(
+                      left: BorderSide(color: AppTheme.borderColor),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(-2, 0),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("AI Assistant", style: AppTheme.titleSmall),
+                      const SizedBox(height: 32),
+                      _buildSidebarField("태그", _tagsController, "예: 중요, 회의록"),
+                      const SizedBox(height: 24),
+                      _buildSidebarField(
+                        "프롬프트",
+                        _aiPromptController,
+                        "AI에게 요청할 내용을 입력하세요...",
+                        maxLines: 5,
+                      ),
+                      const SizedBox(height: 32),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: isLoading ? null : _handleAIRequest,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                AppTheme.aiAccentColor, // AI 강조색 적용
+                            foregroundColor: Colors.black, // 텍스트 색상
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                          ),
+                          icon: isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.black,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.auto_awesome,
+                                  size: 20,
+                                  color: Colors.black,
+                                ),
+                          label: Text(
+                            isLoading ? " 분석 중..." : " AI 요약 실행",
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  void _removeOverlay() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-    _activeBlockIndex = -1;
+  // --- Widgets ---
+
+  Widget _buildSidebarField(
+    String label,
+    TextEditingController ctrl,
+    String hint, {
+    int maxLines = 1,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: ctrl,
+          maxLines: maxLines,
+          style: AppTheme.bodyText.copyWith(fontSize: 14),
+          decoration: InputDecoration(hintText: hint),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPropertyRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: AppTheme.textSecondary),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 120,
+            child: Text(label, style: AppTheme.caption.copyWith(fontSize: 15)),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: AppTheme.bodyText.copyWith(
+                fontSize: 15,
+                color: AppTheme.textPrimary.withOpacity(0.9),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBlockOptionMenu(int index) {
+    showModalBottomSheet(
+      context: context,
+      // 배경색은 테마에서 자동 적용됨
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  "블록 삭제",
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteBlock(index);
+                },
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.content_copy,
+                  color: AppTheme.textPrimary,
+                ),
+                title: const Text(
+                  "복제",
+                  style: TextStyle(color: AppTheme.textPrimary),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // --- 기존 Helper Methods (Overlay, KeyEvent, Hints) ---
+  String? _getHintText(Block block, int index) {
+    final blocksLength = ref.read(fileProvider).blocks.length;
+    if (block.type == BlockType.h1) return "제목 1";
+    if (block.type == BlockType.h2) return "제목 2";
+    if (block.type == BlockType.h3) return "제목 3";
+    if (block.type == BlockType.code) return "코드 작성...";
+    if (block.controller.text.isEmpty && index == blocksLength - 1)
+      return "'/'를 입력하여 명령어 사용";
+    return null;
+  }
+
+  void _handleTextChanged(String text, int index) {
+    int slashIndex = text.lastIndexOf('/');
+    if (slashIndex != -1) {
+      String query = text.substring(slashIndex + 1);
+      if (!query.contains(' ')) {
+        _showOverlay(context, index, query);
+      } else {
+        _removeOverlay();
+      }
+    } else {
+      _removeOverlay();
+    }
+  }
+
+  TextStyle _getStyleForBlock(BlockType type) {
+    // 테마 스타일 적용
+    switch (type) {
+      case BlockType.h1:
+        return AppTheme.titleLarge;
+      case BlockType.h2:
+        return AppTheme.titleMedium;
+      case BlockType.h3:
+        return AppTheme.titleSmall;
+      case BlockType.code:
+        return AppTheme.codeText;
+      case BlockType.text:
+      default:
+        return AppTheme.bodyText;
+    }
   }
 
   void _handleKeyEvent(RawKeyEvent event, int index) {
     if (event is! RawKeyDownEvent) return;
-    final blocks = ref.read(fileProvider).blocks;
-
     if (_overlayEntry != null) {
       if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
         if (_menuSelectedIndex > 0) {
@@ -291,417 +610,285 @@ class _FileScreenState extends ConsumerState<FileScreen> {
         return;
       }
     }
-
     if (event.logicalKey == LogicalKeyboardKey.enter) {
       if (!event.isShiftPressed && _overlayEntry == null) {
         _addNewBlock(index + 1);
       }
     } else if (event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (blocks[index].controller.text.isEmpty && index > 0) {
+      if (ref.read(fileProvider).blocks[index].controller.text.isEmpty &&
+          index > 0) {
         _deleteBlock(index);
       }
     }
   }
 
-  // --- UI Build ---
+  void _showOverlay(BuildContext context, int index, String query) {
+    _activeBlockIndex = index;
+    final blocks = ref.read(fileProvider).blocks;
+    final block = blocks[index];
+    _currentFilteredOptions = _allMenuOptions.where((option) {
+      final label = (option['label'] as String).toLowerCase();
+      final sub = (option['sub'] as String).toLowerCase();
+      final q = query.toLowerCase();
+      return label.contains(q) || sub.contains(q);
+    }).toList();
+
+    if (_currentFilteredOptions.isEmpty) {
+      _removeOverlay();
+      return;
+    }
+    if (_overlayEntry == null) _menuSelectedIndex = 0;
+    _overlayEntry?.remove();
+    _overlayEntry = _createOverlayEntry(block);
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  OverlayEntry _createOverlayEntry(Block block) {
+    return OverlayEntry(
+      builder: (context) => Positioned(
+        width: 320,
+        child: CompositedTransformFollower(
+          link: block.layerLink,
+          showWhenUnlinked: false,
+          offset: const Offset(0, 40),
+          child: Material(
+            elevation: 12,
+            borderRadius: BorderRadius.circular(8),
+            color: AppTheme.bgSecondary, // 테마 적용
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 320),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppTheme.borderColor), // 테마 적용
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                itemCount: _currentFilteredOptions.length,
+                itemBuilder: (context, i) {
+                  final option = _currentFilteredOptions[i];
+                  final isSelected = i == _menuSelectedIndex;
+                  return Container(
+                    color: isSelected ? AppTheme.bgHover : null, // 테마 적용
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 2,
+                      ),
+                      leading: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.bgPrimary,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: AppTheme.borderColor.withOpacity(0.5),
+                          ),
+                        ),
+                        child: Icon(
+                          option['icon'],
+                          size: 18,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      title: Text(
+                        option['label'],
+                        style: AppTheme.bodyText.copyWith(fontSize: 15),
+                      ),
+                      subtitle: Text(
+                        option['sub'],
+                        style: AppTheme.caption.copyWith(fontSize: 12),
+                      ),
+                      onTap: () => _applyTypeChange(
+                        index: _activeBlockIndex,
+                        newType: option['type'],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+    _activeBlockIndex = -1;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Improved HoverBlockItem (Handle Visibility Fix)
+// -----------------------------------------------------------------------------
+class HoverBlockItem extends StatefulWidget {
+  final int index;
+  final Block block;
+  final Function(RawKeyEvent, int) onEnter;
+  final Function(String, int) onChanged;
+  final VoidCallback onDelete;
+  final VoidCallback onOptions;
+  final Function(bool) onToggleCheckbox;
+  final TextStyle Function(BlockType) getStyle;
+  final String? Function(Block, int) getHint;
+
+  const HoverBlockItem({
+    Key? key,
+    required this.index,
+    required this.block,
+    required this.onEnter,
+    required this.onChanged,
+    required this.onDelete,
+    required this.onOptions,
+    required this.onToggleCheckbox,
+    required this.getStyle,
+    required this.getHint,
+  }) : super(key: key);
+
+  @override
+  State<HoverBlockItem> createState() => _HoverBlockItemState();
+}
+
+class _HoverBlockItemState extends State<HoverBlockItem> {
+  bool _isHovering = false;
 
   @override
   Widget build(BuildContext context) {
-    final fileState = ref.watch(fileProvider);
-    final blocks = fileState.blocks;
-    final isLoading = fileState.isLoading; // [수정됨] isLoadingAI -> isLoading
+    bool isCode = widget.block.type == BlockType.code;
+    bool isMobile = Platform.isAndroid || Platform.isIOS;
 
-    final bool isWideScreen = MediaQuery.of(context).size.width > 800;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovering = true),
+      onExit: (_) => setState(() => _isHovering = false),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // 1. Content
+          Container(
+            margin: EdgeInsets.only(top: 4, bottom: isCode ? 12 : 4),
+            padding: isCode ? const EdgeInsets.all(16) : null,
+            decoration: isCode
+                ? BoxDecoration(
+                    color: AppTheme.bgSecondary,
+                    borderRadius: BorderRadius.circular(6),
+                  ) // 코드 블록 스타일 개선
+                : null,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.block.type == BlockType.bullet)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, right: 12, left: 4),
+                    child: Icon(
+                      Icons.circle,
+                      size: 6,
+                      color: AppTheme.textPrimary.withOpacity(0.6),
+                    ),
+                  ),
 
-    // [핵심] WillPopScope로 감싸서 뒤로가기 시 자동 저장
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF191919),
-
-        // 상단 앱바 (저장 버튼 추가)
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF191919),
-          elevation: 0,
-          leading: BackButton(
-            onPressed: () async {
-              await _onWillPop(); // 저장 후 닫기
-              Navigator.pop(context);
-            },
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: () async {
-                // [수정] 버튼 눌러서 저장할 때도 제목/태그 전달
-                await ref
-                    .read(fileProvider.notifier)
-                    .saveFile(
-                      fileId: widget.fileId,
-                      title: _titleController.text,
-                      tags: _tagsController.text,
-                    );
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text("저장되었습니다.")));
-              },
-            ),
-          ],
-        ),
-
-        floatingActionButton: isWideScreen
-            ? null
-            : FloatingActionButton.extended(
-                onPressed: isLoading ? null : _handleAIRequest,
-                backgroundColor: const Color(0xFFCCFF66),
-                icon: isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.black,
-                          strokeWidth: 2,
+                if (widget.block.type == BlockType.checkbox)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, right: 10),
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: Checkbox(
+                        value: widget.block.isChecked,
+                        activeColor: AppTheme.accentColor,
+                        checkColor: Colors.white,
+                        side: BorderSide(
+                          color: AppTheme.textSecondary,
+                          width: 1.5,
                         ),
-                      )
-                    : const Icon(Icons.auto_awesome, color: Colors.black),
-                label: Text(isLoading ? "분석 중" : "AI 요약"),
-              ),
-
-        body: GestureDetector(
-          onTap: _removeOverlay,
-          child: isLoading && blocks.isEmpty
-              ? const Center(child: CircularProgressIndicator()) // 로딩 중일 때
-              : Row(
-                  children: [
-                    // [LEFT] 에디터 영역
-                    Expanded(
-                      flex: 3,
-                      child: CustomScrollView(
-                        slivers: [
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                50,
-                                20,
-                                50,
-                                10,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  TextField(
-                                    controller: _titleController,
-                                    style: const TextStyle(
-                                      fontSize: 40,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.grey,
-                                    ),
-                                    decoration: const InputDecoration(
-                                      border: InputBorder.none,
-                                      hintText: '제목 없음',
-                                      hintStyle: TextStyle(color: Colors.grey),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 20),
-                                  _buildPropertyRow(
-                                    Icons.calendar_today,
-                                    "작성일",
-                                    _createdDate,
-                                  ),
-                                  _buildPropertyRow(
-                                    Icons.people,
-                                    "작성한 사람",
-                                    "사용자",
-                                  ),
-                                  const SizedBox(height: 10),
-                                  const Divider(
-                                    color: Colors.grey,
-                                    thickness: 0.5,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          SliverPadding(
-                            padding: const EdgeInsets.symmetric(horizontal: 50),
-                            sliver: SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) =>
-                                    _buildBlockItem(index, blocks[index]),
-                                childCount: blocks.length,
-                              ),
-                            ),
-                          ),
-                          const SliverToBoxAdapter(
-                            child: SizedBox(height: 100),
-                          ),
-                        ],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        onChanged: (val) => widget.onToggleCheckbox(val!),
                       ),
                     ),
+                  ),
 
-                    if (isWideScreen)
-                      Container(width: 1, color: Colors.grey.withOpacity(0.2)),
-
-                    // [RIGHT] AI 사이드바
-                    if (isWideScreen)
-                      Expanded(
-                        flex: 1,
-                        child: Container(
-                          color: const Color(0xFF1E1E1E),
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "AI Assistant",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                Expanded(
+                  child: CompositedTransformTarget(
+                    link: widget.block.layerLink,
+                    child: RawKeyboardListener(
+                      focusNode: FocusNode(),
+                      onKey: (event) => widget.onEnter(event, widget.index),
+                      child: GestureDetector(
+                        onLongPress: isMobile ? widget.onOptions : null,
+                        child: TextField(
+                          controller: widget.block.controller,
+                          focusNode: widget.block.focusNode,
+                          maxLines: null,
+                          style: widget
+                              .getStyle(widget.block.type)
+                              .copyWith(
+                                decoration:
+                                    (widget.block.type == BlockType.checkbox &&
+                                        widget.block.isChecked)
+                                    ? TextDecoration.lineThrough
+                                    : TextDecoration.none,
+                                color:
+                                    (widget.block.type == BlockType.checkbox &&
+                                        widget.block.isChecked)
+                                    ? AppTheme.textSecondary
+                                    : AppTheme.textPrimary,
                               ),
-                              const SizedBox(height: 24),
-
-                              const Text(
-                                "TAGS",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: _tagsController,
-                                style: const TextStyle(color: Colors.white),
-                                decoration: InputDecoration(
-                                  filled: true,
-                                  fillColor: Colors.black,
-                                  hintText: "태그 입력",
-                                  hintStyle: TextStyle(color: Colors.grey[700]),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-
-                              const Text(
-                                "PROMPT",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: _aiPromptController,
-                                maxLines: 4,
-                                style: const TextStyle(color: Colors.white),
-                                decoration: InputDecoration(
-                                  filled: true,
-                                  fillColor: Colors.black,
-                                  hintText: "요청사항 입력",
-                                  hintStyle: TextStyle(color: Colors.grey[700]),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton.icon(
-                                  onPressed: isLoading
-                                      ? null
-                                      : _handleAIRequest,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFCCFF66),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  icon: isLoading
-                                      ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.black,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.auto_awesome,
-                                          color: Colors.black,
-                                        ),
-                                  label: Text(
-                                    isLoading ? "분석 중..." : "AI 요약 실행",
-                                    style: const TextStyle(
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            filled: false, // 배경색 제거
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 3,
+                            ),
+                            hintText: widget.getHint(
+                              widget.block,
+                              widget.index,
+                            ),
+                            hintStyle: TextStyle(
+                              color: AppTheme.textHint.withOpacity(0.5),
+                            ),
                           ),
+                          onChanged: (text) =>
+                              widget.onChanged(text, widget.index),
                         ),
                       ),
-                  ],
+                    ),
+                  ),
                 ),
-        ),
-      ),
-    );
-  }
+              ],
+            ),
+          ),
 
-  Widget _buildPropertyRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.grey[500]),
-          const SizedBox(width: 10),
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: TextStyle(color: Colors.grey[500], fontSize: 14),
+          // 2. The Handle (::) - Desktop Hover
+          if (!isMobile)
+            Positioned(
+              left: -44,
+              top: 0,
+              bottom: 0,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 150),
+                opacity: _isHovering ? 1.0 : 0.0,
+                child: Center(
+                  child: IconButton(
+                    icon: Icon(
+                      Icons.drag_indicator,
+                      color: AppTheme.textSecondary.withOpacity(0.5),
+                      size: 22,
+                    ),
+                    onPressed: widget.onOptions,
+                    tooltip: "블록 옵션",
+                    splashRadius: 20,
+                    hoverColor: AppTheme.bgHover,
+                  ),
+                ),
+              ),
             ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  Widget _buildBlockItem(int index, Block block) {
-    bool isCode = block.type == BlockType.code;
-    return RawKeyboardListener(
-      focusNode: FocusNode(),
-      onKey: (event) => _handleKeyEvent(event, index),
-      child: Container(
-        margin: EdgeInsets.only(top: 4, bottom: isCode ? 10 : 4),
-        padding: isCode ? const EdgeInsets.all(12) : null,
-        decoration: isCode
-            ? BoxDecoration(
-                color: const Color(0xFF2C2C2C),
-                borderRadius: BorderRadius.circular(4),
-              )
-            : null,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (block.type == BlockType.bullet)
-              const Padding(
-                padding: EdgeInsets.only(top: 8, right: 10, left: 4),
-                child: Icon(Icons.circle, size: 6, color: Colors.white70),
-              ),
-            if (block.type == BlockType.checkbox)
-              Padding(
-                padding: const EdgeInsets.only(top: 2, right: 8),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: Checkbox(
-                    value: block.isChecked,
-                    activeColor: Colors.blueAccent,
-                    side: const BorderSide(color: Colors.grey),
-                    onChanged: (val) => ref
-                        .read(fileProvider.notifier)
-                        .toggleCheckbox(index, val!),
-                  ),
-                ),
-              ),
-            Expanded(
-              child: CompositedTransformTarget(
-                link: block.layerLink,
-                child: TextField(
-                  controller: block.controller,
-                  focusNode: block.focusNode,
-                  maxLines: null,
-                  style: _getStyleForBlock(block.type),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: _getHintText(block, index),
-                    hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)),
-                  ),
-                  onChanged: (text) => _handleTextChanged(text, index),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String? _getHintText(Block block, int index) {
-    final blocksLength = ref.read(fileProvider).blocks.length;
-    if (block.type == BlockType.h1) return "제목 1";
-    if (block.type == BlockType.h2) return "제목 2";
-    if (block.type == BlockType.h3) return "제목 3";
-    if (block.type == BlockType.code) return "코드 입력...";
-    if (block.controller.text.isEmpty && index == blocksLength - 1)
-      return "'/'를 입력하여 명령어 사용";
-    return null;
-  }
-
-  void _handleTextChanged(String text, int index) {
-    int slashIndex = text.lastIndexOf('/');
-    if (slashIndex != -1) {
-      String query = text.substring(slashIndex + 1);
-      if (!query.contains(' ')) {
-        _showOverlay(context, index, query);
-      } else {
-        _removeOverlay();
-      }
-    } else {
-      _removeOverlay();
-    }
-  }
-
-  TextStyle _getStyleForBlock(BlockType type) {
-    switch (type) {
-      case BlockType.h1:
-        return const TextStyle(
-          fontSize: 30,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        );
-      case BlockType.h2:
-        return const TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        );
-      case BlockType.h3:
-        return const TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        );
-      case BlockType.code:
-        return const TextStyle(
-          fontSize: 14,
-          fontFamily: 'Courier',
-          color: Color(0xFFFF5252),
-        );
-      case BlockType.text:
-      default:
-        return const TextStyle(fontSize: 16, color: Colors.white, height: 1.5);
-    }
   }
 }

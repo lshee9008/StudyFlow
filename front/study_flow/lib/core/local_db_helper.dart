@@ -20,8 +20,14 @@ class LocalDatabase {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    print("DB 저장 위치: $path"); // 디버깅용
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+
+    // [수정] 버전 1 -> 2로 변경하여 스키마 업데이트 트리거
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _createDB,
+      onUpgrade: _onUpgrade, // [NEW] 업그레이드 로직 추가
+    );
   }
 
   Future _createDB(Database db, int version) async {
@@ -44,6 +50,7 @@ class LocalDatabase {
     ''');
 
     // 3. Files 테이블 (모든 기능의 핵심!)
+    // [수정] files 테이블에 icon 컬럼 추가
     await db.execute('''
     CREATE TABLE files (
       id TEXT PRIMARY KEY,
@@ -52,11 +59,21 @@ class LocalDatabase {
       content TEXT,
       summary TEXT,
       tags TEXT,
+      icon TEXT, 
       created_at TEXT NOT NULL,
       updated_at TEXT,
       FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
     )
     ''');
+  }
+
+  // [NEW] DB 버전 업그레이드 시 실행 (기존 사용자 에러 방지)
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // icon 컬럼이 없는 구버전 사용자에게 컬럼 추가
+      await db.execute("ALTER TABLE files ADD COLUMN icon TEXT");
+      print("DB Upgraded: Added 'icon' column");
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -99,11 +116,13 @@ class LocalDatabase {
 
   // 4. 파일 내용 저장/업데이트 (Update) -> 자동 저장용
   // [NEW] 파일의 제목, 태그, 내용, 수정시간을 모두 업데이트하는 함수
+  // [수정] icon 업데이트 포함
   Future<int> updateFile({
     required String id,
     required String title,
     required String tags,
     required String content,
+    String? icon, // [NEW]
   }) async {
     final db = await instance.database;
     return await db.update(
@@ -112,6 +131,7 @@ class LocalDatabase {
         'title': title,
         'tags': tags,
         'content': content,
+        'icon': icon, // [NEW]
         'updated_at': DateTime.now().toIso8601String(),
       },
       where: 'id = ?',
