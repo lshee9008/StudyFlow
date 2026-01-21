@@ -32,6 +32,16 @@ class HomeScreen extends ConsumerWidget {
             Text("내 프로젝트", style: AppTheme.titleSmall.copyWith(fontSize: 18)),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.settings_outlined,
+              color: AppTheme.textSecondary,
+            ),
+            onPressed: () {},
+          ),
+          const SizedBox(width: 20),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -60,6 +70,8 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+
+  // --- Widgets ---
 
   Widget _buildAddProjectCard(BuildContext context, WidgetRef ref) {
     return InkWell(
@@ -151,7 +163,6 @@ class HomeScreen extends ConsumerWidget {
                   ),
                 ),
                 InkWell(
-                  // [수정] 메뉴 띄우기 함수 호출
                   onTap: () => _showProjectOptionMenu(context, ref, project),
                   child: const Icon(
                     Icons.more_horiz,
@@ -167,14 +178,14 @@ class HomeScreen extends ConsumerWidget {
               style: AppTheme.caption.copyWith(fontSize: 12),
             ),
             const Spacer(),
+
+            // [수정된 부분] 쉼표로만 태그 분리 (공백 유지)
             if (project.tags.isNotEmpty)
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children: project.tags.split(RegExp(r'[, ]+')).take(4).map((
-                  tag,
-                ) {
-                  final t = tag.trim();
+                children: project.tags.split(',').take(4).map((tag) {
+                  final t = tag.trim(); // 앞뒤 공백만 제거
                   if (t.isEmpty) return const SizedBox.shrink();
                   return Container(
                     padding: const EdgeInsets.symmetric(
@@ -228,7 +239,7 @@ class HomeScreen extends ConsumerWidget {
             TextField(
               controller: tagCtrl,
               style: AppTheme.bodyText,
-              decoration: const InputDecoration(hintText: "태그 (예: 공부, 플러터)"),
+              decoration: const InputDecoration(hintText: "태그 (쉼표로 구분)"),
             ),
           ],
         ),
@@ -264,7 +275,6 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  // [NEW] 프로젝트 삭제 메뉴
   void _showProjectOptionMenu(
     BuildContext context,
     WidgetRef ref,
@@ -287,9 +297,7 @@ class HomeScreen extends ConsumerWidget {
                   style: TextStyle(color: Colors.redAccent),
                 ),
                 onTap: () {
-                  Navigator.pop(context); // 1. 메뉴 닫기
-
-                  // 2. 삭제 함수 호출
+                  Navigator.pop(context);
                   ref.read(projectProvider.notifier).deleteProject(project.id);
                 },
               ),
