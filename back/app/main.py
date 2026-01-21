@@ -6,6 +6,7 @@ import os
 # 내부 모듈 임포트
 from .core.database import init_db
 from .routers import project_router
+from .routers import project_router, ai_router
 
 app = FastAPI(title="Note App API", version="1.0.0")
 
@@ -40,6 +41,8 @@ def on_startup():
 
 # --- 라우터 등록 ---
 app.include_router(project_router.router)
+app.include_router(project_router.router)
+app.include_router(ai_router.router) # 라우터 등록
 
 @app.get("/")
 def health_check():
