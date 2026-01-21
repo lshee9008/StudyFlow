@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,8 +8,76 @@ import 'package:intl/intl.dart';
 
 import '../../models/block_model.dart';
 import 'file_provider.dart';
-import '../../core/theme.dart'; // 테마 임포트
+import '../../core/theme.dart';
 
+// -----------------------------------------------------------------------------
+// [WIDGET] Resizable Split View
+// -----------------------------------------------------------------------------
+class ResizableSplitView extends StatefulWidget {
+  final Widget left;
+  final Widget right;
+  final double initialRatio;
+
+  const ResizableSplitView({
+    Key? key,
+    required this.left,
+    required this.right,
+    this.initialRatio = 0.6,
+  }) : super(key: key);
+
+  @override
+  State<ResizableSplitView> createState() => _ResizableSplitViewState();
+}
+
+class _ResizableSplitViewState extends State<ResizableSplitView> {
+  late double _ratio;
+
+  @override
+  void initState() {
+    super.initState();
+    _ratio = widget.initialRatio;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final leftWidth = width * _ratio;
+        return Row(
+          children: [
+            SizedBox(width: leftWidth, child: widget.left),
+            GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanUpdate: (details) {
+                setState(() {
+                  _ratio += details.delta.dx / width;
+                  if (_ratio < 0.3) _ratio = 0.3;
+                  if (_ratio > 0.8) _ratio = 0.8;
+                });
+              },
+              child: Container(
+                width: 9,
+                color: Colors.transparent,
+                alignment: Alignment.center,
+                child: Container(
+                  width: 1,
+                  height: double.infinity,
+                  color: AppTheme.borderColor,
+                ),
+              ),
+            ),
+            Expanded(child: widget.right),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// [SCREEN] File Screen
+// -----------------------------------------------------------------------------
 class FileScreen extends ConsumerStatefulWidget {
   final String fileId;
   const FileScreen({Key? key, required this.fileId}) : super(key: key);
@@ -23,7 +92,10 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   );
   final TextEditingController _tagsController = TextEditingController();
   final TextEditingController _aiPromptController = TextEditingController();
+  final TextEditingController _summaryController = TextEditingController();
+
   String _createdDate = DateFormat('yyyy. MM. dd').format(DateTime.now());
+  Timer? _debounceTimer;
 
   OverlayEntry? _overlayEntry;
   int _activeBlockIndex = -1;
@@ -82,6 +154,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           _titleController.text = fileModel.title;
           _tagsController.text = fileModel.tags;
           _createdDate = DateFormat('yyyy. MM. dd').format(fileModel.createdAt);
+          _summaryController.text = fileModel.summary ?? "";
         });
       }
     });
@@ -89,11 +162,34 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _titleController.dispose();
     _tagsController.dispose();
     _aiPromptController.dispose();
+    _summaryController.dispose();
     _removeOverlay();
     super.dispose();
+  }
+
+  void _onContentChanged() {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    _debounceTimer = Timer(const Duration(seconds: 2), () async {
+      await ref
+          .read(fileProvider.notifier)
+          .saveFile(
+            fileId: widget.fileId,
+            title: _titleController.text,
+            tags: _tagsController.text,
+          );
+      await ref
+          .read(fileProvider.notifier)
+          .requestAutoAISummary(
+            tags: _tagsController.text,
+            prompt: _aiPromptController.text.isEmpty
+                ? "내용을 분석하고 요약해줘"
+                : _aiPromptController.text,
+          );
+    });
   }
 
   Future<bool> _onWillPop() async {
@@ -107,7 +203,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     return true;
   }
 
-  // --- Helpers ---
   void _addNewBlock(int index) {
     ref.read(fileProvider.notifier).addBlock(index);
     _moveFocus(index);
@@ -121,9 +216,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
         final blocks = ref.read(fileProvider).blocks;
         final prevBlock = blocks[index - 1];
         prevBlock.focusNode.requestFocus();
-        prevBlock.controller.selection = TextSelection.fromPosition(
-          TextPosition(offset: prevBlock.controller.text.length),
-        );
       });
     }
   }
@@ -143,49 +235,16 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     });
   }
 
-  Future<void> _handleAIRequest() async {
-    final success = await ref
-        .read(fileProvider.notifier)
-        .requestAISummary(
-          fileId: widget.fileId,
-          tags: _tagsController.text,
-          prompt: _aiPromptController.text,
-        );
-    if (success && mounted) {
-      await ref
-          .read(fileProvider.notifier)
-          .saveFile(
-            fileId: widget.fileId,
-            title: _titleController.text,
-            tags: _tagsController.text,
-          );
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("✨ 요약 완료 및 저장됨!")));
-    }
-  }
-
-  // --- Icon Logic ---
   void _addRandomIcon() {
-    final emojis = [
-      "📝",
-      "🚀",
-      "💡",
-      "🔥",
-      "✅",
-      "🎨",
-      "💻",
-      "📚",
-      "🪐",
-      "🍎",
-      "☘️",
-    ];
+    final emojis = ["📝", "🚀", "💡", "🔥", "✅", "🎨", "💻", "📚", "🪐"];
     final randomEmoji = emojis[Random().nextInt(emojis.length)];
     ref.read(fileProvider.notifier).updateIcon(randomEmoji);
+    _onContentChanged();
   }
 
   void _removeIcon() {
     ref.read(fileProvider.notifier).updateIcon(null);
+    _onContentChanged();
   }
 
   @override
@@ -194,12 +253,219 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     final blocks = fileState.blocks;
     final isLoading = fileState.isLoading;
     final pageIcon = fileState.icon;
+    final summaryContent = fileState.summaryContent;
+
+    if (_summaryController.text != summaryContent && !isLoading) {
+      final cursorPosition = _summaryController.selection;
+      _summaryController.text = summaryContent;
+      if (cursorPosition.baseOffset <= summaryContent.length) {
+        _summaryController.selection = cursorPosition;
+      }
+    }
+
     final bool isWideScreen = MediaQuery.of(context).size.width > 800;
+
+    // [LEFT] Editor
+    Widget leftEditor = CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 50),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 60),
+                if (pageIcon != null) ...[
+                  GestureDetector(
+                    onTap: _addRandomIcon,
+                    child: Text(pageIcon, style: const TextStyle(fontSize: 72)),
+                  ),
+                  const SizedBox(height: 20),
+                ] else
+                  GestureDetector(
+                    onTap: _addRandomIcon,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 24),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.add_reaction_outlined,
+                            color: AppTheme.textSecondary,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "아이콘 추가",
+                            style: AppTheme.caption.copyWith(fontSize: 15),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                TextField(
+                  controller: _titleController,
+                  style: AppTheme.titleHuge,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    filled: false,
+                    hintText: '제목 없음',
+                    hintStyle: TextStyle(color: AppTheme.textHint),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (_) => _onContentChanged(),
+                ),
+
+                const SizedBox(height: 24),
+                _buildPropertyRow(
+                  Icons.calendar_today_outlined,
+                  "작성일",
+                  _createdDate,
+                ),
+                _buildInputPropertyRow(
+                  icon: Icons.tag,
+                  label: "태그",
+                  controller: _tagsController,
+                  hint: "예: 중요, 회의록",
+                  onChanged: (_) => _onContentChanged(),
+                ),
+                _buildInputPropertyRow(
+                  icon: Icons.smart_toy_outlined,
+                  label: "프롬프트",
+                  controller: _aiPromptController,
+                  hint: "AI 요약 지시사항...",
+                  onChanged: (_) => _onContentChanged(),
+                ),
+                if (pageIcon != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: GestureDetector(
+                      onTap: _removeIcon,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.remove_circle_outline,
+                            size: 20,
+                            color: AppTheme.textSecondary,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            "아이콘 삭제",
+                            style: AppTheme.caption.copyWith(fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        ),
+
+        SliverPadding(
+          padding: const EdgeInsets.only(left: 50, right: 50, bottom: 120),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate((context, index) {
+              return HoverBlockItem(
+                key: ValueKey(blocks[index].id),
+                index: index,
+                block: blocks[index],
+                onEnter: _handleKeyEvent,
+                onChanged: (text, idx) {
+                  _handleTextChanged(text, idx);
+                  _onContentChanged();
+                },
+                onDelete: () {
+                  _deleteBlock(index);
+                  _onContentChanged();
+                },
+                onOptions: () => _showBlockOptionMenu(index),
+                onToggleCheckbox: (val) {
+                  ref.read(fileProvider.notifier).toggleCheckbox(index, val);
+                  _onContentChanged();
+                },
+                getStyle: _getStyleForBlock,
+                getHint: _getHintText,
+              );
+            }, childCount: blocks.length),
+          ),
+        ),
+      ],
+    );
+
+    // [RIGHT] Summary
+    Widget rightSummary = Container(
+      color: AppTheme.bgSecondary,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome,
+                  size: 18,
+                  color: AppTheme.aiAccentColor,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "AI Insight",
+                  style: AppTheme.titleSmall.copyWith(fontSize: 16),
+                ),
+                const Spacer(),
+                if (isLoading)
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.aiAccentColor,
+                    ),
+                  )
+                else
+                  Text(
+                    "저장됨",
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: TextField(
+              controller: _summaryController,
+              maxLines: null,
+              expands: true,
+              style: AppTheme.bodyText.copyWith(fontSize: 14, height: 1.6),
+              textAlignVertical: TextAlignVertical.top,
+              decoration: InputDecoration(
+                hintText: "내용을 작성하면 AI가 이곳에 한국어로 요약합니다.",
+                hintStyle: TextStyle(color: AppTheme.textHint.withOpacity(0.6)),
+                border: InputBorder.none,
+                filled: false,
+                contentPadding: const EdgeInsets.all(24),
+              ),
+              onChanged: (val) {
+                ref.read(fileProvider.notifier).updateSummaryContent(val);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
 
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        // 배경색은 테마에서 자동 적용됨
         appBar: AppBar(
           leading: BackButton(
             onPressed: () async {
@@ -209,289 +475,98 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           ),
           title: Text(
             _titleController.text.isEmpty ? "제목 없음" : _titleController.text,
-            style: TextStyle(
-              fontSize: 16,
-              color: AppTheme.textPrimary.withOpacity(0.8),
-              fontWeight: FontWeight.w500,
-            ),
+            style: const TextStyle(fontSize: 14),
           ),
+          centerTitle: true,
           actions: [
             IconButton(icon: const Icon(Icons.more_horiz), onPressed: () {}),
-            if (isWideScreen) const SizedBox(width: 20),
+            const SizedBox(width: 16),
           ],
         ),
-        floatingActionButton: isWideScreen
-            ? null
-            : FloatingActionButton.extended(
-                onPressed: isLoading ? null : _handleAIRequest,
-                backgroundColor: AppTheme.bgSecondary,
-                label: Text(
-                  isLoading ? "분석 중" : "AI 요약",
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                icon: Icon(Icons.auto_awesome, color: AppTheme.aiAccentColor),
-              ),
         body: GestureDetector(
           onTap: _removeOverlay,
-          child: Row(
-            children: [
-              // [LEFT] Editor Area
-              Expanded(
-                flex: 3,
-                child: CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 60,
-                        ), // 여백 조정
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // 1. Page Icon Header
-                            const SizedBox(height: 40),
-                            if (pageIcon != null) ...[
-                              GestureDetector(
-                                onTap: _addRandomIcon,
-                                child: Text(
-                                  pageIcon,
-                                  style: const TextStyle(fontSize: 72),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                            ] else
-                              GestureDetector(
-                                onTap: _addRandomIcon,
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 24),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.add_reaction_outlined,
-                                        color: AppTheme.textSecondary,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "아이콘 추가",
-                                        style: AppTheme.caption.copyWith(
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                            // 2. Title Input
-                            TextField(
-                              controller: _titleController,
-                              style: AppTheme.titleHuge, // 테마 스타일 적용
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
-                                filled: false, // 배경색 제거
-                                hintText: '제목 없음',
-                                hintStyle: TextStyle(color: AppTheme.textHint),
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                              onChanged: (val) {},
-                            ),
-
-                            // 3. Properties
-                            const SizedBox(height: 24),
-                            _buildPropertyRow(
-                              Icons.calendar_today_outlined,
-                              "작성일",
-                              _createdDate,
-                            ),
-                            _buildPropertyRow(
-                              Icons.person_outline,
-                              "작성자",
-                              "이승희",
-                            ), // 실제 사용자 정보로 대체 필요
-                            if (pageIcon != null)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 8.0,
-                                ),
-                                child: GestureDetector(
-                                  onTap: _removeIcon,
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.remove_circle_outline,
-                                        size: 18,
-                                        color: AppTheme.textSecondary,
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        "아이콘 삭제",
-                                        style: AppTheme.caption.copyWith(
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                            const SizedBox(height: 24),
-                            const Divider(), // 테마 디바이더 적용
-                            const SizedBox(height: 24),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // 4. Block List
-                    SliverPadding(
-                      padding: const EdgeInsets.only(
-                        left: 60,
-                        right: 60,
-                        bottom: 120,
-                      ),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          return HoverBlockItem(
-                            key: ValueKey(blocks[index].id),
-                            index: index,
-                            block: blocks[index],
-                            onEnter: _handleKeyEvent,
-                            onChanged: _handleTextChanged,
-                            onDelete: () => _deleteBlock(index),
-                            onOptions: () => _showBlockOptionMenu(index),
-                            onToggleCheckbox: (val) {
-                              ref
-                                  .read(fileProvider.notifier)
-                                  .toggleCheckbox(index, val);
-                            },
-                            getStyle: _getStyleForBlock,
-                            getHint: _getHintText,
-                          );
-                        }, childCount: blocks.length),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // [RIGHT] Sidebar (Desktop Only)
-              if (isWideScreen)
-                Container(
-                  width: 320,
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgSecondary, // 사이드바 배경색 적용
-                    border: Border(
-                      left: BorderSide(color: AppTheme.borderColor),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(-2, 0),
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("AI Assistant", style: AppTheme.titleSmall),
-                      const SizedBox(height: 32),
-                      _buildSidebarField("태그", _tagsController, "예: 중요, 회의록"),
-                      const SizedBox(height: 24),
-                      _buildSidebarField(
-                        "프롬프트",
-                        _aiPromptController,
-                        "AI에게 요청할 내용을 입력하세요...",
-                        maxLines: 5,
-                      ),
-                      const SizedBox(height: 32),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: isLoading ? null : _handleAIRequest,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                AppTheme.aiAccentColor, // AI 강조색 적용
-                            foregroundColor: Colors.black, // 텍스트 색상
-                            padding: const EdgeInsets.symmetric(vertical: 20),
-                          ),
-                          icon: isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: Colors.black,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.auto_awesome,
-                                  size: 20,
-                                  color: Colors.black,
-                                ),
-                          label: Text(
-                            isLoading ? " 분석 중..." : " AI 요약 실행",
-                            style: const TextStyle(fontSize: 18),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          child: isWideScreen
+              ? ResizableSplitView(
+                  left: leftEditor,
+                  right: rightSummary,
+                  initialRatio: 0.65,
+                )
+              : leftEditor,
         ),
       ),
     );
   }
 
   // --- Widgets ---
-
-  Widget _buildSidebarField(
-    String label,
-    TextEditingController ctrl,
-    String hint, {
-    int maxLines = 1,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppTheme.caption.copyWith(fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: ctrl,
-          maxLines: maxLines,
-          style: AppTheme.bodyText.copyWith(fontSize: 14),
-          decoration: InputDecoration(hintText: hint),
-        ),
-      ],
-    );
-  }
-
   Widget _buildPropertyRow(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         children: [
           Icon(icon, size: 20, color: AppTheme.textSecondary),
           const SizedBox(width: 12),
           SizedBox(
-            width: 120,
-            child: Text(label, style: AppTheme.caption.copyWith(fontSize: 15)),
+            width: 100,
+            child: Text(label, style: AppTheme.caption.copyWith(fontSize: 14)),
           ),
           Expanded(
             child: Text(
               value,
               style: AppTheme.bodyText.copyWith(
-                fontSize: 15,
+                fontSize: 14,
                 color: AppTheme.textPrimary.withOpacity(0.9),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputPropertyRow({
+    required IconData icon,
+    required String label,
+    required TextEditingController controller,
+    required String hint,
+    Function(String)? onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Icon(icon, size: 20, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: SizedBox(
+              width: 100,
+              child: Text(
+                label,
+                style: AppTheme.caption.copyWith(fontSize: 14),
+              ),
+            ),
+          ),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              style: AppTheme.bodyText.copyWith(
+                fontSize: 14,
+                color: AppTheme.textPrimary.withOpacity(0.9),
+              ),
+              maxLines: null,
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(color: AppTheme.textHint.withOpacity(0.5)),
+                border: InputBorder.none,
+                filled: false,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+              onChanged: onChanged,
             ),
           ),
         ],
@@ -502,7 +577,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   void _showBlockOptionMenu(int index) {
     showModalBottomSheet(
       context: context,
-      // 배경색은 테마에서 자동 적용됨
       builder: (context) {
         return SafeArea(
           child: Wrap(
@@ -519,6 +593,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   _deleteBlock(index);
+                  _onContentChanged();
                 },
               ),
               ListTile(
@@ -541,7 +616,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     );
   }
 
-  // --- 기존 Helper Methods (Overlay, KeyEvent, Hints) ---
   String? _getHintText(Block block, int index) {
     final blocksLength = ref.read(fileProvider).blocks.length;
     if (block.type == BlockType.h1) return "제목 1";
@@ -568,7 +642,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   }
 
   TextStyle _getStyleForBlock(BlockType type) {
-    // 테마 스타일 적용
     switch (type) {
       case BlockType.h1:
         return AppTheme.titleLarge;
@@ -654,11 +727,11 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           child: Material(
             elevation: 12,
             borderRadius: BorderRadius.circular(8),
-            color: AppTheme.bgSecondary, // 테마 적용
+            color: AppTheme.bgSecondary,
             child: Container(
               constraints: const BoxConstraints(maxHeight: 320),
               decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.borderColor), // 테마 적용
+                border: Border.all(color: AppTheme.borderColor),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: ListView.builder(
@@ -669,35 +742,21 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   final option = _currentFilteredOptions[i];
                   final isSelected = i == _menuSelectedIndex;
                   return Container(
-                    color: isSelected ? AppTheme.bgHover : null, // 테마 적용
+                    color: isSelected ? AppTheme.bgHover : null,
                     child: ListTile(
                       dense: true,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 2,
                       ),
-                      leading: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.bgPrimary,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: AppTheme.borderColor.withOpacity(0.5),
-                          ),
-                        ),
-                        child: Icon(
-                          option['icon'],
-                          size: 18,
-                          color: AppTheme.textSecondary,
-                        ),
+                      leading: Icon(
+                        option['icon'],
+                        size: 18,
+                        color: AppTheme.textSecondary,
                       ),
                       title: Text(
                         option['label'],
                         style: AppTheme.bodyText.copyWith(fontSize: 15),
-                      ),
-                      subtitle: Text(
-                        option['sub'],
-                        style: AppTheme.caption.copyWith(fontSize: 12),
                       ),
                       onTap: () => _applyTypeChange(
                         index: _activeBlockIndex,
@@ -722,7 +781,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 }
 
 // -----------------------------------------------------------------------------
-// Improved HoverBlockItem (Handle Visibility Fix)
+// [WIDGET] HoverBlockItem (Perfect Alignment Fixed)
 // -----------------------------------------------------------------------------
 class HoverBlockItem extends StatefulWidget {
   final int index;
@@ -758,71 +817,100 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
   @override
   Widget build(BuildContext context) {
     bool isCode = widget.block.type == BlockType.code;
-    bool isMobile = Platform.isAndroid || Platform.isIOS;
+
+    // 블록 타입에 따라 핸들의 수직 정렬 오프셋을 미세 조정 (제목 등은 폰트가 커서 조정 필요)
+    double handleTopPadding = 4.0;
+    if (widget.block.type == BlockType.h1) handleTopPadding = 12.0;
+    if (widget.block.type == BlockType.h2) handleTopPadding = 8.0;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovering = true),
       onExit: (_) => setState(() => _isHovering = false),
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Content
+          // 1. Handle (Fixed Width)
           Container(
-            margin: EdgeInsets.only(top: 4, bottom: isCode ? 12 : 4),
-            padding: isCode ? const EdgeInsets.all(16) : null,
-            decoration: isCode
-                ? BoxDecoration(
-                    color: AppTheme.bgSecondary,
-                    borderRadius: BorderRadius.circular(6),
-                  ) // 코드 블록 스타일 개선
-                : null,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (widget.block.type == BlockType.bullet)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10, right: 12, left: 4),
-                    child: Icon(
-                      Icons.circle,
-                      size: 6,
-                      color: AppTheme.textPrimary.withOpacity(0.6),
-                    ),
-                  ),
+            width: 24,
+            height: 24,
+            margin: EdgeInsets.only(top: handleTopPadding), // [수정] 폰트 크기에 맞춰 정렬
+            child: Opacity(
+              opacity: _isHovering ? 1.0 : 0.0,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                icon: Icon(
+                  Icons.drag_indicator,
+                  color: AppTheme.textSecondary.withOpacity(0.4),
+                  size: 18,
+                ),
+                onPressed: widget.onOptions,
+                splashRadius: 12,
+                tooltip: "옵션",
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
 
-                if (widget.block.type == BlockType.checkbox)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4, right: 10),
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: Checkbox(
-                        value: widget.block.isChecked,
-                        activeColor: AppTheme.accentColor,
-                        checkColor: Colors.white,
-                        side: BorderSide(
-                          color: AppTheme.textSecondary,
-                          width: 1.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        onChanged: (val) => widget.onToggleCheckbox(val!),
+          // 2. Content
+          Expanded(
+            child: Container(
+              // [수정] margin을 0으로 줄여서 단락 간격 최소화 (엔터 느낌)
+              margin: EdgeInsets.only(bottom: isCode ? 12 : 0),
+              padding: isCode ? const EdgeInsets.all(16) : null,
+              decoration: isCode
+                  ? BoxDecoration(
+                      color: AppTheme.bgSecondary,
+                      borderRadius: BorderRadius.circular(6),
+                    )
+                  : null,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.block.type == BlockType.bullet)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, right: 12),
+                      child: Icon(
+                        Icons.circle,
+                        size: 6,
+                        color: AppTheme.textPrimary.withOpacity(0.6),
                       ),
                     ),
-                  ),
 
-                Expanded(
-                  child: CompositedTransformTarget(
-                    link: widget.block.layerLink,
-                    child: RawKeyboardListener(
-                      focusNode: FocusNode(),
-                      onKey: (event) => widget.onEnter(event, widget.index),
-                      child: GestureDetector(
-                        onLongPress: isMobile ? widget.onOptions : null,
+                  if (widget.block.type == BlockType.checkbox)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, right: 10),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: Checkbox(
+                          value: widget.block.isChecked,
+                          activeColor: AppTheme.accentColor,
+                          side: BorderSide(
+                            color: AppTheme.textSecondary,
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          onChanged: (val) => widget.onToggleCheckbox(val!),
+                        ),
+                      ),
+                    ),
+
+                  Expanded(
+                    child: CompositedTransformTarget(
+                      link: widget.block.layerLink,
+                      child: RawKeyboardListener(
+                        focusNode: FocusNode(),
+                        onKey: (event) => widget.onEnter(event, widget.index),
                         child: TextField(
                           controller: widget.block.controller,
                           focusNode: widget.block.focusNode,
                           maxLines: null,
+                          strutStyle: const StrutStyle(
+                            height: 1.5,
+                            forceStrutHeight: true,
+                          ),
                           style: widget
                               .getStyle(widget.block.type)
                               .copyWith(
@@ -839,10 +927,11 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                               ),
                           decoration: InputDecoration(
                             border: InputBorder.none,
-                            filled: false, // 배경색 제거
+                            filled: false,
                             isDense: true,
+                            // [수정] 패딩을 줄여서 위아래 공백 제거
                             contentPadding: const EdgeInsets.symmetric(
-                              vertical: 3,
+                              vertical: 2,
                             ),
                             hintText: widget.getHint(
                               widget.block,
@@ -858,35 +947,10 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-
-          // 2. The Handle (::) - Desktop Hover
-          if (!isMobile)
-            Positioned(
-              left: -44,
-              top: 0,
-              bottom: 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 150),
-                opacity: _isHovering ? 1.0 : 0.0,
-                child: Center(
-                  child: IconButton(
-                    icon: Icon(
-                      Icons.drag_indicator,
-                      color: AppTheme.textSecondary.withOpacity(0.5),
-                      size: 22,
-                    ),
-                    onPressed: widget.onOptions,
-                    tooltip: "블록 옵션",
-                    splashRadius: 20,
-                    hoverColor: AppTheme.bgHover,
-                  ),
-                ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
