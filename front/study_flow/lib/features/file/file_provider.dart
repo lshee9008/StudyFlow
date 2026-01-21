@@ -1,14 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
-import 'package:study_flow/core/local_db_helper.dart';
+import 'package:study_flow/features/file/file_model.dart';
 import 'dart:convert';
 import 'dart:io'; // Platform 감지용
+
 import '../../models/block_model.dart';
 
+import '../../core/local_db_helper.dart';
+
+// -----------------------------------------------------------------------------
 // 상태 클래스 (데이터)
+// -----------------------------------------------------------------------------
 class FileState {
   final List<Block> blocks;
-  final bool isLoading; // 로딩 상태 추가
+  final bool isLoading; // 로딩 상태 (DB 로딩 + AI 요청 공용)
 
   FileState({required this.blocks, this.isLoading = false});
 
@@ -20,39 +25,47 @@ class FileState {
   }
 }
 
+// -----------------------------------------------------------------------------
 // 프로바이더 정의
+// -----------------------------------------------------------------------------
 final fileProvider = StateNotifierProvider.autoDispose<FileNotifier, FileState>(
   (ref) {
     return FileNotifier();
   },
 );
 
-// 노티파이어 (로직)
+// -----------------------------------------------------------------------------
+// 노티파이어 (비즈니스 로직)
+// -----------------------------------------------------------------------------
 class FileNotifier extends StateNotifier<FileState> {
   FileNotifier() : super(FileState(blocks: []));
 
-  // --- [NEW] DB 불러오기 (Load) ---
-  Future<void> loadFile(String fileId) async {
+  // --- [DB Load] 파일 불러오기 ---
+  // UI에 제목과 태그를 전달하기 위해 FileModel?을 반환하도록 수정함
+  Future<FileModel?> loadFile(String fileId) async {
     state = state.copyWith(isLoading: true); // 로딩 시작
 
     final fileModel = await LocalDatabase.instance.getFile(fileId);
 
-    if (fileModel != null && fileModel.content.isNotEmpty) {
-      try {
-        // 1. JSON 문자열 파싱
-        final List<dynamic> jsonList = jsonDecode(fileModel.content);
-        // 2. Block 객체 리스트로 변환
-        final loadedBlocks = jsonList.map((e) => Block.fromJson(e)).toList();
+    if (fileModel != null) {
+      // 1. 블록 내용(Content)이 있으면 파싱해서 상태 업데이트
+      if (fileModel.content.isNotEmpty) {
+        try {
+          final List<dynamic> jsonList = jsonDecode(fileModel.content);
+          final loadedBlocks = jsonList.map((e) => Block.fromJson(e)).toList();
 
-        state = state.copyWith(blocks: loadedBlocks, isLoading: false);
-      } catch (e) {
-        print("JSON 파싱 에러: $e");
-        // 파싱 실패 시 기본 블록 하나 생성
-        _initEmptyBlock();
+          state = state.copyWith(blocks: loadedBlocks, isLoading: false);
+        } catch (e) {
+          print("JSON 파싱 에러: $e");
+          _initEmptyBlock(); // 파싱 실패 시 기본 블록
+        }
+      } else {
+        _initEmptyBlock(); // 내용 없으면 기본 블록
       }
+      return fileModel; // [중요] UI에서 제목/태그를 쓰기 위해 모델 반환
     } else {
-      // 내용이 없으면 기본 블록 생성
       _initEmptyBlock();
+      return null; // 파일이 없으면 null 반환
     }
   }
 
@@ -61,8 +74,13 @@ class FileNotifier extends StateNotifier<FileState> {
     state = state.copyWith(isLoading: false);
   }
 
-  // --- [NEW] DB 저장하기 (Save) ---
-  Future<void> saveFile(String fileId) async {
+  // --- [DB Save] 파일 저장하기 ---
+  // 제목(title)과 태그(tags)도 함께 저장하도록 수정함
+  Future<void> saveFile({
+    required String fileId,
+    required String title,
+    required String tags,
+  }) async {
     // 1. 현재 블록들을 JSON 리스트로 변환
     final List<Map<String, dynamic>> jsonList = state.blocks
         .map((b) => b.toJson())
@@ -71,13 +89,17 @@ class FileNotifier extends StateNotifier<FileState> {
     // 2. 문자열로 인코딩
     final String contentJson = jsonEncode(jsonList);
 
-    // 3. DB 업데이트
-    await LocalDatabase.instance.updateFileContent(fileId, contentJson);
-    print("저장 완료: $fileId");
+    // 3. DB 업데이트 (제목, 태그, 내용 모두 업데이트)
+    await LocalDatabase.instance.updateFile(
+      id: fileId,
+      title: title,
+      tags: tags,
+      content: contentJson,
+    );
+    print("저장 완료: $title");
   }
 
-  // --- 기존 블록 관리 로직 (addBlock 등) ---
-  // (내용이 변경될 때마다 자동 저장을 원하면 여기서 saveFile을 호출할 수도 있음)
+  // --- 블록 관리 로직 ---
 
   void addBlock(
     int index, {
@@ -122,8 +144,6 @@ class FileNotifier extends StateNotifier<FileState> {
     state = state.copyWith(blocks: blocks);
   }
 
-  // --- AI 기능 로직 ---
-
   // --- AI 기능 ---
   Future<bool> requestAISummary({
     required String fileId,
@@ -134,7 +154,6 @@ class FileNotifier extends StateNotifier<FileState> {
     String content = state.blocks.map((b) => b.controller.text).join("\n");
     if (content.trim().isEmpty) return false;
 
-    // [수정] isLoadingAI -> isLoading 으로 변경
     state = state.copyWith(isLoading: true);
 
     try {
@@ -156,12 +175,13 @@ class FileNotifier extends StateNotifier<FileState> {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         String summary = data['summary'];
 
+        // 결과 블록 추가
         int lastIndex = state.blocks.length;
         addBlock(lastIndex, type: BlockType.h2, initialContent: "✨ AI 요약 결과");
         addBlock(lastIndex + 1, type: BlockType.text, initialContent: summary);
 
-        // AI 결과 저장
-        await saveFile(fileId);
+        // [중요] 여기서는 저장하지 않고 true만 리턴합니다.
+        // 저장은 UI(Screen)에서 제목/태그 정보와 함께 saveFile을 호출하여 처리합니다.
         return true;
       } else {
         print("Server Error: ${response.statusCode}");
@@ -171,7 +191,6 @@ class FileNotifier extends StateNotifier<FileState> {
       print("AI Request Failed: $e");
       return false;
     } finally {
-      // [수정] isLoadingAI -> isLoading 으로 변경
       state = state.copyWith(isLoading: false);
     }
   }

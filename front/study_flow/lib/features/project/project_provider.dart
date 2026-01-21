@@ -47,8 +47,6 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
 
     print("provider");
     print(state.toList().toString());
-    print("sqlfilte");
-    print(await LocalDatabase.instance.selectProjects());
   }
 
   // 2. 추가: 화면 즉시 반영(Optimistic) -> 로컬 저장 -> 서버 전송

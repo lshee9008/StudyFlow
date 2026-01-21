@@ -1,12 +1,14 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:study_flow/features/file/file_model.dart';
+import 'package:study_flow/features/project/project_model.dart';
 
-import '../features/project/project_model.dart';
+// 만약 FileModel 클래스 파일명이 file_model.dart라면 위 import를 수정하세요.
 
 class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._init();
   static Database? _database;
+
   LocalDatabase._init();
 
   Future<Database> get database async {
@@ -18,21 +20,20 @@ class LocalDatabase {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    // ▼ 이 코드를 추가해서 콘솔창을 확인하세요!
-    print("DB 저장 위치: $path");
+    print("DB 저장 위치: $path"); // 디버깅용
     return await openDatabase(path, version: 1, onCreate: _createDB);
   }
 
   Future _createDB(Database db, int version) async {
-    // 1. user 테이블
-    await db.execute(''' 
+    // 1. User 테이블
+    await db.execute('''
     CREATE TABLE user (
       id TEXT PRIMARY KEY,
       name TEXT
     )
     ''');
 
-    // 2. projects 테이블
+    // 2. Projects 테이블
     await db.execute('''
     CREATE TABLE projects (
       id TEXT PRIMARY KEY,
@@ -42,52 +43,45 @@ class LocalDatabase {
     )
     ''');
 
-    // 3. files 테이블 (이름 변경: notes -> project_files)
-    // 컬럼명 변경: folder_id -> project_id (직관적으로 변경)
+    // 3. Files 테이블 (모든 기능의 핵심!)
     await db.execute('''
     CREATE TABLE files (
       id TEXT PRIMARY KEY,
       project_id TEXT, 
-      
-      title TEXT NOT NULL,      -- name 대신 title (문서 제목에 더 어울림)
-      
-      content TEXT,             -- content_raw 대신 content (블록 데이터를 JSON 문자열로 저장)
-      summary TEXT,             -- AI가 요약한 내용을 저장할 곳 (매번 요청하면 느리니까)
-      
-      tags TEXT,                -- 파일별 태그 (예: "중요, 복습")
-      
-      created_at TEXT NOT NULL, -- 생성 시간
-      updated_at TEXT,          -- 수정 시간 (최근 수정된 순 정렬용)
-      
+      title TEXT NOT NULL,
+      content TEXT,
+      summary TEXT,
+      tags TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
       FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
     )
     ''');
   }
 
-  Future<List<ProjectModel>> selectProjects() async {
-    final db = await instance.database;
-    final result = await db.query('projects');
-    return result.map((projects) => ProjectModel.fromJson(projects)).toList();
-  }
+  // ---------------------------------------------------------------------------
+  // [핵심] 파일 관련 CRUD 함수들
+  // ---------------------------------------------------------------------------
 
-  // 파일 조회 함수
-  Future<List<FileModel>> selectProjectFiles(String projectId) async {
-    final db = await instance.database;
-    final result = await db.query(
-      'files', // ✅ 위에서 만든 테이블 이름과 일치!
-      where: 'project_id = ?', // ✅ 컬럼명 일치!
-      whereArgs: [projectId],
-    );
-    return result.map((json) => FileModel.fromJson(json)).toList();
-  }
-
-  // [NEW] 파일 생성 (추가)
+  // 1. 파일 생성 (Create)
   Future<int> insertFile(FileModel file) async {
     final db = await instance.database;
     return await db.insert('files', file.toMap());
   }
 
-  // 파일 하나만 가져오기
+  // 2. 프로젝트의 모든 파일 목록 조회 (Read List) -> ProjectScreen용
+  Future<List<FileModel>> selectProjectFiles(String projectId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'files',
+      where: 'project_id = ?',
+      whereArgs: [projectId],
+      orderBy: 'created_at DESC', // 최신순 정렬
+    );
+    return result.map((json) => FileModel.fromJson(json)).toList();
+  }
+
+  // 3. 특정 파일 하나 내용 조회 (Read One) -> FileScreen용
   Future<FileModel?> getFile(String fileId) async {
     final db = await instance.database;
     final result = await db.query(
@@ -95,20 +89,41 @@ class LocalDatabase {
       where: 'id = ?',
       whereArgs: [fileId],
     );
+
     if (result.isNotEmpty) {
       return FileModel.fromJson(result.first);
+    } else {
+      return null;
     }
-    return null;
   }
 
-  // LocalDatabase 클래스 내부
-  Future<void> updateFileContent(String fileId, String contentJson) async {
+  // 4. 파일 내용 저장/업데이트 (Update) -> 자동 저장용
+  // [NEW] 파일의 제목, 태그, 내용, 수정시간을 모두 업데이트하는 함수
+  Future<int> updateFile({
+    required String id,
+    required String title,
+    required String tags,
+    required String content,
+  }) async {
     final db = await instance.database;
-    await db.update(
+    return await db.update(
       'files',
-      {'content': contentJson, 'updated_at': DateTime.now().toIso8601String()},
+      {
+        'title': title,
+        'tags': tags,
+        'content': content,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
       where: 'id = ?',
-      whereArgs: [fileId],
+      whereArgs: [id],
     );
+  }
+
+  // [NEW] 프로젝트 전체 목록 조회 함수
+  Future<List<ProjectModel>> selectProjects() async {
+    final db = await instance.database;
+    final result = await db.query('projects', orderBy: 'created_at DESC');
+
+    return result.map((json) => ProjectModel.fromJson(json)).toList();
   }
 }

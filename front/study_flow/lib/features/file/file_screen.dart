@@ -71,9 +71,19 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   @override
   void initState() {
     super.initState();
-    // [핵심] 화면 진입 시 DB에서 파일 내용 불러오기
-    Future.microtask(() {
-      ref.read(fileProvider.notifier).loadFile(widget.fileId);
+    // [수정] 데이터를 불러오고 나서 -> 컨트롤러에 값을 채워넣음!
+    Future.microtask(() async {
+      final fileModel = await ref
+          .read(fileProvider.notifier)
+          .loadFile(widget.fileId);
+
+      if (fileModel != null) {
+        setState(() {
+          _titleController.text = fileModel.title; // 제목 연결
+          _tagsController.text = fileModel.tags; // 태그 연결
+          // _createdDate = ... (필요하다면 날짜도 연결)
+        });
+      }
     });
   }
 
@@ -87,8 +97,15 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   }
 
   // [핵심] 뒤로가기 시 자동 저장
+  // [수정] 저장할 때 제목과 태그도 같이 보냄
   Future<bool> _onWillPop() async {
-    await ref.read(fileProvider.notifier).saveFile(widget.fileId);
+    await ref
+        .read(fileProvider.notifier)
+        .saveFile(
+          fileId: widget.fileId,
+          title: _titleController.text, // 현재 입력된 제목
+          tags: _tagsController.text, // 현재 입력된 태그
+        );
     return true;
   }
 
@@ -134,12 +151,21 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     final success = await ref
         .read(fileProvider.notifier)
         .requestAISummary(
-          fileId: widget.fileId, // 저장할 파일 ID 전달
+          fileId: widget.fileId,
           tags: _tagsController.text,
           prompt: _aiPromptController.text,
         );
 
     if (success && mounted) {
+      // AI 결과가 추가되었으니, 현재 상태(제목, 태그 포함)로 전체 저장 한번 수행
+      await ref
+          .read(fileProvider.notifier)
+          .saveFile(
+            fileId: widget.fileId,
+            title: _titleController.text,
+            tags: _tagsController.text,
+          );
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("✨ 요약 완료 및 저장됨!")));
@@ -307,7 +333,14 @@ class _FileScreenState extends ConsumerState<FileScreen> {
             IconButton(
               icon: const Icon(Icons.save),
               onPressed: () async {
-                await ref.read(fileProvider.notifier).saveFile(widget.fileId);
+                // [수정] 버튼 눌러서 저장할 때도 제목/태그 전달
+                await ref
+                    .read(fileProvider.notifier)
+                    .saveFile(
+                      fileId: widget.fileId,
+                      title: _titleController.text,
+                      tags: _tagsController.text,
+                    );
                 ScaffoldMessenger.of(
                   context,
                 ).showSnackBar(const SnackBar(content: Text("저장되었습니다.")));
