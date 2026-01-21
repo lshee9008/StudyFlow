@@ -19,8 +19,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      title: 'Study Flow',
       theme: AppTheme.darkTheme,
-      // home: FileScreen(),
+      themeMode: ThemeMode.dark,
       home: HomeScreen(),
     );
   }

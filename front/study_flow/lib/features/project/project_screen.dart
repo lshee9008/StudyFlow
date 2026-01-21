@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:study_flow/features/file/file_model.dart';
 import 'package:study_flow/features/project/project_model.dart';
-import 'package:uuid/uuid.dart'; // 패키지 없으면 flutter pub add uuid
+import 'package:uuid/uuid.dart';
 
 import '../../core/local_db_helper.dart';
-import '../../core/theme.dart';
-import '../file/file_screen.dart'; // FileScreen import
+import '../file/file_screen.dart';
+import '../../core/theme.dart'; // 테마 임포트
 
 class ProjectScreen extends StatefulWidget {
   final ProjectModel project;
@@ -17,147 +18,252 @@ class ProjectScreen extends StatefulWidget {
 
 class _ProjectScreenState extends State<ProjectScreen> {
   final _projectNameController = TextEditingController();
-
-  // DB에서 불러올 파일 리스트를 담을 Future 변수
   late Future<List<FileModel>> _filesFuture;
 
   @override
   void initState() {
     super.initState();
     _projectNameController.text = widget.project.name;
-    _loadFiles(); // 시작할 때 파일 목록 불러오기
+    _loadFiles();
   }
 
-  // DB에서 파일 목록 새로고침
   void _loadFiles() {
     setState(() {
-      // widget.project.id(문자열)를 사용하여 DB 조회
       _filesFuture = LocalDatabase.instance.selectProjectFiles(
         widget.project.id,
       );
     });
   }
 
+  Future<void> _deleteFile(String fileId) async {
+    final db = await LocalDatabase.instance.database;
+    await db.delete('files', where: 'id = ?', whereArgs: [fileId]);
+    _loadFiles();
+  }
+
+  Future<void> _renameFile(FileModel file) async {
+    final controller = TextEditingController(text: file.title);
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        // 배경색은 테마에서 자동 적용됨
+        title: Text("이름 변경", style: AppTheme.titleSmall),
+        content: TextField(
+          controller: controller,
+          style: AppTheme.bodyText,
+          decoration: const InputDecoration(hintText: "새 이름 입력"),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("취소", style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await LocalDatabase.instance.updateFile(
+                id: file.id,
+                title: controller.text,
+                tags: file.tags,
+                content: file.content,
+                icon: file.icon,
+              );
+              Navigator.pop(context);
+              _loadFiles();
+            },
+            child: const Text("확인"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 배경색은 테마에서 자동 적용됨
     return Scaffold(
-      backgroundColor: AppTheme.darkBg, // 배경색 (테마에 맞게)
       appBar: AppBar(
-        backgroundColor: AppTheme.darkBg,
-        title: TextField(
-          controller: _projectNameController,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-          decoration: const InputDecoration(border: InputBorder.none),
-          onChanged: (value) {
-            // 프로젝트 이름 변경 로직 (필요시 구현)
-            widget.project.name = value;
-          },
-        ),
         leading: BackButton(
-          color: Colors.white,
+          color: AppTheme.textSecondary,
           onPressed: () => Navigator.pop(context),
         ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        titleSpacing: 0,
+        title: Row(
           children: [
-            // 태그 영역 (기존 코드 유지)
-            Wrap(
-              spacing: 8,
-              children: [
-                if (widget.project.tags.isNotEmpty)
-                  for (var tag in widget.project.tags.split(
-                    '*',
-                  )) // 구분자 확인 (* 또는 ,)
-                    if (tag.trim().isNotEmpty)
-                      Chip(
-                        label: Text(
-                          tag,
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        backgroundColor: Colors.grey[800],
-                      ),
-              ],
+            Icon(
+              Icons.folder_open_outlined,
+              size: 22,
+              color: AppTheme.textSecondary,
             ),
-            const SizedBox(height: 20),
-
-            // [핵심] 파일 리스트 영역
+            const SizedBox(width: 12),
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(10.0),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF262626),
-                  borderRadius: BorderRadius.circular(12),
+              child: TextField(
+                controller: _projectNameController,
+                style: AppTheme.titleSmall,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  filled: false, // 배경색 제거
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
                 ),
-                child: FutureBuilder<List<FileModel>>(
-                  future: _filesFuture, // DB 요청 결과 대기
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    } else if (snapshot.hasError) {
-                      return Center(
-                        child: Text(
-                          'Error: ${snapshot.error}',
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      );
+                onChanged: (value) {
+                  widget.project.name = value;
+                  // TODO: DB에 프로젝트 이름 업데이트 로직 추가 필요
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.more_horiz, color: AppTheme.textSecondary),
+            onPressed: () {},
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.project.tags.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: widget.project.tags.split(',').map((tag) {
+                  final t = tag.trim();
+                  if (t.isEmpty) return const SizedBox.shrink();
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgSecondary,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.borderColor),
+                    ),
+                    child: Text(
+                      t,
+                      style: AppTheme.caption.copyWith(
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+
+          const Divider(height: 1),
+
+          Expanded(
+            child: FutureBuilder<List<FileModel>>(
+              future: _filesFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(
+                    child: CircularProgressIndicator(
+                      color: AppTheme.textSecondary,
+                    ),
+                  );
+                } else if (snapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Error: ${snapshot.error}',
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  );
+                }
+
+                final files = snapshot.data ?? [];
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  itemCount: files.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == files.length) {
+                      return _buildAddPageButton();
                     }
-
-                    // 데이터가 없으면 빈 리스트
-                    final files = snapshot.data ?? [];
-
-                    return ListView.builder(
-                      // 파일 개수 + 1 (맨 마지막에 추가 버튼 표시)
-                      itemCount: files.length + 1,
-                      itemBuilder: (context, index) {
-                        // 1. 마지막 아이템: '새 파일 추가' 버튼
-                        if (index == files.length) {
-                          return _addFileButton();
-                        }
-
-                        // 2. 일반 아이템: 저장된 파일 표시
-                        final file = files[index];
-                        return ListTile(
-                          title: Text(
-                            file.title, // 저장된 제목 표시
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          subtitle: Text(
-                            "작성일: ${file.createdAt.toString().split(' ')[0]}",
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 12,
-                            ),
-                          ),
-                          trailing: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 14,
-                            color: Colors.grey,
-                          ),
-
-                          // [중요] 클릭 시 해당 파일 열기
-                          onTap: () async {
-                            // FileScreen으로 이동 (fileId 전달)
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => FileScreen(fileId: file.id),
-                              ),
-                            );
-                            // 돌아오면 목록 새로고침 (제목이나 내용이 변했을 수 있으므로)
-                            _loadFiles();
-                          },
-                        );
-                      },
-                    );
+                    final file = files[index];
+                    return _buildFileItem(file);
                   },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Widgets ---
+
+  Widget _buildFileItem(FileModel file) {
+    return InkWell(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => FileScreen(fileId: file.id)),
+        );
+        _loadFiles();
+      },
+      splashColor: AppTheme.bgHover,
+      hoverColor: AppTheme.bgHover,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppTheme.dividerColor)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 28,
+              child: Center(
+                child: file.icon != null && file.icon!.isNotEmpty
+                    ? Text(file.icon!, style: const TextStyle(fontSize: 22))
+                    : Icon(
+                        Icons.description_outlined,
+                        size: 22,
+                        color: AppTheme.textSecondary,
+                      ),
+              ),
+            ),
+            const SizedBox(width: 16),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file.title.isEmpty ? "제목 없음" : file.title,
+                    style: AppTheme.bodyText.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    DateFormat('yyyy. MM. dd HH:mm').format(file.createdAt),
+                    style: AppTheme.caption,
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: IconButton(
+                icon: Icon(
+                  Icons.more_horiz,
+                  size: 20,
+                  color: AppTheme.textSecondary,
                 ),
+                padding: EdgeInsets.zero,
+                splashRadius: 20,
+                onPressed: () => _showFileOptionMenu(file),
               ),
             ),
           ],
@@ -166,55 +272,106 @@ class _ProjectScreenState extends State<ProjectScreen> {
     );
   }
 
-  // 새 파일 추가 버튼
-  Widget _addFileButton() {
-    return GestureDetector(
-      onTap: () async {
-        // 1. 새 ID 생성
-        final newFileId = const Uuid().v4();
-
-        // 2. 빈 파일 모델 생성
-        final newFile = FileModel(
-          id: newFileId,
-          projectId: widget.project.id,
-          title: "제목 없음",
-          content: "", // 내용은 빈 상태로 시작
-          tags: "",
-          createdAt: DateTime.now(),
-        );
-
-        // 3. DB에 먼저 저장 (그래야 FileScreen에서 불러올 수 있음)
-        await LocalDatabase.instance.insertFile(newFile);
-
-        if (!mounted) return;
-
-        // 4. 에디터 화면으로 이동
-        await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => FileScreen(fileId: newFileId)),
-        );
-
-        // 5. 돌아오면 목록 갱신
-        _loadFiles();
-      },
+  Widget _buildAddPageButton() {
+    return InkWell(
+      onTap: _createNewFile,
+      splashColor: AppTheme.bgHover,
+      hoverColor: AppTheme.bgHover,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        height: 50,
-        decoration: BoxDecoration(
-          color: const Color(0xFF3C3C3C),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Center(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.add, color: Colors.white70),
-              SizedBox(width: 8),
-              Text("새 페이지 추가", style: TextStyle(color: Colors.white70)),
-            ],
-          ),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Row(
+          children: [
+            Icon(
+              Icons.add_circle_outline,
+              size: 22,
+              color: AppTheme.textSecondary,
+            ),
+            const SizedBox(width: 16),
+            Text(
+              "새 페이지 추가",
+              style: AppTheme.bodyText.copyWith(color: AppTheme.textSecondary),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  void _showFileOptionMenu(FileModel file) {
+    showModalBottomSheet(
+      context: context,
+      // 배경색은 테마에서 자동 적용됨
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(
+                  Icons.edit_outlined,
+                  color: AppTheme.textPrimary,
+                ),
+                title: const Text(
+                  "이름 변경",
+                  style: TextStyle(color: AppTheme.textPrimary),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _renameFile(file);
+                },
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.content_copy,
+                  color: AppTheme.textPrimary,
+                ),
+                title: const Text(
+                  "복제",
+                  style: TextStyle(color: AppTheme.textPrimary),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              Divider(color: AppTheme.dividerColor),
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  "삭제",
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteFile(file.id);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _createNewFile() async {
+    final newFileId = const Uuid().v4();
+    final newFile = FileModel(
+      id: newFileId,
+      projectId: widget.project.id,
+      title: "제목 없음",
+      content: "",
+      tags: "",
+      createdAt: DateTime.now(),
+    );
+
+    await LocalDatabase.instance.insertFile(newFile);
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => FileScreen(fileId: newFileId)),
+    );
+    _loadFiles();
   }
 }

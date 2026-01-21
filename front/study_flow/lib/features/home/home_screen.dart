@@ -38,7 +38,7 @@ class HomeScreen extends ConsumerWidget {
 
   Widget _buildAddButton(BuildContext context, WidgetRef ref) {
     return Material(
-      color: AppTheme.primaryGreen,
+      color: AppTheme.aiAccentColor,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: () {

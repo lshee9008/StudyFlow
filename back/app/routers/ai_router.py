@@ -31,7 +31,7 @@ async def summarize_note(request: SummaryRequest):
             response = await client.post(
                 "http://localhost:11434/api/generate",
                 json={
-                    "model": "gemma2",  # 또는 사용하시는 모델명 (gemma:4b 등)
+                    "model": "gemma3:4b",  # 또는 사용하시는 모델명 (gemma:4b 등)
                     "prompt": full_prompt,
                     "stream": False
                 },
