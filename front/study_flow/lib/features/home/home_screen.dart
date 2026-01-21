@@ -1,201 +1,302 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:study_flow/features/project/project_model.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/theme.dart';
-import '../project/project_screen.dart';
 import '../project/project_provider.dart';
-import '../../providers/user_provider.dart';
+import '../project/project_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
+  const HomeScreen({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final projects = ref.watch(projectProvider);
-    final user = ref.watch(userProvider);
+
     return Scaffold(
+      backgroundColor: AppTheme.bgPrimary,
       appBar: AppBar(
-        title: Text("${user.name.isEmpty ? "로컬 사용자" : user.name}님의 HOME"),
+        backgroundColor: AppTheme.bgPrimary,
+        elevation: 0,
+        titleSpacing: 24,
+        title: Row(
+          children: [
+            const Icon(
+              Icons.dashboard_outlined,
+              color: AppTheme.textPrimary,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Text("내 프로젝트", style: AppTheme.titleSmall.copyWith(fontSize: 18)),
+          ],
+        ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: GridView.builder(
-          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 300,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.4,
-          ),
-          itemCount: projects.length + 1,
-          itemBuilder: (context, index) {
-            if (index == 0) return _buildAddButton(context, ref);
-            return _buildProjectCard(context, projects[index - 1]);
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAddButton(BuildContext context, WidgetRef ref) {
-    return Material(
-      color: AppTheme.aiAccentColor,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: () {
-          ProjectModel newProject = ProjectModel(
-            id: const Uuid().v4(), // ✅ 필수: 고유 ID 생성하여 전달,
-            name: "새 프로젝트",
-            tags: "",
-            createdAt: DateTime.now(),
-          );
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ProjectScreen(project: newProject),
-            ),
-          );
-          ref.read(projectProvider.notifier).addProject(newProject);
-        },
-        splashColor: Colors.lightGreenAccent,
-
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Stack(
-            children: [
-              Text(
-                "새 프로젝트\n추가",
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  height: 1.2,
-                ),
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Icon(Icons.add, size: 48, color: Colors.black),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProjectCard(BuildContext context, ProjectModel project) {
-    return InkWell(
-      onTap: () async {
-        ProjectModel previousProject = project.deepCopy();
-        await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => ProjectScreen(project: project)),
-        );
-        if (!previousProject.equals(project) && context.mounted) {
-          final ref = ProviderScope.containerOf(context);
-          await ref.read(projectProvider.notifier).updateProject(project);
-        }
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        padding: EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 10),
             Expanded(
-              flex: 3,
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 7,
-                    child: Text(
-                      project.name,
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: IconButton(
-                      onPressed: () async {
-                        final ref = ProviderScope.containerOf(context);
-                        await ref
-                            .read(projectProvider.notifier)
-                            .deleteProject(project);
-                      },
-                      icon: Icon(Icons.delete, color: Colors.grey),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              flex: 4,
-              child: SizedBox(
-                child: ShaderMask(
-                  blendMode: BlendMode.dstIn,
-                  shaderCallback: (Rect bounds) {
-                    return LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.black, Colors.transparent],
-                      stops: [0.7, 1.0],
-                    ).createShader(bounds);
-                  },
-                  child: ClipRect(
-                    child: project.tags.isEmpty
-                        ? SizedBox()
-                        : Wrap(
-                            children: [
-                              for (var tag in project.tags.split(','))
-                                Container(
-                                  margin: EdgeInsets.only(right: 6, bottom: 3),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[300],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    tag,
-                                    style: TextStyle(
-                                      color: Colors.black,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                  ),
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 360,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 1.4,
                 ),
-              ),
-            ),
-            Expanded(
-              flex: 3,
-              child: Text(
-                "• 1주차 강의 정리\n• 2주차 강의 정리",
-                style: TextStyle(
-                  color: Colors.grey[800],
-                  fontSize: 14,
-                  height: 1.5,
-                ),
+                itemCount: projects.length + 1,
+                itemBuilder: (context, index) {
+                  if (index == 0) return _buildAddProjectCard(context, ref);
+                  final project = projects[index - 1];
+                  return _buildProjectCard(context, ref, project);
+                },
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAddProjectCard(BuildContext context, WidgetRef ref) {
+    return InkWell(
+      onTap: () => _showAddProjectDialog(context, ref),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.aiAccentColor,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.add, color: Colors.black, size: 24),
+                ),
+                const Spacer(),
+                const Text(
+                  "새 프로젝트\n만들기",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProjectCard(
+    BuildContext context,
+    WidgetRef ref,
+    ProjectModel project,
+  ) {
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ProjectScreen(project: project)),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.bgSecondary,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.borderColor),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    project.name,
+                    style: AppTheme.titleSmall.copyWith(fontSize: 18),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                InkWell(
+                  // [수정] 메뉴 띄우기 함수 호출
+                  onTap: () => _showProjectOptionMenu(context, ref, project),
+                  child: const Icon(
+                    Icons.more_horiz,
+                    color: AppTheme.textSecondary,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              DateFormat('yyyy.MM.dd').format(project.createdAt),
+              style: AppTheme.caption.copyWith(fontSize: 12),
+            ),
+            const Spacer(),
+            if (project.tags.isNotEmpty)
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: project.tags.split(RegExp(r'[, ]+')).take(4).map((
+                  tag,
+                ) {
+                  final t = tag.trim();
+                  if (t.isEmpty) return const SizedBox.shrink();
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgPrimary,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: AppTheme.borderColor),
+                    ),
+                    child: Text(
+                      "#$t",
+                      style: AppTheme.caption.copyWith(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              )
+            else
+              Text(
+                "태그 없음",
+                style: AppTheme.caption.copyWith(color: AppTheme.textHint),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddProjectDialog(BuildContext context, WidgetRef ref) {
+    final nameCtrl = TextEditingController();
+    final tagCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.bgSecondary,
+        title: Text("새 프로젝트", style: AppTheme.titleSmall),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              style: AppTheme.bodyText,
+              decoration: const InputDecoration(hintText: "프로젝트 이름"),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: tagCtrl,
+              style: AppTheme.bodyText,
+              decoration: const InputDecoration(hintText: "태그 (예: 공부, 플러터)"),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "취소",
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameCtrl.text.isNotEmpty) {
+                final newProject = ProjectModel(
+                  id: const Uuid().v4(),
+                  name: nameCtrl.text,
+                  tags: tagCtrl.text,
+                  createdAt: DateTime.now(),
+                );
+                ref.read(projectProvider.notifier).addProject(newProject);
+                Navigator.pop(context);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.aiAccentColor,
+              foregroundColor: Colors.black,
+            ),
+            child: const Text("생성"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // [NEW] 프로젝트 삭제 메뉴
+  void _showProjectOptionMenu(
+    BuildContext context,
+    WidgetRef ref,
+    ProjectModel project,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgSecondary,
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  "프로젝트 삭제",
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () {
+                  Navigator.pop(context); // 1. 메뉴 닫기
+
+                  // 2. 삭제 함수 호출
+                  ref.read(projectProvider.notifier).deleteProject(project.id);
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

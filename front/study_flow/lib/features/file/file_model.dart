@@ -1,11 +1,11 @@
 class FileModel {
   final String id;
-  final String projectId;
+  final String projectId; // [중요] DB의 project_id와 연결
   final String title;
   final String content;
   final String? summary;
   final String tags;
-  final String? icon; // [핵심] 아이콘 필드
+  final String? icon;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -23,16 +23,18 @@ class FileModel {
 
   factory FileModel.fromJson(Map<String, dynamic> json) {
     return FileModel(
-      id: json['id'].toString(),
-      projectId: json['project_id'].toString(),
-      title: json['title'],
-      content: json['content'] ?? '',
-      summary: json['summary'],
-      tags: json['tags'] ?? '',
-      icon: json['icon'],
-      createdAt: DateTime.parse(json['created_at']),
+      id: json['id']?.toString() ?? '',
+      projectId: json['project_id']?.toString() ?? '', // [중요] 매핑 확인
+      title: json['title']?.toString() ?? '제목 없음',
+      content: json['content']?.toString() ?? '',
+      summary: json['summary']?.toString(),
+      tags: json['tags']?.toString() ?? '',
+      icon: json['icon']?.toString(),
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+          ? DateTime.tryParse(json['updated_at'].toString())
           : null,
     );
   }
@@ -40,7 +42,7 @@ class FileModel {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'project_id': projectId,
+      'project_id': projectId, // [중요] DB 컬럼명 project_id와 일치해야 함
       'title': title,
       'content': content,
       'summary': summary,

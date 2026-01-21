@@ -1,10 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-import '../../core/provider_config.dart';
+import 'package:study_flow/features/project/project_model.dart';
 import '../../core/local_db_helper.dart';
-import 'project_model.dart';
 
 final projectProvider =
     StateNotifierProvider<ProjectNotifier, List<ProjectModel>>((ref) {
@@ -14,106 +10,44 @@ final projectProvider =
 class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
   ProjectNotifier() : super([]);
 
-  // 1. 로드: 로컬 DB -> 화면 표시 -> 서버 동기화
+  // 1. 목록 로드
   Future<void> loadProjects() async {
-    final db = await LocalDatabase.instance.database;
-    final maps = await db.query('projects', orderBy: "created_at DESC");
-    state = maps.map((e) => ProjectModel.fromJson(e)).toList();
-
-    if (isOnlineMode) {
-      try {
-        final response = await http.get(Uri.parse('$baseUrl/projects/'));
-        if (response.statusCode == 200) {
-          final List<dynamic> data = json.decode(
-            utf8.decode(response.bodyBytes),
-          );
-          final serverProjects = data
-              .map((e) => ProjectModel.fromJson(e))
-              .toList();
-          state = serverProjects;
-
-          // 로컬 DB 최신화 (Batch 처리 권장)
-          final batch = db.batch();
-          batch.delete('projects');
-          for (var p in serverProjects) {
-            batch.insert('projects', p.toMap());
-          }
-          await batch.commit(noResult: true);
-        }
-      } catch (e) {
-        print("front error: $e");
-      }
-    }
-
-    print("provider");
-    print(state.toList().toString());
+    final projects = await LocalDatabase.instance.selectProjects();
+    state = projects;
   }
 
-  // 2. 추가: 화면 즉시 반영(Optimistic) -> 로컬 저장 -> 서버 전송
-  Future<void> addProject(ProjectModel newProject) async {
-    state = [newProject, ...state]; // 즉시 UI 업데이트
-
-    final db = await LocalDatabase.instance.database;
-    await db.insert('projects', {
-      'name': newProject.name,
-      'tags': newProject.tags,
-      'created_at': newProject.createdAt.toIso8601String(),
-    });
-
-    if (isOnlineMode) {
-      try {
-        await http.post(
-          Uri.parse('$baseUrl/projects/'),
-          headers: {"Content-Type": "application/json"},
-          body: json.encode(newProject.toMap()),
-        );
-      } catch (e) {
-        // 실패 시 나중에 Sync하는 로직 필요 (큐잉 등)
-        print("Failed to sync with server: $e");
-      }
-    }
+  // 2. 프로젝트 추가
+  Future<void> addProject(ProjectModel project) async {
+    await LocalDatabase.instance.insertProject(project);
+    // 기존 목록 맨 앞에 새 프로젝트 추가
+    state = [project, ...state];
   }
 
-  Future<void> updateProject(ProjectModel project) async {
+  // 3. 태그 업데이트 (화면 즉시 반영)
+  Future<void> updateProjectTags(String projectId, String newTags) async {
+    await LocalDatabase.instance.updateProject(projectId, tags: newTags);
     state = [
-      for (var p in state)
-        if (p.id == project.id) project else p,
+      for (final p in state)
+        if (p.id == projectId) p.copyWith(tags: newTags) else p,
     ];
-    final db = await LocalDatabase.instance.database;
-    await db.update(
-      'projects',
-      project.toMap(),
-      where: 'id = ?',
-      whereArgs: [project.id],
-    );
-
-    if (isOnlineMode) {
-      try {
-        await http.put(
-          Uri.parse('$baseUrl/projects/${project.id}/'),
-          headers: {"Content-Type": "application/json"},
-          body: json.encode(project.toMap()),
-        );
-      } catch (e) {
-        // 실패 시 나중에 Sync하는 로직 필요 (큐잉 등)
-        print("Failed to sync with server: $e");
-      }
-    }
   }
 
-  Future<void> deleteProject(ProjectModel project) async {
-    state = state.where((p) => p.id != project.id).toList(); // 즉시 UI 업데이트
+  // 4. 이름 업데이트 (화면 즉시 반영)
+  Future<void> updateProjectName(String projectId, String newName) async {
+    await LocalDatabase.instance.updateProject(projectId, name: newName);
+    state = [
+      for (final p in state)
+        if (p.id == projectId) p.copyWith(name: newName) else p,
+    ];
+  }
 
-    final db = await LocalDatabase.instance.database;
-    await db.delete('projects', where: 'id = ?', whereArgs: [project.id]);
+  // 5. [수정됨] 프로젝트 삭제 (화면 즉시 반영)
+  Future<void> deleteProject(String projectId) async {
+    // 1) DB에서 삭제 (비동기 처리)
+    await LocalDatabase.instance.deleteProject(projectId);
 
-    if (isOnlineMode) {
-      try {
-        await http.delete(Uri.parse('$baseUrl/projects/${project.id}/'));
-      } catch (e) {
-        // 실패 시 나중에 Sync하는 로직 필요 (큐잉 등)
-        print("Failed to sync with server: $e");
-      }
-    }
+    // 2) [핵심] DB를 다시 읽지 않고, 현재 목록에서 해당 ID만 쏙 빼버림
+    // 이렇게 하면 딜레이 없이 즉각적으로 사라집니다.
+    state = state.where((project) => project.id != projectId).toList();
   }
 }
