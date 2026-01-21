@@ -5,6 +5,7 @@ import 'package:study_flow/features/project/project_model.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/theme.dart';
+
 import '../project/project_provider.dart';
 import '../project/project_screen.dart';
 
@@ -151,6 +152,7 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 1. Header (Title & Option)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -172,46 +174,59 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ],
             ),
+
             const SizedBox(height: 4),
             Text(
               DateFormat('yyyy.MM.dd').format(project.createdAt),
               style: AppTheme.caption.copyWith(fontSize: 12),
             ),
-            const Spacer(),
 
-            // [수정된 부분] 쉼표로만 태그 분리 (공백 유지)
-            if (project.tags.isNotEmpty)
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: project.tags.split(',').take(4).map((tag) {
-                  final t = tag.trim(); // 앞뒤 공백만 제거
-                  if (t.isEmpty) return const SizedBox.shrink();
-                  return Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.bgPrimary,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppTheme.borderColor),
-                    ),
-                    child: Text(
-                      "#$t",
-                      style: AppTheme.caption.copyWith(
-                        fontSize: 11,
-                        color: AppTheme.textSecondary,
+            // 2. Space between header and tags
+            const SizedBox(height: 12),
+
+            // 3. Tags (최대한 많이 보여주기)
+            Expanded(
+              child: Align(
+                alignment: Alignment.bottomLeft, // 태그가 적을 땐 하단 정렬
+                child: project.tags.isNotEmpty
+                    ? SingleChildScrollView(
+                        // 스크롤을 막아 넘치는 부분은 자연스럽게 잘리도록 함 (Clip)
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: project.tags.split(',').map((tag) {
+                            final t = tag.trim();
+                            if (t.isEmpty) return const SizedBox.shrink();
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.bgPrimary,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppTheme.borderColor),
+                              ),
+                              child: Text(
+                                "#$t",
+                                style: AppTheme.caption.copyWith(
+                                  fontSize: 11,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      )
+                    : Text(
+                        "태그 없음",
+                        style: AppTheme.caption.copyWith(
+                          color: AppTheme.textHint,
+                        ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              )
-            else
-              Text(
-                "태그 없음",
-                style: AppTheme.caption.copyWith(color: AppTheme.textHint),
               ),
+            ),
           ],
         ),
       ),
