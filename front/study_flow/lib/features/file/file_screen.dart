@@ -3,8 +3,11 @@ import '../../core/theme.dart';
 
 class FileScreen extends StatelessWidget {
   final String projectName;
-  const FileScreen({Key? key, this.projectName = "새 프로젝트"})
-    : super(key: key);
+  const FileScreen({
+    Key? key,
+    this.projectName = "새 프로젝트",
+    required String projectId,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {

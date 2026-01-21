@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:study_flow/models/project_model.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/theme.dart';
 import '../project/project_screen.dart';
@@ -42,6 +43,7 @@ class HomeScreen extends ConsumerWidget {
       child: InkWell(
         onTap: () {
           ProjectModel newProject = ProjectModel(
+            id: const Uuid().v4(), // ✅ 필수: 고유 ID 생성하여 전달,
             name: "새 프로젝트",
             tags: "",
             createdAt: DateTime.now(),
