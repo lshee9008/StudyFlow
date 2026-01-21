@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:study_flow/models/project_model.dart';
 
 import '../../core/theme.dart';
-import '../project/add_project_dialog.dart';
 import '../project/project_screen.dart';
 import '../../providers/project_provider.dart';
 import '../../providers/user_provider.dart';
@@ -28,7 +27,7 @@ class HomeScreen extends ConsumerWidget {
           ),
           itemCount: projects.length + 1,
           itemBuilder: (context, index) {
-            if (index == 0) return _buildAddButton(context);
+            if (index == 0) return _buildAddButton(context, ref);
             return _buildProjectCard(context, projects[index - 1]);
           },
         ),
@@ -36,13 +35,25 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAddButton(BuildContext context) {
+  Widget _buildAddButton(BuildContext context, WidgetRef ref) {
     return Material(
       color: AppTheme.primaryGreen,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: () =>
-            showDialog(context: context, builder: (_) => AddProjectDialog()),
+        onTap: () {
+          ProjectModel newProject = ProjectModel(
+            name: "새 프로젝트",
+            tags: "",
+            createdAt: DateTime.now(),
+          );
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProjectScreen(project: newProject),
+            ),
+          );
+          ref.read(projectProvider.notifier).addProject(newProject);
+        },
         splashColor: Colors.lightGreenAccent,
 
         borderRadius: BorderRadius.circular(16),
