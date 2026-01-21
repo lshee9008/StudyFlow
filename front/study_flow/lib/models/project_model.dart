@@ -1,10 +1,22 @@
 class ProjectModel {
-  final String id;
-  final String name;
-  final String tags;
-  final DateTime createdAt;
+  final int id;
+  String name;
+  String tags;
+  DateTime createdAt;
 
-  ProjectModel({required this.id, required this.name, required this.createdAt, required this.tags});
+  ProjectModel({
+    this.id = 0,
+    required this.name,
+    required this.createdAt,
+    required this.tags,
+  });
+
+  bool equals(ProjectModel other) {
+    return id == other.id &&
+        name == other.name &&
+        tags == other.tags &&
+        createdAt == other.createdAt;
+  }
 
   factory ProjectModel.fromJson(Map<String, dynamic> json) {
     return ProjectModel(
@@ -16,6 +28,20 @@ class ProjectModel {
   }
 
   Map<String, dynamic> toMap() {
-    return {'id': id, 'name': name, 'tags' : tags, 'created_at': createdAt.toIso8601String()};
+    return {
+      'id': id,
+      'name': name,
+      'tags': tags,
+      'created_at': createdAt.toIso8601String().split('.').first,
+    };
+  }
+
+  ProjectModel deepCopy() {
+    return ProjectModel(
+      id: id,
+      name: name,
+      tags: tags,
+      createdAt: createdAt,
+    );
   }
 }

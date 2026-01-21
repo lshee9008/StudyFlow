@@ -11,7 +11,7 @@ final userProvider = StateNotifierProvider<UserNotifier, UserModel>((ref) {
 });
 
 class UserNotifier extends StateNotifier<UserModel> {
-  UserNotifier() : super(UserModel(id: '', name: ''));
+  UserNotifier() : super(UserModel(name: ''));
 
   Future<void> loadUser() async {
     final db = await LocalDatabase.instance.database;
@@ -19,7 +19,7 @@ class UserNotifier extends StateNotifier<UserModel> {
       if (maps.isNotEmpty) {
         return maps.first as UserModel;
       } else {
-        return UserModel(id: '', name: '');
+        return UserModel(name: '');
       }
     });
     state = user;
@@ -34,7 +34,7 @@ class UserNotifier extends StateNotifier<UserModel> {
                   id: data['id'],
                   name: data['name'],
                 )
-              : UserModel(id: '', name: '');
+              : UserModel(name: '');
           state = serverUser;
         }
       } catch (e) {

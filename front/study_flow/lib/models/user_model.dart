@@ -1,5 +1,5 @@
 class UserModel {
-  final String id;
-  final String name;
-  UserModel({required this.id, required this.name});
+  int? id;
+  String name;
+  UserModel({this.id = 0, required this.name});
 }
