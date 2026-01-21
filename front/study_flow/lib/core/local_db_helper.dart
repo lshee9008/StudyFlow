@@ -1,8 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:study_flow/models/project_file_model.dart';
+import 'package:study_flow/features/file/file_model.dart';
 
-import '../models/project_model.dart';
+import '../features/project/project_model.dart';
 
 class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._init();

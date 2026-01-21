@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/local_db_helper.dart';
 import '../../core/theme.dart';
 import '../file/file_screen.dart';
-import '../../models/project_model.dart';
-import '../../models/project_file_model.dart';
+import 'project_model.dart';
+import '../file/file_model.dart';
 
 class ProjectScreen extends StatefulWidget {
   final ProjectModel project;

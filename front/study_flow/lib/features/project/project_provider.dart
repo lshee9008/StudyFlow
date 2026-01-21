@@ -2,9 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-import './provider_config.dart';
-import '../core/local_db_helper.dart';
-import '../models/project_model.dart';
+import '../../core/provider_config.dart';
+import '../../core/local_db_helper.dart';
+import 'project_model.dart';
 
 final projectProvider =
     StateNotifierProvider<ProjectNotifier, List<ProjectModel>>((ref) {
@@ -55,7 +55,6 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
   Future<void> addProject(ProjectModel newProject) async {
     state = [newProject, ...state]; // 즉시 UI 업데이트
 
-
     final db = await LocalDatabase.instance.database;
     await db.insert('projects', {
       'name': newProject.name,
@@ -80,7 +79,7 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
   Future<void> updateProject(ProjectModel project) async {
     state = [
       for (var p in state)
-        if (p.id == project.id) project else p
+        if (p.id == project.id) project else p,
     ];
     final db = await LocalDatabase.instance.database;
     await db.update(
@@ -112,9 +111,7 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
 
     if (isOnlineMode) {
       try {
-        await http.delete(
-          Uri.parse('$baseUrl/projects/${project.id}/'),
-        );
+        await http.delete(Uri.parse('$baseUrl/projects/${project.id}/'));
       } catch (e) {
         // 실패 시 나중에 Sync하는 로직 필요 (큐잉 등)
         print("Failed to sync with server: $e");

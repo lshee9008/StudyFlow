@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:study_flow/models/project_model.dart';
+import 'package:study_flow/features/project/project_model.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/theme.dart';
 import '../project/project_screen.dart';
-import '../../providers/project_provider.dart';
+import '../project/project_provider.dart';
 import '../../providers/user_provider.dart';
 
 class HomeScreen extends ConsumerWidget {

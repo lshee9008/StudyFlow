@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-import './provider_config.dart';
+import '../core/provider_config.dart';
 import '../core/local_db_helper.dart';
 import '../models/user_model.dart';
 
@@ -30,10 +30,7 @@ class UserNotifier extends StateNotifier<UserModel> {
         if (response.statusCode == 200) {
           final data = json.decode(utf8.decode(response.bodyBytes));
           final serverUser = data != null
-              ? UserModel(
-                  id: data['id'],
-                  name: data['name'],
-                )
+              ? UserModel(id: data['id'], name: data['name'])
               : UserModel(name: '');
           state = serverUser;
         }
