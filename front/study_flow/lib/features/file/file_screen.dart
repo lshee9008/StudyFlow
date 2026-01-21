@@ -3,7 +3,9 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:intl/intl.dart';
 
 import '../../models/block_model.dart';
@@ -47,6 +49,8 @@ class _ResizableSplitViewState extends State<ResizableSplitView> {
         return Row(
           children: [
             SizedBox(width: leftWidth, child: widget.left),
+
+            // Resizer
             GestureDetector(
               behavior: HitTestBehavior.translucent,
               onPanUpdate: (details) {
@@ -67,6 +71,7 @@ class _ResizableSplitViewState extends State<ResizableSplitView> {
                 ),
               ),
             ),
+
             Expanded(child: widget.right),
           ],
         );
@@ -96,6 +101,9 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 
   String _createdDate = DateFormat('yyyy. MM. dd').format(DateTime.now());
   Timer? _debounceTimer;
+
+  // [NEW] 요약본 수정 모드 여부
+  bool _isEditingSummary = false;
 
   OverlayEntry? _overlayEntry;
   int _activeBlockIndex = -1;
@@ -236,7 +244,19 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   }
 
   void _addRandomIcon() {
-    final emojis = ["📝", "🚀", "💡", "🔥", "✅", "🎨", "💻", "📚", "🪐"];
+    final emojis = [
+      "📝",
+      "🚀",
+      "💡",
+      "🔥",
+      "✅",
+      "🎨",
+      "💻",
+      "📚",
+      "🪐",
+      "🍎",
+      "☘️",
+    ];
     final randomEmoji = emojis[Random().nextInt(emojis.length)];
     ref.read(fileProvider.notifier).updateIcon(randomEmoji);
     _onContentChanged();
@@ -247,6 +267,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     _onContentChanged();
   }
 
+  // --- UI Build ---
   @override
   Widget build(BuildContext context) {
     final fileState = ref.watch(fileProvider);
@@ -255,17 +276,16 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     final pageIcon = fileState.icon;
     final summaryContent = fileState.summaryContent;
 
-    if (_summaryController.text != summaryContent && !isLoading) {
-      final cursorPosition = _summaryController.selection;
+    // AI가 새로운 요약을 가져왔을 때 (수정 중이 아닐 때만 업데이트)
+    if (_summaryController.text != summaryContent &&
+        !isLoading &&
+        !_isEditingSummary) {
       _summaryController.text = summaryContent;
-      if (cursorPosition.baseOffset <= summaryContent.length) {
-        _summaryController.selection = cursorPosition;
-      }
     }
 
     final bool isWideScreen = MediaQuery.of(context).size.width > 800;
 
-    // [LEFT] Editor
+    // 1. [LEFT] Editor UI
     Widget leftEditor = CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -275,6 +295,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 60),
+
                 if (pageIcon != null) ...[
                   GestureDetector(
                     onTap: _addRandomIcon,
@@ -318,11 +339,13 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                 ),
 
                 const SizedBox(height: 24),
+
                 _buildPropertyRow(
                   Icons.calendar_today_outlined,
                   "작성일",
                   _createdDate,
                 ),
+
                 _buildInputPropertyRow(
                   icon: Icons.tag,
                   label: "태그",
@@ -330,6 +353,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   hint: "예: 중요, 회의록",
                   onChanged: (_) => _onContentChanged(),
                 ),
+
                 _buildInputPropertyRow(
                   icon: Icons.smart_toy_outlined,
                   label: "프롬프트",
@@ -337,6 +361,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   hint: "AI 요약 지시사항...",
                   onChanged: (_) => _onContentChanged(),
                 ),
+
                 if (pageIcon != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -398,14 +423,15 @@ class _FileScreenState extends ConsumerState<FileScreen> {
       ],
     );
 
-    // [RIGHT] Summary
+    // 2. [RIGHT] AI Summary UI (View Mode vs Edit Mode)
     Widget rightSummary = Container(
       color: AppTheme.bgSecondary,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header
           Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.fromLTRB(20, 20, 10, 20),
             child: Row(
               children: [
                 Icon(
@@ -419,45 +445,108 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   style: AppTheme.titleSmall.copyWith(fontSize: 16),
                 ),
                 const Spacer(),
+
+                // 로딩 중 표시 or 수정/완료 버튼
                 if (isLoading)
-                  SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.aiAccentColor,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 14),
+                    child: SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.aiAccentColor,
+                      ),
                     ),
                   )
                 else
-                  Text(
-                    "저장됨",
-                    style: TextStyle(
+                  IconButton(
+                    // [핵심] 보기 모드 <-> 수정 모드 전환 버튼
+                    icon: Icon(
+                      _isEditingSummary ? Icons.check : Icons.edit_outlined,
+                      size: 18,
                       color: AppTheme.textSecondary,
-                      fontSize: 11,
                     ),
+                    tooltip: _isEditingSummary ? "완료" : "직접 수정",
+                    onPressed: () {
+                      setState(() {
+                        _isEditingSummary = !_isEditingSummary;
+                      });
+                    },
                   ),
               ],
             ),
           ),
           const Divider(height: 1),
+
+          // Content Area
           Expanded(
-            child: TextField(
-              controller: _summaryController,
-              maxLines: null,
-              expands: true,
-              style: AppTheme.bodyText.copyWith(fontSize: 14, height: 1.6),
-              textAlignVertical: TextAlignVertical.top,
-              decoration: InputDecoration(
-                hintText: "내용을 작성하면 AI가 이곳에 한국어로 요약합니다.",
-                hintStyle: TextStyle(color: AppTheme.textHint.withOpacity(0.6)),
-                border: InputBorder.none,
-                filled: false,
-                contentPadding: const EdgeInsets.all(24),
-              ),
-              onChanged: (val) {
-                ref.read(fileProvider.notifier).updateSummaryContent(val);
-              },
-            ),
+            child: _isEditingSummary
+                ? TextField(
+                    controller: _summaryController,
+                    maxLines: null,
+                    expands: true,
+                    style: AppTheme.bodyText.copyWith(
+                      fontSize: 14,
+                      height: 1.6,
+                    ),
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: InputDecoration(
+                      hintText: "요약 내용을 직접 수정할 수 있습니다.",
+                      hintStyle: TextStyle(
+                        color: AppTheme.textHint.withOpacity(0.6),
+                      ),
+                      border: InputBorder.none,
+                      filled: false,
+                      contentPadding: const EdgeInsets.all(24),
+                    ),
+                    onChanged: (val) {
+                      ref.read(fileProvider.notifier).updateSummaryContent(val);
+                    },
+                  )
+                : Markdown(
+                    // [핵심] 마크다운 렌더링 위젯
+                    data: summaryContent.isEmpty
+                        ? "왼쪽에 내용을 작성하시면,\nAI가 실시간으로 분석하여 이곳에 **요약**을 남깁니다."
+                        : summaryContent,
+                    padding: const EdgeInsets.all(24),
+                    selectable: true,
+                    styleSheet: MarkdownStyleSheet(
+                      p: AppTheme.bodyText.copyWith(fontSize: 14, height: 1.6),
+                      h1: AppTheme.titleLarge.copyWith(
+                        fontSize: 22,
+                        height: 1.4,
+                      ),
+                      h2: AppTheme.titleMedium.copyWith(
+                        fontSize: 18,
+                        height: 1.4,
+                      ),
+                      h3: AppTheme.titleSmall.copyWith(
+                        fontSize: 16,
+                        height: 1.4,
+                      ),
+                      strong: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      code: const TextStyle(
+                        backgroundColor: Color(0xFF333333),
+                        fontFamily: 'Courier',
+                        fontSize: 13,
+                      ),
+                      listBullet: const TextStyle(
+                        color: AppTheme.aiAccentColor,
+                      ),
+                      blockquote: const TextStyle(color: Colors.grey),
+                      blockquoteDecoration: BoxDecoration(
+                        color: const Color(0xFF303030),
+                        borderRadius: BorderRadius.circular(4),
+                        border: const Border(
+                          left: BorderSide(color: Colors.grey, width: 4),
+                        ),
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -497,7 +586,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     );
   }
 
-  // --- Widgets ---
+  // --- Widgets (동일) ---
   Widget _buildPropertyRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -574,6 +663,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     );
   }
 
+  // ... (기존 Overlay 및 Handler 코드들은 변동 사항 없음, 그대로 유지) ...
   void _showBlockOptionMenu(int index) {
     showModalBottomSheet(
       context: context,
@@ -781,7 +871,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 }
 
 // -----------------------------------------------------------------------------
-// [WIDGET] HoverBlockItem (Perfect Alignment Fixed)
+// [WIDGET] HoverBlockItem
 // -----------------------------------------------------------------------------
 class HoverBlockItem extends StatefulWidget {
   final int index;
@@ -818,7 +908,7 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
   Widget build(BuildContext context) {
     bool isCode = widget.block.type == BlockType.code;
 
-    // 블록 타입에 따라 핸들의 수직 정렬 오프셋을 미세 조정 (제목 등은 폰트가 커서 조정 필요)
+    // 블록 타입에 따른 핸들 정렬 보정
     double handleTopPadding = 4.0;
     if (widget.block.type == BlockType.h1) handleTopPadding = 12.0;
     if (widget.block.type == BlockType.h2) handleTopPadding = 8.0;
@@ -829,11 +919,11 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Handle (Fixed Width)
+          // Handle
           Container(
             width: 24,
             height: 24,
-            margin: EdgeInsets.only(top: handleTopPadding), // [수정] 폰트 크기에 맞춰 정렬
+            margin: EdgeInsets.only(top: handleTopPadding),
             child: Opacity(
               opacity: _isHovering ? 1.0 : 0.0,
               child: IconButton(
@@ -851,10 +941,9 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
           ),
           const SizedBox(width: 6),
 
-          // 2. Content
+          // Content
           Expanded(
             child: Container(
-              // [수정] margin을 0으로 줄여서 단락 간격 최소화 (엔터 느낌)
               margin: EdgeInsets.only(bottom: isCode ? 12 : 0),
               padding: isCode ? const EdgeInsets.all(16) : null,
               decoration: isCode
@@ -929,7 +1018,6 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                             border: InputBorder.none,
                             filled: false,
                             isDense: true,
-                            // [수정] 패딩을 줄여서 위아래 공백 제거
                             contentPadding: const EdgeInsets.symmetric(
                               vertical: 2,
                             ),
