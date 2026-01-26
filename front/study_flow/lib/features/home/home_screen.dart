@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/theme.dart';
 
+import 'profile_screen.dart';
 import '../project/project_provider.dart';
 import '../project/project_screen.dart';
 
@@ -33,16 +34,7 @@ class HomeScreen extends ConsumerWidget {
             Text("내 프로젝트", style: AppTheme.titleSmall.copyWith(fontSize: 18)),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.settings_outlined,
-              color: AppTheme.textSecondary,
-            ),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 20),
-        ],
+        actions: [profileScreen(context)],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
