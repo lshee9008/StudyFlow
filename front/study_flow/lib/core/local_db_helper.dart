@@ -18,10 +18,10 @@ class LocalDatabase {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    // 버전을 3으로 올려서 강제로 초기화 로직을 태울 수도 있지만, 앱 삭제가 더 깔끔합니다.
+    // [수정] 버전을 3으로 변경 (스키마 변경 반영)
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -32,18 +32,35 @@ class LocalDatabase {
     await db.execute(
       'CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, tags TEXT, created_at TEXT NOT NULL)',
     );
-    await db.execute(
-      'CREATE TABLE files (id TEXT PRIMARY KEY, project_id TEXT, title TEXT NOT NULL, content TEXT, summary TEXT, tags TEXT, icon TEXT, created_at TEXT NOT NULL, updated_at TEXT, FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE)',
-    );
+    // [수정] files 테이블에 prompt 컬럼 추가
+    await db.execute('''
+      CREATE TABLE files (
+        id TEXT PRIMARY KEY, 
+        project_id TEXT, 
+        title TEXT NOT NULL, 
+        content TEXT, 
+        summary TEXT, 
+        tags TEXT, 
+        icon TEXT, 
+        prompt TEXT, 
+        created_at TEXT NOT NULL, 
+        updated_at TEXT, 
+        FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+      )
+    ''');
   }
 
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute("ALTER TABLE files ADD COLUMN icon TEXT");
     }
+    // [NEW] 버전 3 업그레이드 시 prompt 컬럼 추가
+    if (oldVersion < 3) {
+      await db.execute("ALTER TABLE files ADD COLUMN prompt TEXT");
+    }
   }
 
-  // --- Projects ---
+  // --- Project CRUD (기존 동일) ---
   Future<int> insertProject(ProjectModel project) async {
     final db = await instance.database;
     return await db.insert('projects', project.toMap());
@@ -74,18 +91,17 @@ class LocalDatabase {
     return await db.delete('projects', where: 'id = ?', whereArgs: [id]);
   }
 
-  // --- Files (여기가 핵심) ---
+  // --- File CRUD ---
   Future<int> insertFile(FileModel file) async {
     final db = await instance.database;
     return await db.insert('files', file.toMap());
   }
 
-  // [중요] 특정 프로젝트 ID(projectId)를 가진 파일만 가져오는지 확인
   Future<List<FileModel>> selectProjectFiles(String projectId) async {
     final db = await instance.database;
     final result = await db.query(
       'files',
-      where: 'project_id = ?', // 이 조건이 핵심
+      where: 'project_id = ?',
       whereArgs: [projectId],
       orderBy: 'created_at DESC',
     );
@@ -103,25 +119,29 @@ class LocalDatabase {
     return null;
   }
 
+  // [수정] prompt 업데이트 추가
   Future<int> updateFile({
     required String id,
     required String title,
     required String tags,
     required String content,
     String? icon,
+    String? summary,
+    String? prompt, // [NEW]
   }) async {
     final db = await instance.database;
-    return await db.update(
-      'files',
-      {
-        'title': title,
-        'tags': tags,
-        'content': content,
-        'icon': icon,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final Map<String, dynamic> data = {
+      'title': title,
+      'tags': tags,
+      'content': content,
+      'icon': icon,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    // 값이 있을 때만 업데이트 (혹은 빈 문자열이라도 업데이트하려면 조건 제거)
+    if (summary != null) data['summary'] = summary;
+    if (prompt != null) data['prompt'] = prompt; // [NEW]
+
+    return await db.update('files', data, where: 'id = ?', whereArgs: [id]);
   }
 }

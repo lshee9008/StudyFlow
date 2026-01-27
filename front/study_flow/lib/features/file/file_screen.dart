@@ -3,9 +3,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/block_model.dart';
@@ -101,8 +100,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 
   String _createdDate = DateFormat('yyyy. MM. dd').format(DateTime.now());
   Timer? _debounceTimer;
-
-  // [NEW] 요약본 수정 모드 여부
   bool _isEditingSummary = false;
 
   OverlayEntry? _overlayEntry;
@@ -163,6 +160,8 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           _tagsController.text = fileModel.tags;
           _createdDate = DateFormat('yyyy. MM. dd').format(fileModel.createdAt);
           _summaryController.text = fileModel.summary ?? "";
+          // [핵심] 저장된 프롬프트 불러오기
+          _aiPromptController.text = fileModel.prompt ?? "";
         });
       }
     });
@@ -182,13 +181,16 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   void _onContentChanged() {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _debounceTimer = Timer(const Duration(seconds: 2), () async {
+      // [수정] 저장 시 프롬프트(_aiPromptController.text)도 함께 전달
       await ref
           .read(fileProvider.notifier)
           .saveFile(
             fileId: widget.fileId,
             title: _titleController.text,
             tags: _tagsController.text,
+            prompt: _aiPromptController.text, // [NEW]
           );
+
       await ref
           .read(fileProvider.notifier)
           .requestAutoAISummary(
@@ -201,15 +203,19 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   }
 
   Future<bool> _onWillPop() async {
+    // [수정] 뒤로가기 시 저장할 때도 프롬프트 포함
     await ref
         .read(fileProvider.notifier)
         .saveFile(
           fileId: widget.fileId,
           title: _titleController.text,
           tags: _tagsController.text,
+          prompt: _aiPromptController.text, // [NEW]
         );
     return true;
   }
+
+  // ... (나머지 헬퍼 메서드들은 변경사항 없음) ...
 
   void _addNewBlock(int index) {
     ref.read(fileProvider.notifier).addBlock(index);
@@ -276,7 +282,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     final pageIcon = fileState.icon;
     final summaryContent = fileState.summaryContent;
 
-    // AI가 새로운 요약을 가져왔을 때 (수정 중이 아닐 때만 업데이트)
     if (_summaryController.text != summaryContent &&
         !isLoading &&
         !_isEditingSummary) {
@@ -295,7 +300,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 60),
-
                 if (pageIcon != null) ...[
                   GestureDetector(
                     onTap: _addRandomIcon,
@@ -339,13 +343,11 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                 ),
 
                 const SizedBox(height: 24),
-
                 _buildPropertyRow(
                   Icons.calendar_today_outlined,
                   "작성일",
                   _createdDate,
                 ),
-
                 _buildInputPropertyRow(
                   icon: Icons.tag,
                   label: "태그",
@@ -353,7 +355,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   hint: "예: 중요, 회의록",
                   onChanged: (_) => _onContentChanged(),
                 ),
-
                 _buildInputPropertyRow(
                   icon: Icons.smart_toy_outlined,
                   label: "프롬프트",
@@ -361,7 +362,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   hint: "AI 요약 지시사항...",
                   onChanged: (_) => _onContentChanged(),
                 ),
-
                 if (pageIcon != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -423,13 +423,12 @@ class _FileScreenState extends ConsumerState<FileScreen> {
       ],
     );
 
-    // 2. [RIGHT] AI Summary UI (View Mode vs Edit Mode)
+    // 2. [RIGHT] Summary UI
     Widget rightSummary = Container(
       color: AppTheme.bgSecondary,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 10, 20),
             child: Row(
@@ -445,8 +444,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   style: AppTheme.titleSmall.copyWith(fontSize: 16),
                 ),
                 const Spacer(),
-
-                // 로딩 중 표시 or 수정/완료 버튼
                 if (isLoading)
                   Padding(
                     padding: const EdgeInsets.only(right: 14),
@@ -461,7 +458,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   )
                 else
                   IconButton(
-                    // [핵심] 보기 모드 <-> 수정 모드 전환 버튼
                     icon: Icon(
                       _isEditingSummary ? Icons.check : Icons.edit_outlined,
                       size: 18,
@@ -478,8 +474,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
             ),
           ),
           const Divider(height: 1),
-
-          // Content Area
           Expanded(
             child: _isEditingSummary
                 ? TextField(
@@ -505,7 +499,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                     },
                   )
                 : Markdown(
-                    // [핵심] 마크다운 렌더링 위젯
                     data: summaryContent.isEmpty
                         ? "왼쪽에 내용을 작성하시면,\nAI가 실시간으로 분석하여 이곳에 **요약**을 남깁니다."
                         : summaryContent,
@@ -586,7 +579,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     );
   }
 
-  // --- Widgets (동일) ---
+  // --- Widgets ---
   Widget _buildPropertyRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -663,7 +656,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     );
   }
 
-  // ... (기존 Overlay 및 Handler 코드들은 변동 사항 없음, 그대로 유지) ...
   void _showBlockOptionMenu(int index) {
     showModalBottomSheet(
       context: context,
@@ -908,7 +900,6 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
   Widget build(BuildContext context) {
     bool isCode = widget.block.type == BlockType.code;
 
-    // 블록 타입에 따른 핸들 정렬 보정
     double handleTopPadding = 4.0;
     if (widget.block.type == BlockType.h1) handleTopPadding = 12.0;
     if (widget.block.type == BlockType.h2) handleTopPadding = 8.0;
@@ -919,7 +910,6 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Handle
           Container(
             width: 24,
             height: 24,
@@ -940,8 +930,6 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
             ),
           ),
           const SizedBox(width: 6),
-
-          // Content
           Expanded(
             child: Container(
               margin: EdgeInsets.only(bottom: isCode ? 12 : 0),

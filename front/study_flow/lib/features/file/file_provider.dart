@@ -6,11 +6,9 @@ import 'dart:io';
 import 'dart:async';
 
 import '../../models/block_model.dart';
+
 import '../../core/local_db_helper.dart';
 
-// -----------------------------------------------------------------------------
-// [STATE]
-// -----------------------------------------------------------------------------
 class FileState {
   final List<Block> blocks;
   final bool isLoading;
@@ -39,20 +37,14 @@ class FileState {
   }
 }
 
-// -----------------------------------------------------------------------------
-// [PROVIDER]
-// -----------------------------------------------------------------------------
 final fileProvider = StateNotifierProvider.autoDispose<FileNotifier, FileState>(
   (ref) => FileNotifier(),
 );
 
-// -----------------------------------------------------------------------------
-// [NOTIFIER]
-// -----------------------------------------------------------------------------
 class FileNotifier extends StateNotifier<FileState> {
   FileNotifier() : super(FileState(blocks: []));
 
-  // --- Load & Save ---
+  // 1. 파일 불러오기
   Future<FileModel?> loadFile(String fileId) async {
     state = state.copyWith(isLoading: true);
     final fileModel = await LocalDatabase.instance.getFile(fileId);
@@ -74,19 +66,21 @@ class FileNotifier extends StateNotifier<FileState> {
         blocks: loadedBlocks,
         isLoading: false,
         icon: fileModel.icon,
-        summaryContent: fileModel.summary ?? "",
+        summaryContent: fileModel.summary ?? "", // 요약 내용 복원
       );
-      return fileModel;
+      return fileModel; // [중요] FileModel 반환 (프롬프트 정보 포함됨)
     } else {
       state = state.copyWith(blocks: [_createBlock(0)], isLoading: false);
       return null;
     }
   }
 
+  // 2. 파일 저장하기 (프롬프트 포함)
   Future<void> saveFile({
     required String fileId,
     required String title,
     required String tags,
+    required String prompt, // [NEW] 프롬프트 인자 추가
   }) async {
     final List<Map<String, dynamic>> jsonList = state.blocks
         .map((b) => b.toJson())
@@ -99,17 +93,17 @@ class FileNotifier extends StateNotifier<FileState> {
       tags: tags,
       content: contentJson,
       icon: state.icon,
+      summary: state.summaryContent, // 현재 요약 상태 저장
+      prompt: prompt, // [NEW] 프롬프트 내용 저장
     );
   }
 
-  // --- [핵심] AI 요약 요청 (한국어 강제) ---
+  // 3. AI 요약 요청
   Future<void> requestAutoAISummary({
     required String tags,
     required String prompt,
   }) async {
     String content = state.blocks.map((b) => b.controller.text).join("\n");
-
-    // 내용이 너무 짧으면 요청 안 함 (오작동 방지)
     if (content.trim().length < 5) return;
 
     state = state.copyWith(isLoading: true);
@@ -119,7 +113,6 @@ class FileNotifier extends StateNotifier<FileState> {
           ? 'http://10.0.2.2:8000'
           : 'http://localhost:8000';
 
-      // [프롬프트 수정] 한국어 출력 및 형식 강제
       final systemPrompt =
           """
 Role: Professional Summarizer.
@@ -130,8 +123,7 @@ Context Tags: "$tags".
 1. **Must respond in Korean (한국어).**
 2. Use valid **Markdown** format.
 3. Use bullet points (-) for clarity.
-4. **Do NOT** include conversational fillers like "Here is the summary". Just provide the summary directly.
-5. If the input is just a single word or too short, define that term or explain it briefly in Korean.
+4. **Do NOT** include conversational fillers like "Here is the summary".
 """;
 
       final response = await http.post(
@@ -160,7 +152,7 @@ Context Tags: "$tags".
     state = state.copyWith(summaryContent: newContent);
   }
 
-  // --- Block Management ---
+  // --- Block Methods ---
   Block _createBlock(
     int index, {
     BlockType type = BlockType.text,

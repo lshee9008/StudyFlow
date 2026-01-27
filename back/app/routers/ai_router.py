@@ -11,7 +11,6 @@ class SummaryRequest(BaseModel):
     tags: str  # 사용자가 입력한 태그 (예: "회의, 중요")
     custom_prompt: str  # 사용자의 요구사항 (예: "3줄로 요약해줘")
 
-
 @router.post("/summarize")
 async def summarize_note(request: SummaryRequest):
     # 1. Ollama에게 보낼 최종 프롬프트 구성

@@ -119,6 +119,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
                 id: file.id,
                 title: controller.text,
                 tags: file.tags,
+                prompt: file.prompt,
                 content: file.content,
                 icon: file.icon,
               );
