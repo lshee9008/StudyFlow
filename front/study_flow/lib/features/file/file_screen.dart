@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
+// [NEW] 이모지 피커 패키지 임포트
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 
 import '../../models/block_model.dart';
 import 'file_provider.dart';
@@ -160,7 +162,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           _tagsController.text = fileModel.tags;
           _createdDate = DateFormat('yyyy. MM. dd').format(fileModel.createdAt);
           _summaryController.text = fileModel.summary ?? "";
-          // [핵심] 저장된 프롬프트 불러오기
           _aiPromptController.text = fileModel.prompt ?? "";
         });
       }
@@ -181,14 +182,13 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   void _onContentChanged() {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _debounceTimer = Timer(const Duration(seconds: 2), () async {
-      // [수정] 저장 시 프롬프트(_aiPromptController.text)도 함께 전달
       await ref
           .read(fileProvider.notifier)
           .saveFile(
             fileId: widget.fileId,
             title: _titleController.text,
             tags: _tagsController.text,
-            prompt: _aiPromptController.text, // [NEW]
+            prompt: _aiPromptController.text,
           );
 
       await ref
@@ -203,19 +203,16 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   }
 
   Future<bool> _onWillPop() async {
-    // [수정] 뒤로가기 시 저장할 때도 프롬프트 포함
     await ref
         .read(fileProvider.notifier)
         .saveFile(
           fileId: widget.fileId,
           title: _titleController.text,
           tags: _tagsController.text,
-          prompt: _aiPromptController.text, // [NEW]
+          prompt: _aiPromptController.text,
         );
     return true;
   }
-
-  // ... (나머지 헬퍼 메서드들은 변경사항 없음) ...
 
   void _addNewBlock(int index) {
     ref.read(fileProvider.notifier).addBlock(index);
@@ -249,23 +246,82 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     });
   }
 
-  void _addRandomIcon() {
-    final emojis = [
-      "📝",
-      "🚀",
-      "💡",
-      "🔥",
-      "✅",
-      "🎨",
-      "💻",
-      "📚",
-      "🪐",
-      "🍎",
-      "☘️",
-    ];
-    final randomEmoji = emojis[Random().nextInt(emojis.length)];
-    ref.read(fileProvider.notifier).updateIcon(randomEmoji);
-    _onContentChanged();
+  // ---------------------------------------------------------------------------
+  // [NEW] 이모지 피커 (Notion 스타일)
+  // ---------------------------------------------------------------------------
+  void _showEmojiPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent, // 배경 투명 (피커 자체 색상 사용)
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          height: 450, // 피커 높이
+          decoration: BoxDecoration(
+            color: AppTheme.bgSecondary,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // 핸들바 (Drag Handle)
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Expanded(
+                child: EmojiPicker(
+                  onEmojiSelected: (category, emoji) {
+                    // 이모지 선택 시 아이콘 업데이트 및 저장
+                    ref.read(fileProvider.notifier).updateIcon(emoji.emoji);
+                    _onContentChanged();
+                    Navigator.pop(context); // 닫기
+                  },
+                  config: Config(
+                    height: 256,
+                    checkPlatformCompatibility: true,
+                    viewOrderConfig: const ViewOrderConfig(),
+                    emojiViewConfig: EmojiViewConfig(
+                      // 다크 테마에 맞춘 설정
+                      backgroundColor: AppTheme.bgSecondary,
+                      columns: 7,
+                      emojiSizeMax: 28,
+                    ),
+                    skinToneConfig: const SkinToneConfig(),
+                    categoryViewConfig: CategoryViewConfig(
+                      // 카테고리 바 색상 설정
+                      backgroundColor: AppTheme.bgSecondary,
+                      dividerColor: AppTheme.borderColor,
+                      indicatorColor: AppTheme.aiAccentColor,
+                      iconColorSelected: AppTheme.aiAccentColor,
+                      iconColor: AppTheme.textSecondary,
+                    ),
+                    bottomActionBarConfig: const BottomActionBarConfig(
+                      enabled: false, // 하단 바 숨김 (깔끔하게)
+                    ),
+                    searchViewConfig: SearchViewConfig(
+                      backgroundColor: AppTheme.bgSecondary,
+                      buttonIconColor: AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _removeIcon() {
@@ -300,15 +356,18 @@ class _FileScreenState extends ConsumerState<FileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 60),
+
+                // [수정] 아이콘 표시 영역 (클릭 시 피커 오픈)
                 if (pageIcon != null) ...[
                   GestureDetector(
-                    onTap: _addRandomIcon,
+                    onTap: _showEmojiPicker, // 랜덤 함수 -> 피커 함수로 변경
                     child: Text(pageIcon, style: const TextStyle(fontSize: 72)),
                   ),
                   const SizedBox(height: 20),
                 ] else
+                  // [수정] 아이콘 추가 버튼 (클릭 시 피커 오픈)
                   GestureDetector(
-                    onTap: _addRandomIcon,
+                    onTap: _showEmojiPicker, // 랜덤 함수 -> 피커 함수로 변경
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 24),
                       child: Row(
@@ -392,6 +451,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           ),
         ),
 
+        // ... (이하 동일: Block List, Right Summary, Block Logic 등) ...
         SliverPadding(
           padding: const EdgeInsets.only(left: 50, right: 50, bottom: 120),
           sliver: SliverList(
@@ -579,7 +639,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     );
   }
 
-  // --- Widgets ---
+  // --- Helper Widgets (기존과 동일) ---
   Widget _buildPropertyRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -899,7 +959,6 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
   @override
   Widget build(BuildContext context) {
     bool isCode = widget.block.type == BlockType.code;
-
     double handleTopPadding = 4.0;
     if (widget.block.type == BlockType.h1) handleTopPadding = 12.0;
     if (widget.block.type == BlockType.h2) handleTopPadding = 8.0;
@@ -952,7 +1011,6 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                         color: AppTheme.textPrimary.withOpacity(0.6),
                       ),
                     ),
-
                   if (widget.block.type == BlockType.checkbox)
                     Padding(
                       padding: const EdgeInsets.only(top: 4, right: 10),
@@ -973,7 +1031,6 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                         ),
                       ),
                     ),
-
                   Expanded(
                     child: CompositedTransformTarget(
                       link: widget.block.layerLink,
