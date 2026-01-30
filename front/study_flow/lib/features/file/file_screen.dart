@@ -6,15 +6,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
-// [NEW] 이모지 피커 패키지 임포트
+// 이모지 피커 패키지
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 
+// 모델 및 프로바이더, DB 헬퍼 임포트
 import '../../models/block_model.dart';
 import 'file_provider.dart';
 import '../../core/theme.dart';
+import '../../core/local_db_helper.dart'; // initState에서 초기 데이터 로드용
 
 // -----------------------------------------------------------------------------
-// [WIDGET] Resizable Split View
+// [WIDGET] Resizable Split View (화면 분할 위젯)
 // -----------------------------------------------------------------------------
 class ResizableSplitView extends StatefulWidget {
   final Widget left;
@@ -51,7 +53,7 @@ class _ResizableSplitViewState extends State<ResizableSplitView> {
           children: [
             SizedBox(width: leftWidth, child: widget.left),
 
-            // Resizer
+            // Resizer (드래그 핸들)
             GestureDetector(
               behavior: HitTestBehavior.translucent,
               onPanUpdate: (details) {
@@ -82,7 +84,7 @@ class _ResizableSplitViewState extends State<ResizableSplitView> {
 }
 
 // -----------------------------------------------------------------------------
-// [SCREEN] File Screen
+// [SCREEN] File Screen (파일 상세/편집 화면)
 // -----------------------------------------------------------------------------
 class FileScreen extends ConsumerStatefulWidget {
   final String fileId;
@@ -93,6 +95,7 @@ class FileScreen extends ConsumerStatefulWidget {
 }
 
 class _FileScreenState extends ConsumerState<FileScreen> {
+  // 텍스트 컨트롤러
   final TextEditingController _titleController = TextEditingController(
     text: "제목 없음",
   );
@@ -104,6 +107,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   Timer? _debounceTimer;
   bool _isEditingSummary = false;
 
+  // 슬래시 메뉴(/) 관련 변수
   OverlayEntry? _overlayEntry;
   int _activeBlockIndex = -1;
   int _menuSelectedIndex = 0;
@@ -152,15 +156,21 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   @override
   void initState() {
     super.initState();
+
+    // 초기 데이터 로드
     Future.microtask(() async {
-      final fileModel = await ref
-          .read(fileProvider.notifier)
-          .loadFile(widget.fileId);
-      if (fileModel != null) {
+      // 1. Provider에 데이터 로드 요청 (블록 상태 초기화)
+      await ref.read(fileEditorProvider.notifier).loadFileDetail(widget.fileId);
+
+      // 2. TextField 초기값을 위해 DB에서 직접 데이터 한번 조회
+      // (Provider 상태를 바로 읽어도 되지만, 컨트롤러 초기화 시점을 명확히 하기 위함)
+      final fileModel = await LocalDatabase.instance.getFile(widget.fileId);
+
+      if (fileModel != null && mounted) {
         setState(() {
           _titleController.text = fileModel.title;
           _tagsController.text = fileModel.tags;
-          _createdDate = DateFormat('yyyy. MM. dd').format(fileModel.createdAt);
+          _createdDate = DateFormat('yyyy. MM. dd').format(fileModel.create_at);
           _summaryController.text = fileModel.summary ?? "";
           _aiPromptController.text = fileModel.prompt ?? "";
         });
@@ -179,20 +189,29 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     super.dispose();
   }
 
+  // 내용 변경 감지 및 자동 저장
   void _onContentChanged() {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _debounceTimer = Timer(const Duration(seconds: 2), () async {
+      // 1. 현재 에디터 상태 저장 (DB 업데이트)
       await ref
-          .read(fileProvider.notifier)
+          .read(fileEditorProvider.notifier)
           .saveFile(
             fileId: widget.fileId,
             title: _titleController.text,
             tags: _tagsController.text,
             prompt: _aiPromptController.text,
+            updateAt: DateTime.now(),
           );
 
+      // 2. 파일 목록 화면의 제목 동기화 (뒤로가기 시 반영)
+      ref
+          .read(filesProvider.notifier)
+          .updateFileTitle(widget.fileId, _titleController.text);
+
+      // 3. AI 요약 자동 요청
       await ref
-          .read(fileProvider.notifier)
+          .read(fileEditorProvider.notifier)
           .requestAutoAISummary(
             tags: _tagsController.text,
             prompt: _aiPromptController.text.isEmpty
@@ -202,61 +221,73 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     });
   }
 
+  // 뒤로가기 시 저장 처리
   Future<bool> _onWillPop() async {
     await ref
-        .read(fileProvider.notifier)
+        .read(fileEditorProvider.notifier)
         .saveFile(
           fileId: widget.fileId,
           title: _titleController.text,
           tags: _tagsController.text,
           prompt: _aiPromptController.text,
+          updateAt: DateTime.now(),
         );
+
+    // 목록 제목 동기화
+    ref
+        .read(filesProvider.notifier)
+        .updateFileTitle(widget.fileId, _titleController.text);
+
     return true;
   }
 
+  // --- 블록 조작 메서드 (EditorProvider 사용) ---
+
   void _addNewBlock(int index) {
-    ref.read(fileProvider.notifier).addBlock(index);
+    ref.read(fileEditorProvider.notifier).addBlock(index);
     _moveFocus(index);
   }
 
   void _deleteBlock(int index) {
-    ref.read(fileProvider.notifier).removeBlock(index);
+    ref.read(fileEditorProvider.notifier).removeBlock(index);
     if (index > 0) {
       _removeOverlay();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final blocks = ref.read(fileProvider).blocks;
-        final prevBlock = blocks[index - 1];
-        prevBlock.focusNode.requestFocus();
+        // 현재 블록 리스트 가져오기
+        final blocks = ref.read(fileEditorProvider).blocks;
+        // 이전 블록으로 포커스 이동
+        if (index - 1 < blocks.length) {
+          final prevBlock = blocks[index - 1];
+          prevBlock.focusNode.requestFocus();
+        }
       });
     }
   }
 
   void _applyTypeChange({required int index, required BlockType newType}) {
     _removeOverlay();
-    ref.read(fileProvider.notifier).updateBlockType(index, newType);
+    ref.read(fileEditorProvider.notifier).updateBlockType(index, newType);
     _moveFocus(index);
   }
 
   void _moveFocus(int index) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final blocks = ref.read(fileProvider).blocks;
+      final blocks = ref.read(fileEditorProvider).blocks;
       if (index < blocks.length) {
         blocks[index].focusNode.requestFocus();
       }
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // [NEW] 이모지 피커 (Notion 스타일)
-  // ---------------------------------------------------------------------------
+  // --- 이모지 피커 (Notion 스타일) ---
   void _showEmojiPicker() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent, // 배경 투명 (피커 자체 색상 사용)
+      backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) {
         return Container(
-          height: 450, // 피커 높이
+          height: 450,
           decoration: BoxDecoration(
             color: AppTheme.bgSecondary,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -270,7 +301,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           ),
           child: Column(
             children: [
-              // 핸들바 (Drag Handle)
+              // 드래그 핸들
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 12),
                 width: 40,
@@ -283,24 +314,23 @@ class _FileScreenState extends ConsumerState<FileScreen> {
               Expanded(
                 child: EmojiPicker(
                   onEmojiSelected: (category, emoji) {
-                    // 이모지 선택 시 아이콘 업데이트 및 저장
-                    ref.read(fileProvider.notifier).updateIcon(emoji.emoji);
+                    // 아이콘 업데이트
+                    ref
+                        .read(fileEditorProvider.notifier)
+                        .updateIcon(emoji.emoji);
                     _onContentChanged();
-                    Navigator.pop(context); // 닫기
+                    Navigator.pop(context);
                   },
                   config: Config(
                     height: 256,
                     checkPlatformCompatibility: true,
-                    viewOrderConfig: const ViewOrderConfig(),
                     emojiViewConfig: EmojiViewConfig(
-                      // 다크 테마에 맞춘 설정
                       backgroundColor: AppTheme.bgSecondary,
                       columns: 7,
                       emojiSizeMax: 28,
                     ),
                     skinToneConfig: const SkinToneConfig(),
                     categoryViewConfig: CategoryViewConfig(
-                      // 카테고리 바 색상 설정
                       backgroundColor: AppTheme.bgSecondary,
                       dividerColor: AppTheme.borderColor,
                       indicatorColor: AppTheme.aiAccentColor,
@@ -308,7 +338,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                       iconColor: AppTheme.textSecondary,
                     ),
                     bottomActionBarConfig: const BottomActionBarConfig(
-                      enabled: false, // 하단 바 숨김 (깔끔하게)
+                      enabled: false,
                     ),
                     searchViewConfig: SearchViewConfig(
                       backgroundColor: AppTheme.bgSecondary,
@@ -325,19 +355,21 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   }
 
   void _removeIcon() {
-    ref.read(fileProvider.notifier).updateIcon(null);
+    ref.read(fileEditorProvider.notifier).updateIcon(null);
     _onContentChanged();
   }
 
   // --- UI Build ---
   @override
   Widget build(BuildContext context) {
-    final fileState = ref.watch(fileProvider);
+    // 에디터 상태 감시 (Blocks, Icon, Summary)
+    final fileState = ref.watch(fileEditorProvider);
     final blocks = fileState.blocks;
     final isLoading = fileState.isLoading;
     final pageIcon = fileState.icon;
     final summaryContent = fileState.summaryContent;
 
+    // AI 요약 내용이 변경되면 컨트롤러에 반영
     if (_summaryController.text != summaryContent &&
         !isLoading &&
         !_isEditingSummary) {
@@ -346,7 +378,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 
     final bool isWideScreen = MediaQuery.of(context).size.width > 800;
 
-    // 1. [LEFT] Editor UI
+    // 1. [LEFT] 에디터 영역
     Widget leftEditor = CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -357,17 +389,17 @@ class _FileScreenState extends ConsumerState<FileScreen> {
               children: [
                 const SizedBox(height: 60),
 
-                // [수정] 아이콘 표시 영역 (클릭 시 피커 오픈)
+                // 아이콘 표시 영역
                 if (pageIcon != null) ...[
                   GestureDetector(
-                    onTap: _showEmojiPicker, // 랜덤 함수 -> 피커 함수로 변경
+                    onTap: _showEmojiPicker,
                     child: Text(pageIcon, style: const TextStyle(fontSize: 72)),
                   ),
                   const SizedBox(height: 20),
                 ] else
-                  // [수정] 아이콘 추가 버튼 (클릭 시 피커 오픈)
+                  // 아이콘 추가 버튼
                   GestureDetector(
-                    onTap: _showEmojiPicker, // 랜덤 함수 -> 피커 함수로 변경
+                    onTap: _showEmojiPicker,
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 24),
                       child: Row(
@@ -388,6 +420,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                     ),
                   ),
 
+                // 제목 입력 필드
                 TextField(
                   controller: _titleController,
                   style: AppTheme.titleHuge,
@@ -402,6 +435,8 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                 ),
 
                 const SizedBox(height: 24),
+
+                // 속성 행들 (작성일, 태그, 프롬프트)
                 _buildPropertyRow(
                   Icons.calendar_today_outlined,
                   "작성일",
@@ -421,6 +456,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                   hint: "AI 요약 지시사항...",
                   onChanged: (_) => _onContentChanged(),
                 ),
+
                 if (pageIcon != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -451,7 +487,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           ),
         ),
 
-        // ... (이하 동일: Block List, Right Summary, Block Logic 등) ...
+        // 블록 리스트
         SliverPadding(
           padding: const EdgeInsets.only(left: 50, right: 50, bottom: 120),
           sliver: SliverList(
@@ -471,7 +507,9 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                 },
                 onOptions: () => _showBlockOptionMenu(index),
                 onToggleCheckbox: (val) {
-                  ref.read(fileProvider.notifier).toggleCheckbox(index, val);
+                  ref
+                      .read(fileEditorProvider.notifier)
+                      .toggleCheckbox(index, val);
                   _onContentChanged();
                 },
                 getStyle: _getStyleForBlock,
@@ -483,7 +521,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
       ],
     );
 
-    // 2. [RIGHT] Summary UI
+    // 2. [RIGHT] 요약(Summary) 영역
     Widget rightSummary = Container(
       color: AppTheme.bgSecondary,
       child: Column(
@@ -555,7 +593,9 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                       contentPadding: const EdgeInsets.all(24),
                     ),
                     onChanged: (val) {
-                      ref.read(fileProvider.notifier).updateSummaryContent(val);
+                      ref
+                          .read(fileEditorProvider.notifier)
+                          .updateSummaryContent(val);
                     },
                   )
                 : Markdown(
@@ -639,7 +679,8 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     );
   }
 
-  // --- Helper Widgets (기존과 동일) ---
+  // --- Helper Widgets ---
+
   Widget _buildPropertyRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -758,8 +799,10 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     );
   }
 
+  // --- 슬래시 커맨드 및 힌트 처리 ---
+
   String? _getHintText(Block block, int index) {
-    final blocksLength = ref.read(fileProvider).blocks.length;
+    final blocksLength = ref.read(fileEditorProvider).blocks.length;
     if (block.type == BlockType.h1) return "제목 1";
     if (block.type == BlockType.h2) return "제목 2";
     if (block.type == BlockType.h3) return "제목 3";
@@ -830,7 +873,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
         _addNewBlock(index + 1);
       }
     } else if (event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (ref.read(fileProvider).blocks[index].controller.text.isEmpty &&
+      if (ref.read(fileEditorProvider).blocks[index].controller.text.isEmpty &&
           index > 0) {
         _deleteBlock(index);
       }
@@ -839,7 +882,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 
   void _showOverlay(BuildContext context, int index, String query) {
     _activeBlockIndex = index;
-    final blocks = ref.read(fileProvider).blocks;
+    final blocks = ref.read(fileEditorProvider).blocks;
     final block = blocks[index];
     _currentFilteredOptions = _allMenuOptions.where((option) {
       final label = (option['label'] as String).toLowerCase();
@@ -923,7 +966,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 }
 
 // -----------------------------------------------------------------------------
-// [WIDGET] HoverBlockItem
+// [WIDGET] HoverBlockItem (블록 아이템 위젯)
 // -----------------------------------------------------------------------------
 class HoverBlockItem extends StatefulWidget {
   final int index;
@@ -969,6 +1012,7 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 드래그 핸들 / 옵션 버튼
           Container(
             width: 24,
             height: 24,
@@ -989,6 +1033,7 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
             ),
           ),
           const SizedBox(width: 6),
+          // 본문 입력 영역
           Expanded(
             child: Container(
               margin: EdgeInsets.only(bottom: isCode ? 12 : 0),

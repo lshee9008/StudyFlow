@@ -10,7 +10,13 @@ class CreateMembershipScreen extends StatefulWidget {
 }
 
 class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
-  UserModel newUser = UserModel(name: "");
+  UserModel newUser = UserModel(
+    name: "",
+    join_path: '',
+    password: '',
+    social_id: '',
+    id: '',
+  );
   bool serverPossibleId = false;
   bool serverPossiblePassword = false;
   String possibleId = "";
@@ -100,7 +106,8 @@ class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
                           autovalidateMode: AutovalidateMode.onUserInteraction,
                           decoration: InputDecoration(labelText: "사용할 비밀번호 입력"),
                           onChanged: (value) {
-                            if (serverPossiblePassword && possiblePassword != value) {
+                            if (serverPossiblePassword &&
+                                possiblePassword != value) {
                               serverPossiblePassword = false;
                               setState(() {});
                             }
@@ -110,7 +117,8 @@ class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
                               return '사용할 아이디를 입력해주세요';
                             }
                             if (serverPossiblePassword &&
-                                    possiblePassword != newUserPaswordController.text ||
+                                    possiblePassword !=
+                                        newUserPaswordController.text ||
                                 !serverPossiblePassword) {
                               return '사용 가능한 아이디인지 확인해 주십시오';
                             }

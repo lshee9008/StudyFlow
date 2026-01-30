@@ -116,7 +116,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
           ElevatedButton(
             onPressed: () async {
               await LocalDatabase.instance.updateFile(
-                id: file.id,
+                file.id,
                 title: controller.text,
                 tags: file.tags,
                 prompt: file.prompt,
@@ -328,7 +328,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
                   Row(
                     children: [
                       Text(
-                        DateFormat('MM월 dd일').format(file.createdAt),
+                        DateFormat('MM월 dd일').format(file.create_at),
                         style: AppTheme.caption.copyWith(fontSize: 12),
                       ),
                       if (file.tags.isNotEmpty) ...[
@@ -482,11 +482,15 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
     final newFileId = const Uuid().v4();
     final newFile = FileModel(
       id: newFileId,
-      projectId: widget.project.id,
+      project_id: widget.project.id,
       title: "제목 없음",
       content: "",
       tags: "",
-      createdAt: DateTime.now(),
+      create_at: DateTime.now(),
+      update_at: null,
+      icon: '',
+      prompt: '',
+      summary: '',
     );
     await LocalDatabase.instance.insertFile(newFile);
     if (!mounted) return;

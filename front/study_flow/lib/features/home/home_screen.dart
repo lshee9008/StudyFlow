@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:study_flow/core/local_db_helper.dart';
 import 'package:study_flow/features/project/project_model.dart';
+import 'package:study_flow/providers/user_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/theme.dart';
@@ -15,6 +17,7 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final users = ref.watch(userProvider);
     final projects = ref.watch(projectProvider);
 
     return Scaffold(
@@ -32,6 +35,37 @@ class HomeScreen extends ConsumerWidget {
             ),
             const SizedBox(width: 10),
             Text("내 프로젝트", style: AppTheme.titleSmall.copyWith(fontSize: 18)),
+            const SizedBox(width: 20),
+            Row(
+              children: [
+                // [NEW] 🗑️ DB 초기화 버튼
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_forever,
+                    color: Colors.orangeAccent,
+                  ),
+                  tooltip: "DB 초기화 (전체 삭제)",
+                  onPressed: () async {
+                    // 1. DB 파일 삭제
+                    await LocalDatabase.instance.deleteAppDatabase();
+
+                    // 2. 화면(Provider) 새로고침 -> 빈 DB로 다시 로드됨
+                    ref.invalidate(projectProvider);
+
+                    // 3. 안내 메시지
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('데이터가 모두 초기화되었습니다.')),
+                    );
+                  },
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await LocalDatabase.instance.debugPrintDatabase();
+                  },
+                  child: Text('데베 확인하기!'),
+                ),
+              ],
+            ),
           ],
         ),
         actions: [profileScreen(context)],
@@ -169,7 +203,7 @@ class HomeScreen extends ConsumerWidget {
 
             const SizedBox(height: 4),
             Text(
-              DateFormat('yyyy.MM.dd').format(project.createdAt),
+              DateFormat('yyyy.MM.dd').format(project.create_at),
               style: AppTheme.caption.copyWith(fontSize: 12),
             ),
 
@@ -259,15 +293,32 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (nameCtrl.text.isNotEmpty) {
+                // 1. 유저 정보를 먼저 로드하고 변수에 담습니다.
+                final user = await ref.read(userProvider.notifier).loadUser();
+
+                // 2. 유저 ID가 있는지 확인 (없으면 빈 문자열 혹은 에러 처리)
+                final userId = user?.id ?? '';
+
+                if (userId.isEmpty) {
+                  // 유저 정보가 없을 경우 처리 (예: 로그인이 필요합니다 메시지 등)
+                  print("유저 정보가 없습니다.");
+                  return;
+                }
+
                 final newProject = ProjectModel(
                   id: const Uuid().v4(),
+                  user_id: userId, // [수정] 위에서 구한 userId 사용
+                  create_at: DateTime.now(), // [주의] DB 컬럼명 create_at 확인
+                  update_at: null,
                   name: nameCtrl.text,
                   tags: tagCtrl.text,
-                  createdAt: DateTime.now(),
+                  is_sync: 0,
                 );
+
                 ref.read(projectProvider.notifier).addProject(newProject);
+
                 Navigator.pop(context);
               }
             },

@@ -23,12 +23,39 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
     state = [project, ...state];
   }
 
-  // 3. 태그 업데이트 (화면 즉시 반영)
-  Future<void> updateProjectTags(String projectId, String newTags) async {
-    await LocalDatabase.instance.updateProject(projectId, tags: newTags);
+  Future<void> updateProjectAll(ProjectModel newProjectModel) async {
+    await LocalDatabase.instance.updateProject(
+      newProjectModel.id,
+      updateAt: newProjectModel.update_at,
+      name: newProjectModel.name,
+      tags: newProjectModel.tags,
+      isSync: newProjectModel.is_sync,
+    );
     state = [
       for (final p in state)
-        if (p.id == projectId) p.copyWith(tags: newTags) else p,
+        if (p.id == newProjectModel.id)
+          p.updateWith(
+            update_at: newProjectModel.update_at,
+            name: newProjectModel.name,
+            tags: newProjectModel.tags,
+            is_sync: newProjectModel.is_sync,
+          )
+        else
+          p,
+    ];
+  }
+
+  Future<void> updateProjectUpdateAt(
+    String projectId,
+    DateTime newUpadateAt,
+  ) async {
+    await LocalDatabase.instance.updateProject(
+      projectId,
+      updateAt: newUpadateAt,
+    );
+    state = [
+      for (final p in state)
+        if (p.id == projectId) p.updateWith(update_at: newUpadateAt) else p,
     ];
   }
 
@@ -37,7 +64,24 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
     await LocalDatabase.instance.updateProject(projectId, name: newName);
     state = [
       for (final p in state)
-        if (p.id == projectId) p.copyWith(name: newName) else p,
+        if (p.id == projectId) p.updateWith(name: newName) else p,
+    ];
+  }
+
+  // 3. 태그 업데이트 (화면 즉시 반영)
+  Future<void> updateProjectTags(String projectId, String newTags) async {
+    await LocalDatabase.instance.updateProject(projectId, tags: newTags);
+    state = [
+      for (final p in state)
+        if (p.id == projectId) p.updateWith(tags: newTags) else p,
+    ];
+  }
+
+  Future<void> updateProjectIsSync(String projectId, int newIsSync) async {
+    await LocalDatabase.instance.updateProject(projectId, isSync: newIsSync);
+    state = [
+      for (final p in state)
+        if (p.id == projectId) p.updateWith(is_sync: newIsSync) else p,
     ];
   }
 

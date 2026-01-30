@@ -6,37 +6,79 @@ import '../core/provider_config.dart';
 import '../core/local_db_helper.dart';
 import '../models/user_model.dart';
 
-final userProvider = StateNotifierProvider<UserNotifier, UserModel>((ref) {
+final userProvider = StateNotifierProvider<UserNotifier, List<UserModel>>((
+  ref,
+) {
   return UserNotifier()..loadUser();
 });
 
-class UserNotifier extends StateNotifier<UserModel> {
-  UserNotifier() : super(UserModel(name: ''));
+class UserNotifier extends StateNotifier<List<UserModel>> {
+  UserNotifier()
+    : super([
+        UserModel(id: '', name: '', join_path: '', password: '', social_id: ''),
+      ]);
 
-  Future<void> loadUser() async {
-    final db = await LocalDatabase.instance.database;
-    UserModel user = await db.query('user').then((maps) {
-      if (maps.isNotEmpty) {
-        return maps.first as UserModel;
-      } else {
-        return UserModel(name: '');
-      }
-    });
+  Future<UserModel?> loadUser() async {
+    final user = await LocalDatabase.instance.selectUser();
+
     state = user;
 
     if (isOnlineMode) {
       try {
-        final response = await http.get(Uri.parse('$baseUrl/user/'));
+        final response = await http.get(Uri.parse('$baseUrl/api/user/'));
         if (response.statusCode == 200) {
           final data = json.decode(utf8.decode(response.bodyBytes));
           final serverUser = data != null
-              ? UserModel(id: data['id'], name: data['name'])
-              : UserModel(name: '');
-          state = serverUser;
+              ? UserModel(
+                  id: data['id'],
+                  name: data['name'],
+                  join_path: data['join_path'],
+                  password: data['password'],
+                  social_id: data['social_id'],
+                )
+              : UserModel(
+                  id: '',
+                  name: '',
+                  join_path: '',
+                  password: '',
+                  social_id: '',
+                );
+
+          state = [serverUser];
+          return serverUser;
         }
       } catch (e) {
         print("front error: $e");
       }
     }
+
+    // 서버 통신 실패 혹은 오프라인일 때, 로컬 데이터의 첫 번째 유저 반환
+    return state.isNotEmpty ? state.first : null;
+  }
+
+  // 2. 프로젝트 추가
+  Future<void> addUser(UserModel user) async {
+    await LocalDatabase.instance.insertUser(user);
+    // 기존 목록 맨 앞에 새 프로젝트 추가
+    state = [user, ...state];
+  }
+
+  // 3. 이름(닉네임) 업데이트 (화면 즉시 반영)
+  Future<void> updateUsersName(String userId, String newName) async {
+    await LocalDatabase.instance.updateUser(userId, name: newName);
+    state = [
+      for (final p in state)
+        if (p.id == userId) p.updateWith(name: newName) else p,
+    ];
+  }
+
+  // 4. 비밀번호 업데이트 (화면 즉시 반영)
+  // 소셜 로그인이 아닌 자체(Local) 로그인일 경우만 가능
+  Future<void> updateProjectName(String projectId, String newName) async {
+    await LocalDatabase.instance.updateProject(projectId, name: newName);
+    state = [
+      for (final p in state)
+        if (p.id == projectId) p.updateWith(name: newName) else p,
+    ];
   }
 }
