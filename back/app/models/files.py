@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlmodel import SQLModel, Field, Relationship
-from .project import Projects
+from .projects import Projects
 
 
 # [DB 테이블 모델]
