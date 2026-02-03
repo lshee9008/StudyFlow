@@ -1,7 +1,7 @@
 .env
-.idea
+.idea/
 .venv
-.studyflow.db
+*.db
 
 __pycache__/
 *.pyc
