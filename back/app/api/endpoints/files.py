@@ -4,15 +4,16 @@ from sqlmodel import Session
 from app.core.database import get_session
 from app.models.files import FileCreate, FileRead
 from app.crud import crud_files
+
 import uuid
 
 router = APIRouter()
 
 @router.post("/", response_model=FileRead)
-def create_file(
+def create_files(
     *, session: Session = Depends(get_session), file_in: FileCreate
 ):
-    return crud_file.create_file(session, file_in)
+    return crud_files.create_files(session, file_in)
 
 @router.get("/{project_id}", response_model=List[FileRead])
 def read_files(
