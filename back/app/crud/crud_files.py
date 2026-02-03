@@ -1,5 +1,5 @@
 from sqlmodel import Session, select
-from app.models.file import Files, FileCreate
+from app.models.files import Files, FileCreate
 import uuid
 
 def create_file(session: Session, file_in: FileCreate) -> Files:
