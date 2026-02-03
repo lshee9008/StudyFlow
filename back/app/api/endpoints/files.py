@@ -3,11 +3,10 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 from app.core.database import get_session
 from app.models.files import FileCreate, FileRead
-<<<<<<< HEAD
-from app.crud import crud_file
-=======
+
 from app.crud import crud_files
->>>>>>> ddf3d21 (서버 논리오류 수정)
+
+
 import uuid
 
 router = APIRouter()
