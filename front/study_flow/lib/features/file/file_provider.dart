@@ -184,15 +184,47 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     required String prompt,
   }) async {
     String content = state.blocks.map((b) => b.controller.text).join("\n");
+
+    // 내용이 너무 짧으면 요청 안 함 (오작동 방지)
     if (content.trim().length < 5) return;
 
     state = state.copyWith(isLoading: true);
+
     try {
       final String baseUrl = Platform.isAndroid
           ? 'http://10.0.2.2:8000'
           : 'http://localhost:8000';
-      // ... (AI 요청 로직 동일) ...
-      // 여기서는 코드 길이상 생략했지만 기존 코드 그대로 넣으시면 됩니다.
+
+      // [프롬프트 수정] 한국어 출력 및 형식 강제
+      final systemPrompt =
+          """
+Role: Professional Summarizer.
+Task: Summarize the user's notes based on the request: "$prompt".
+Context Tags: "$tags".
+
+[Rules]
+1. **Must respond in Korean (한국어).**
+2. Use valid **Markdown** format.
+3. Use bullet points (-) for clarity.
+4. **Do NOT** include conversational fillers like "Here is the summary". Just provide the summary directly.
+5. If the input is just a single word or too short, define that term or explain it briefly in Korean.
+""";
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/ai/summarize'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "content": content,
+          "tags": tags,
+          "custom_prompt": systemPrompt,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        String summary = data['summary'];
+        state = state.copyWith(summaryContent: summary);
+      }
     } catch (e) {
       print("AI Error: $e");
     } finally {

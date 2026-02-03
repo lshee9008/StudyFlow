@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 import 'dart:convert';
 
 import '../core/provider_config.dart';
@@ -20,14 +21,46 @@ class UserNotifier extends StateNotifier<List<UserModel>> {
 
   Future<UserModel?> loadUser() async {
     final user = await LocalDatabase.instance.selectUser();
+    print(user);
 
     state = user;
 
+    List<UserModel> userModelState = state;
+
+    print(userModelState);
+
     if (isOnlineMode) {
       try {
-        final response = await http.get(Uri.parse('$baseUrl/api/user/'));
+        final headers = {"Content-Type": "application/json"};
+
+        // 1. 보낼 데이터를 먼저 Map으로 만듭니다.
+        final Map<String, dynamic> requestData = {
+          'id': Uuid().v4(),
+          'name': 'dqwdqwdqwdw',
+          'join_path': '카카오',
+          'social_id': 'dwqdqwdqdw',
+          'password': '13123123jebw@',
+        };
+
+        print(requestData);
+
+        final body = jsonEncode(requestData);
+
+        print('body : $body');
+
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/users/'), // URL 끝의 슬래시 주의 (아래 2번 참조)
+          headers: headers,
+          body: body,
+        );
+
+        // 3. 디버깅을 위해 상태 코드와 바디를 확인하세요.
+        print('Status Code: ${response.statusCode}');
+        print('Body: ${response.body}');
+
         if (response.statusCode == 200) {
           final data = json.decode(utf8.decode(response.bodyBytes));
+          print(data);
           final serverUser = data != null
               ? UserModel(
                   id: data['id'],

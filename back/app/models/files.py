@@ -25,7 +25,7 @@ class Files(SQLModel, table=True):
     update_at: Optional[datetime] = None
 
     # 관계 설정
-    project: Optional[Projects] = Relationship(back_populates="files")
+    projects: Optional[Projects] = Relationship(back_populates="files")
 
 
 # [요청 모델]
