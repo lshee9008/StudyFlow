@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:study_flow/core/db_helper/projects_db_helper.dart';
+import 'package:study_flow/core/db_helper/users_db_helper.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
 
@@ -20,7 +22,7 @@ class UserNotifier extends StateNotifier<List<UserModel>> {
       ]);
 
   Future<UserModel?> loadUser() async {
-    final user = await LocalDatabase.instance.selectUser();
+    final user = await UsersDBHelper.selectUser();
     print(user);
 
     state = user;
@@ -91,14 +93,14 @@ class UserNotifier extends StateNotifier<List<UserModel>> {
 
   // 2. 프로젝트 추가
   Future<void> addUser(UserModel user) async {
-    await LocalDatabase.instance.insertUser(user);
+    await UsersDBHelper.insertUser(user);
     // 기존 목록 맨 앞에 새 프로젝트 추가
     state = [user, ...state];
   }
 
   // 3. 이름(닉네임) 업데이트 (화면 즉시 반영)
   Future<void> updateUsersName(String userId, String newName) async {
-    await LocalDatabase.instance.updateUser(userId, name: newName);
+    await UsersDBHelper.updateUser(userId, name: newName);
     state = [
       for (final p in state)
         if (p.id == userId) p.updateWith(name: newName) else p,
@@ -108,7 +110,7 @@ class UserNotifier extends StateNotifier<List<UserModel>> {
   // 4. 비밀번호 업데이트 (화면 즉시 반영)
   // 소셜 로그인이 아닌 자체(Local) 로그인일 경우만 가능
   Future<void> updateProjectName(String projectId, String newName) async {
-    await LocalDatabase.instance.updateProject(projectId, name: newName);
+    await ProjectsDBHelper.updateProject(projectId, name: newName);
     state = [
       for (final p in state)
         if (p.id == projectId) p.updateWith(name: newName) else p,
