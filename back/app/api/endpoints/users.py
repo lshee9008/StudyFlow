@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 from app.core.database import get_session
-from app.models.user import UserCreate, UserRead
+from app.models.users import UserCreate, UserRead
 from app.crud import crud_user
 
 router = APIRouter()

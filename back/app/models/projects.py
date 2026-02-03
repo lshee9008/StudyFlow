@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
 # 순환 참조 방지를 위해 TYPE_CHECKING을 쓸 수도 있지만, 여기선 간단히 문자열 참조 사용
-from .user import Users
+from .users import Users
 
 
 # [DB 테이블 모델]

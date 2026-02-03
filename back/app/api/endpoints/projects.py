@@ -2,8 +2,8 @@ from typing import List
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 from app.core.database import get_session
-from app.models.project import ProjectCreate, ProjectRead
-from app.crud import crud_project
+from app.models.projects import ProjectCreate, ProjectRead
+from app.crud import crud_projects
 import uuid
 
 router = APIRouter()

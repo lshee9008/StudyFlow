@@ -1,5 +1,5 @@
 from sqlmodel import Session, select
-from app.models.project import Projects, ProjectCreate
+from app.models.projects import Projects, ProjectCreate
 import uuid
 
 def create_project(session: Session, project_in: ProjectCreate) -> Projects:
