@@ -1,6 +1,6 @@
 import uvicorn
 from fastapi import FastAPI
-from app.api.v1.api import api_router
+from app.api.api import api_router
 from app.core.database import init_db
 
 app = FastAPI(title="StudyFlow Backend")
