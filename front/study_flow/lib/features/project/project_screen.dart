@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:study_flow/core/db_helper/files_db_helper.dart';
 import 'package:study_flow/features/file/file_model.dart';
 import 'package:study_flow/features/project/project_model.dart';
 import 'package:uuid/uuid.dart';
@@ -47,9 +48,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
 
   void _loadFiles() {
     setState(() {
-      _filesFuture = LocalDatabase.instance.selectProjectFiles(
-        widget.project.id,
-      );
+      _filesFuture = FilesDBHelper.selectProjectFiles(widget.project.id);
     });
   }
 
@@ -87,8 +86,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
   }
 
   Future<void> _deleteFile(String fileId) async {
-    final db = await LocalDatabase.instance.database;
-    await db.delete('files', where: 'id = ?', whereArgs: [fileId]);
+    await FilesDBHelper.deleteFile(fileId);
     _loadFiles();
   }
 
@@ -115,7 +113,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await LocalDatabase.instance.updateFile(
+              await FilesDBHelper.updateFile(
                 file.id,
                 title: controller.text,
                 tags: file.tags,
@@ -492,7 +490,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
       prompt: '',
       summary: '',
     );
-    await LocalDatabase.instance.insertFile(newFile);
+    await FilesDBHelper.insertFile(newFile);
     if (!mounted) return;
     await Navigator.push(
       context,

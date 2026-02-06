@@ -8,6 +8,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 // 이모지 피커 패키지
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:study_flow/core/db_helper/files_db_helper.dart';
 
 // 모델 및 프로바이더, DB 헬퍼 임포트
 import '../../models/block_model.dart';
@@ -164,7 +165,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 
       // 2. TextField 초기값을 위해 DB에서 직접 데이터 한번 조회
       // (Provider 상태를 바로 읽어도 되지만, 컨트롤러 초기화 시점을 명확히 하기 위함)
-      final fileModel = await LocalDatabase.instance.getFile(widget.fileId);
+      final fileModel = await FilesDBHelper.getFile(widget.fileId);
 
       if (fileModel != null && mounted) {
         setState(() {

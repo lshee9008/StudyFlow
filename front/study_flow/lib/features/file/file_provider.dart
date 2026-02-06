@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:study_flow/core/db_helper/files_db_helper.dart';
 import 'package:study_flow/features/file/file_model.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -24,25 +25,25 @@ class FilesNotifier extends StateNotifier<List<FileModel>> {
 
   // 목록 불러오기
   Future<void> loadFiles(String projectId) async {
-    final files = await LocalDatabase.instance.selectProjectFiles(projectId);
+    final files = await FilesDBHelper.selectProjectFiles(projectId);
     state = files;
   }
 
   // 파일 추가
   Future<void> addFile(FileModel file) async {
-    await LocalDatabase.instance.insertFile(file);
+    await FilesDBHelper.insertFile(file);
     state = [file, ...state];
   }
 
   // 파일 삭제
   Future<void> deleteFile(String fileId) async {
-    await LocalDatabase.instance.deleteFile(fileId);
+    await FilesDBHelper.deleteFile(fileId);
     state = state.where((f) => f.id != fileId).toList();
   }
 
   // (목록 화면에서 제목 수정 시 사용)
   Future<void> updatefileAll(FileModel newFileModel) async {
-    await LocalDatabase.instance.updateFile(
+    await FilesDBHelper.updateFile(
       newFileModel.id,
       updateAt: newFileModel.update_at,
       title: newFileModel.title,
@@ -70,7 +71,7 @@ class FilesNotifier extends StateNotifier<List<FileModel>> {
   }
 
   Future<void> updateFileTitle(String fileId, String? newTitle) async {
-    await LocalDatabase.instance.updateFile(fileId, title: newTitle);
+    await FilesDBHelper.updateFile(fileId, title: newTitle);
     state = [
       for (final f in state)
         if (f.id == fileId) f.updateWith(title: newTitle) else f,
@@ -126,7 +127,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   // 1. 파일 상세 내용 불러오기 (JSON -> Block 변환)
   Future<void> loadFileDetail(String fileId) async {
     state = state.copyWith(isLoading: true);
-    final fileModel = await LocalDatabase.instance.getFile(fileId);
+    final fileModel = await FilesDBHelper.getFile(fileId);
 
     if (fileModel != null) {
       List<Block> loadedBlocks = [];
@@ -166,7 +167,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         .toList();
     final String contentJson = jsonEncode(jsonList);
 
-    await LocalDatabase.instance.updateFile(
+    await FilesDBHelper.updateFile(
       fileId,
       updateAt: updateAt,
       title: title,
