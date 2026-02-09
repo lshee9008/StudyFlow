@@ -43,7 +43,13 @@ class FilesDBHelper {
   }) async {
     final db = await LocalDatabase.instance.database;
     final Map<String, dynamic> updates = {};
-    if (updateAt != null) updates['updateAt'] = updateAt;
+
+    // 🔴 [수정 포인트 1] DateTime을 String으로 변환 (.toIso8601String())
+    // 🔴 [수정 포인트 2] DB 컬럼명에 맞춰 키값 수정 ('updateAt' -> 'update_at')
+    if (updateAt != null) {
+      updates['update_at'] = updateAt.toIso8601String();
+    }
+
     if (title != null) updates['title'] = title;
     if (tags != null) updates['tags'] = tags;
     if (icon != null) updates['icon'] = icon;
@@ -52,6 +58,7 @@ class FilesDBHelper {
     if (summary != null) updates['summary'] = summary;
 
     if (updates.isEmpty) return 0;
+
     return await db.update('files', updates, where: 'id = ?', whereArgs: [id]);
   }
 

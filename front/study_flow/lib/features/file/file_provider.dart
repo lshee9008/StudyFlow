@@ -212,7 +212,7 @@ Context Tags: "$tags".
 """;
 
       final response = await http.post(
-        Uri.parse('$baseUrl/api/ai/summarize'),
+        Uri.parse('$baseUrl/api/files/summarize'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "content": content,

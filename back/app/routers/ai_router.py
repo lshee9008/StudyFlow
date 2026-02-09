@@ -4,7 +4,6 @@
 #
 # router = APIRouter(prefix="/api/ai", tags=["ai"])
 #
-#
 # # 요청 데이터 모델 정의
 # class SummaryRequest(BaseModel):
 #     content: str  # 노트 본문 내용
@@ -16,7 +15,7 @@
 #     # 1. Ollama에게 보낼 최종 프롬프트 구성
 #     system_instruction = (
 #         f"You are a helpful AI assistant. "
-#         f"Context/Tags: {request.tags}. "
+#         f"Context/Tags: {request.tags}."
 #         f"User's Instruction: {request.custom_prompt}. "
 #         f"Please summarize the following content accordingly:"
 #     )
@@ -36,6 +35,7 @@
 #                 },
 #                 timeout=60.0  # 생성 시간이 걸릴 수 있으므로 넉넉하게
 #             )
+#
 #             response.raise_for_status()
 #             result = response.json()
 #             return {"summary": result.get("response", "")}
