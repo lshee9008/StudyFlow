@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// [경로 확인] 사용자 환경에 맞춰 경로가 정확한지 확인해주세요
 import '../../core/db_helper/files_db_helper.dart';
 import '../../models/block_model.dart';
 import 'file_provider.dart';
@@ -152,7 +151,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     }
 
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 2), () async {
+    _debounceTimer = Timer(const Duration(milliseconds: 800), () async {
       await ref
           .read(fileEditorProvider.notifier)
           .saveFile(
@@ -188,7 +187,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
   void _handleTextChanged(String text, int index) {
     final currentBlockId = ref.read(fileEditorProvider).blocks[index].id;
 
-    // [엔터 감지 및 블록 생성 로직]
     if (text.contains('\n')) {
       final split = text.split('\n');
       final currentContent = split[0];
@@ -208,7 +206,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
       return;
     }
 
-    // [슬래시 메뉴 로직]
     int slashIndex = text.lastIndexOf('/');
     if (slashIndex != -1) {
       String query = text.substring(slashIndex + 1);
@@ -224,13 +221,9 @@ class _FileScreenState extends ConsumerState<FileScreen> {
     _onContentChanged(activeBlockId: currentBlockId);
   }
 
-  // 🔴 [핵심 수정] 키 이벤트 핸들러 (KeyEventResult 반환)
-  // ignored: TextField가 처리하도록 둠 (입력, 엔터 줄바꿈 등)
-  // handled: 여기서 처리하고 TextField에는 전달 안 함 (메뉴 이동, 커서 이동 등)
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event, int index) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
-    // 1. 메뉴가 떠있을 때
     if (_overlayEntry != null) {
       if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
         if (_menuSelectedIndex > 0) {
@@ -249,7 +242,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
           index: index,
           newType: _currentFilteredOptions[_menuSelectedIndex]['type'],
         );
-        return KeyEventResult.handled; // 메뉴 선택 시 엔터 소비
+        return KeyEventResult.handled;
       } else if (event.logicalKey == LogicalKeyboardKey.escape) {
         _removeOverlay();
         return KeyEventResult.handled;
@@ -257,9 +250,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
       return KeyEventResult.ignored;
     }
 
-    // 2. 에디터 네비게이션
     if (event.logicalKey == LogicalKeyboardKey.backspace) {
-      // 내용이 비었을 때 백스페이스 -> 블록 삭제
       if (ref.read(fileEditorProvider).blocks[index].controller.text.isEmpty &&
           index > 0) {
         _deleteBlock(index);
@@ -277,9 +268,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
         return KeyEventResult.handled;
       }
     } else if (event.logicalKey == LogicalKeyboardKey.enter) {
-      // [중요] 엔터는 무시(ignored)해서 TextField가 '\n'을 입력하게 둠
-      // -> _handleTextChanged가 '\n'을 감지해서 새 블록 생성
-      return KeyEventResult.ignored;
+      return KeyEventResult.ignored; // 엔터는 무시 -> TextField가 줄바꿈 처리
     }
 
     return KeyEventResult.ignored;
@@ -464,7 +453,6 @@ class _FileScreenState extends ConsumerState<FileScreen> {
                       key: ValueKey(block.id),
                       index: index,
                       block: block,
-                      // 키 이벤트 핸들러 전달 (FocusNode에 연결됨)
                       onKey: _handleKeyEvent,
                       onChanged: (text, idx) {
                         _handleTextChanged(text, idx);
@@ -672,12 +660,11 @@ class _FileScreenState extends ConsumerState<FileScreen> {
 }
 
 // -----------------------------------------------------------------------------
-// [WIDGET] HoverBlockItem (최종 수정됨: 포커스 노드에 이벤트 직접 연결)
+// [WIDGET] HoverBlockItem
 // -----------------------------------------------------------------------------
 class HoverBlockItem extends StatefulWidget {
   final int index;
   final Block block;
-  // 🔴 콜백 타입: KeyEventResult 반환
   final KeyEventResult Function(FocusNode, KeyEvent, int) onKey;
   final Function(String, int) onChanged;
   final VoidCallback onDelete;
@@ -719,8 +706,8 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
 
   @override
   Widget build(BuildContext context) {
-    // 🔴 [최종 해결] 빌드 시점에 포커스 노드에 키 리스너를 직접 연결합니다.
-    // 이렇게 하면 TextField의 포커스 동작을 방해하지 않으면서 키 입력을 가로챌 수 있습니다.
+    // 🔴 [최종 해결] 빌드 시점에 focusNode에 이벤트 핸들러 부착
+    // 위젯 트리 간섭 없이 가장 깔끔하게 키를 가로챔
     widget.block.focusNode.onKeyEvent = (node, event) {
       return widget.onKey(node, event, widget.index);
     };
@@ -753,8 +740,7 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
           Expanded(
             child: CompositedTransformTarget(
               link: widget.block.layerLink,
-              // 더 이상 Focus나 KeyboardListener로 감싸지 않습니다.
-              // widget.block.focusNode가 모든 일을 처리합니다.
+              // KeyboardListener 삭제 -> 깔끔한 TextField
               child: TextField(
                 controller: widget.block.controller,
                 focusNode: widget.block.focusNode,

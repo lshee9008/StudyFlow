@@ -9,6 +9,7 @@ import '../../models/block_model.dart';
 import '../../core/markdown_parser.dart';
 import 'file_model.dart';
 
+// [모델] 요약 블록
 class SummaryBlock {
   String content;
   bool isSaved;
@@ -106,6 +107,7 @@ class FileEditorState {
 class FileEditorNotifier extends StateNotifier<FileEditorState> {
   FileEditorNotifier() : super(FileEditorState(blocks: []));
 
+  // 1. 파일 불러오기
   Future<void> loadFileDetail(String fileId) async {
     state = state.copyWith(isLoading: true);
     final fileModel = await FilesDBHelper.getFile(fileId);
@@ -157,6 +159,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     }
   }
 
+  // 2. 저장하기
   Future<void> saveFile({
     required String fileId,
     required String title,
@@ -183,6 +186,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     );
   }
 
+  // 3. AI 요약 요청 (정렬 기능 추가)
   Future<void> requestAutoAISummary({
     required String title,
     required String tags,
@@ -203,9 +207,18 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       }
     }
 
-    // 조건 완화: 1글자라도 있으면 요청 (사용자가 테스트 중일 수 있으므로)
+    // 내용이 너무 짧으면 기존 자동 요약 삭제 (빈 내용 정리)
+    if (activeBlockId != null && targetContent.trim().length < 2) {
+      final cleanedSummaries = state.summaryBlocks
+          .where((s) => s.isSaved || s.relatedBlockId != activeBlockId)
+          .toList();
+      if (cleanedSummaries.length != state.summaryBlocks.length) {
+        state = state.copyWith(summaryBlocks: cleanedSummaries);
+      }
+      return;
+    }
+
     if (fullContext.trim().isEmpty && title.trim().isEmpty) return;
-    if (activeBlockId != null && targetContent.trim().isEmpty) return;
 
     state = state.copyWith(isLoading: true);
 
@@ -214,13 +227,12 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           ? 'http://10.0.2.2:8000'
           : 'http://localhost:8000';
 
-      // [프롬프트 수정] 명확한 리스트 요구
       final systemPrompt = """
 역할: 지능형 노트 어시스턴트.
 [지시 사항]
 1. 전체 문맥을 참고하여 '타겟 내용'의 핵심을 설명하거나 요약하십시오.
-2. 타겟 내용이 단어라면 그 뜻을, 문장이라면 핵심 요약을 제공하십시오.
-3. **각 요약 문장은 반드시 '- '(하이픈과 공백)으로 시작하십시오.** (예: - 이것은 요약입니다.)
+2. 답변은 **명확한 문장**으로 작성하십시오. (빈칸이나 의미 없는 특수문자 금지)
+3. **각 요약 문장은 반드시 '- '(하이픈과 공백)으로 시작하십시오.**
 4. 한국어로 작성하십시오.
 """;
 
@@ -247,29 +259,24 @@ $targetContent
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         String rawSummary = data['summary'];
 
-        print("🔥 [AI 응답]: $rawSummary");
+        print("🔥 [AI Raw Summary]: $rawSummary");
 
-        // [파싱 로직 개선]
-        List<String> newLines = [];
+        List<String> newLines = rawSummary
+            .split('\n')
+            .map(
+              (line) => line.replaceAll(RegExp(r'^[-*•>0-9.]+\s*'), '').trim(),
+            )
+            .where((line) => line.length >= 2)
+            .toList();
 
-        // 줄바꿈으로 나누고 순회
-        for (var line in rawSummary.split('\n')) {
-          // 불렛 제거 및 공백 제거
-          String cleanLine = line.replaceAll(RegExp(r'^[-*•]\s*'), '').trim();
-
-          // 빈 줄이 아니면 추가
-          if (cleanLine.isNotEmpty) {
-            newLines.add(cleanLine);
-          }
-        }
-
-        // 해당 블록의 기존 요약 삭제 (새 요약으로 갱신)
-        List<SummaryBlock> mergedBlocks = state.summaryBlocks
+        // 1. 기존 요약 중 '현재 블록'의 저장 안 된 것들은 제외 (새 것으로 교체하기 위해)
+        List<SummaryBlock> tempSummaries = state.summaryBlocks
             .where((b) => b.isSaved || b.relatedBlockId != activeBlockId)
             .toList();
 
+        // 2. 새 요약 추가
         for (var line in newLines) {
-          mergedBlocks.add(
+          tempSummaries.add(
             SummaryBlock(
               content: line,
               isSaved: false,
@@ -278,7 +285,19 @@ $targetContent
           );
         }
 
-        state = state.copyWith(summaryBlocks: mergedBlocks);
+        // 🔴 [최종 정렬] 블록의 순서대로 요약 카드 재정렬 (Sorting)
+        // 블록 ID -> 인덱스 맵 생성
+        final blockOrder = {
+          for (int i = 0; i < state.blocks.length; i++) state.blocks[i].id: i,
+        };
+
+        tempSummaries.sort((a, b) {
+          final idxA = blockOrder[a.relatedBlockId] ?? 999999;
+          final idxB = blockOrder[b.relatedBlockId] ?? 999999;
+          return idxA.compareTo(idxB);
+        });
+
+        state = state.copyWith(summaryBlocks: tempSummaries);
       }
     } catch (e) {
       print("AI Error: $e");
@@ -312,12 +331,21 @@ $targetContent
     state = state.copyWith(blocks: newBlocks);
   }
 
+  // 블록 삭제 시 관련 요약도 삭제
   void removeBlock(int index) {
     if (state.blocks.length <= 1) return;
+
+    final String deletedBlockId = state.blocks[index].id;
+
     final newBlocks = [...state.blocks];
     newBlocks[index].dispose();
     newBlocks.removeAt(index);
-    state = state.copyWith(blocks: newBlocks);
+
+    final newSummaries = state.summaryBlocks
+        .where((s) => s.relatedBlockId != deletedBlockId)
+        .toList();
+
+    state = state.copyWith(blocks: newBlocks, summaryBlocks: newSummaries);
   }
 
   void updateBlockType(int index, BlockType newType) {
