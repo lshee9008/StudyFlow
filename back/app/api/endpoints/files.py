@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import BaseModel
 import httpx
 from fastapi import APIRouter, Depends
@@ -7,8 +5,6 @@ from sqlmodel import Session
 from app.core.database import get_session
 from app.models.files import FileCreate, FileRead
 from app.crud import crud_files
-
-import uuid
 
 router = APIRouter()
 

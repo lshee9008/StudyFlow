@@ -1,19 +1,40 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
-import 'package:study_flow/core/db_helper/files_db_helper.dart';
-import 'package:study_flow/features/file/file_model.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
 
+import '../../core/db_helper/files_db_helper.dart';
 import '../../models/block_model.dart';
+import '../../core/markdown_parser.dart';
+import 'file_model.dart';
 
-import '../../core/local_db_helper.dart';
+class SummaryBlock {
+  String content;
+  bool isSaved;
+  String? relatedBlockId;
 
-// =============================================================================
-// 1️⃣ [목록 관리용] filesProvider (List<FileModel>)
-// =============================================================================
-// 설명: ProjectScreen에서 파일 리스트를 보여주고 추가/삭제하는 용도
+  SummaryBlock({
+    required this.content,
+    this.isSaved = false,
+    this.relatedBlockId,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'content': content,
+    'isSaved': isSaved,
+    'relatedBlockId': relatedBlockId,
+  };
+
+  factory SummaryBlock.fromJson(Map<String, dynamic> json) {
+    return SummaryBlock(
+      content: json['content'] ?? '',
+      isSaved: json['isSaved'] ?? false,
+      relatedBlockId: json['relatedBlockId'],
+    );
+  }
+}
+
 final filesProvider = StateNotifierProvider<FilesNotifier, List<FileModel>>((
   ref,
 ) {
@@ -23,54 +44,22 @@ final filesProvider = StateNotifierProvider<FilesNotifier, List<FileModel>>((
 class FilesNotifier extends StateNotifier<List<FileModel>> {
   FilesNotifier() : super([]);
 
-  // 목록 불러오기
   Future<void> loadFiles(String projectId) async {
     final files = await FilesDBHelper.selectProjectFiles(projectId);
     state = files;
   }
 
-  // 파일 추가
   Future<void> addFile(FileModel file) async {
     await FilesDBHelper.insertFile(file);
     state = [file, ...state];
   }
 
-  // 파일 삭제
   Future<void> deleteFile(String fileId) async {
     await FilesDBHelper.deleteFile(fileId);
     state = state.where((f) => f.id != fileId).toList();
   }
 
-  // (목록 화면에서 제목 수정 시 사용)
-  Future<void> updatefileAll(FileModel newFileModel) async {
-    await FilesDBHelper.updateFile(
-      newFileModel.id,
-      updateAt: newFileModel.update_at,
-      title: newFileModel.title,
-      tags: newFileModel.tags,
-      icon: newFileModel.icon,
-      prompt: newFileModel.prompt,
-      content: newFileModel.content,
-      summary: newFileModel.summary,
-    );
-    state = [
-      for (final p in state)
-        if (p.id == newFileModel.id)
-          p.updateWith(
-            update_at: newFileModel.update_at,
-            title: newFileModel.title,
-            tags: newFileModel.tags,
-            icon: newFileModel.icon,
-            prompt: newFileModel.prompt,
-            content: newFileModel.content,
-            summary: newFileModel.summary,
-          )
-        else
-          p,
-    ];
-  }
-
-  Future<void> updateFileTitle(String fileId, String? newTitle) async {
+  Future<void> updateFileTitle(String fileId, String newTitle) async {
     await FilesDBHelper.updateFile(fileId, title: newTitle);
     state = [
       for (final f in state)
@@ -79,11 +68,6 @@ class FilesNotifier extends StateNotifier<List<FileModel>> {
   }
 }
 
-// =============================================================================
-// 2️⃣ [에디터용] fileEditorProvider (FileEditorState) - 기존 Block State 유지!
-// =============================================================================
-// 설명: FileScreen 안에서 블록을 편집하고, AI 요약을 하고, 저장하는 용도
-// [중요] autoDispose를 써서 파일을 닫으면 상태(블록들)를 메모리에서 해제합니다.
 final fileEditorProvider =
     StateNotifierProvider.autoDispose<FileEditorNotifier, FileEditorState>((
       ref,
@@ -91,40 +75,37 @@ final fileEditorProvider =
       return FileEditorNotifier();
     });
 
-// 🔹 에디터 상태 클래스
 class FileEditorState {
-  final List<Block> blocks; // 블록 리스트 (기존 로직)
+  final List<Block> blocks;
   final bool isLoading;
-  final String? icon; // 현재 아이콘
-  final String summaryContent; // AI 요약 내용
+  final String? icon;
+  final List<SummaryBlock> summaryBlocks;
 
   FileEditorState({
     required this.blocks,
     this.isLoading = false,
     this.icon,
-    this.summaryContent = "",
+    this.summaryBlocks = const [],
   });
 
   FileEditorState copyWith({
     List<Block>? blocks,
     bool? isLoading,
     String? icon,
-    String? summaryContent,
+    List<SummaryBlock>? summaryBlocks,
   }) {
     return FileEditorState(
       blocks: blocks ?? this.blocks,
       isLoading: isLoading ?? this.isLoading,
       icon: icon ?? this.icon,
-      summaryContent: summaryContent ?? this.summaryContent,
+      summaryBlocks: summaryBlocks ?? this.summaryBlocks,
     );
   }
 }
 
-// 🔹 에디터 로직 클래스
 class FileEditorNotifier extends StateNotifier<FileEditorState> {
   FileEditorNotifier() : super(FileEditorState(blocks: []));
 
-  // 1. 파일 상세 내용 불러오기 (JSON -> Block 변환)
   Future<void> loadFileDetail(String fileId) async {
     state = state.copyWith(isLoading: true);
     final fileModel = await FilesDBHelper.getFile(fileId);
@@ -136,24 +117,46 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           final List<dynamic> jsonList = jsonDecode(fileModel.content);
           loadedBlocks = jsonList.map((e) => Block.fromJson(e)).toList();
         } catch (e) {
-          loadedBlocks = [_createBlock(0)];
+          final parsedList = MarkdownParser.parse(fileModel.content);
+          loadedBlocks = parsedList.asMap().entries.map((entry) {
+            return Block(
+              id: DateTime.now().toIso8601String() + "${entry.key}",
+              type: entry.value['type'],
+              content: entry.value['content'],
+            );
+          }).toList();
+          if (loadedBlocks.isEmpty)
+            loadedBlocks = [_createBlock(0, content: fileModel.content)];
         }
       } else {
         loadedBlocks = [_createBlock(0)];
+      }
+
+      List<SummaryBlock> loadedSummary = [];
+      if (fileModel.summary != null && fileModel.summary!.isNotEmpty) {
+        try {
+          final List<dynamic> jsonList = jsonDecode(fileModel.summary!);
+          loadedSummary = jsonList
+              .map((e) => SummaryBlock.fromJson(e))
+              .toList();
+        } catch (e) {
+          loadedSummary = [
+            SummaryBlock(content: fileModel.summary!, isSaved: false),
+          ];
+        }
       }
 
       state = state.copyWith(
         blocks: loadedBlocks,
         isLoading: false,
         icon: fileModel.icon,
-        summaryContent: fileModel.summary ?? "",
+        summaryBlocks: loadedSummary,
       );
     } else {
       state = state.copyWith(blocks: [_createBlock(0)], isLoading: false);
     }
   }
 
-  // 2. 파일 저장하기 (Block -> JSON 변환 -> DB 저장)
   Future<void> saveFile({
     required String fileId,
     required String title,
@@ -161,34 +164,48 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     required String prompt,
     required DateTime updateAt,
   }) async {
-    // 블록들을 JSON으로 직렬화
-    final List<Map<String, dynamic>> jsonList = state.blocks
+    final List<Map<String, dynamic>> contentJson = state.blocks
         .map((b) => b.toJson())
         .toList();
-    final String contentJson = jsonEncode(jsonList);
+    final List<Map<String, dynamic>> summaryJson = state.summaryBlocks
+        .map((b) => b.toJson())
+        .toList();
 
     await FilesDBHelper.updateFile(
       fileId,
       updateAt: updateAt,
       title: title,
       tags: tags,
-      icon: state.icon, // 현재 아이콘 상태
+      icon: state.icon,
       prompt: prompt,
-      content: contentJson, // 변환된 블록 내용
-      summary: state.summaryContent, // 현재 요약 상태
+      content: jsonEncode(contentJson),
+      summary: jsonEncode(summaryJson),
     );
   }
 
-  // 3. AI 요약 요청 (기존 로직 유지)
   Future<void> requestAutoAISummary({
     required String title,
     required String tags,
     required String prompt,
+    String? activeBlockId,
   }) async {
-    String content = state.blocks.map((b) => b.controller.text).join("\n");
+    String fullContext = state.blocks.map((b) => b.controller.text).join("\n");
+    String targetContent = "";
 
-    // 내용이 너무 짧으면 요청 안 함 (오작동 방지)
-    if (content.trim().length < 5) return;
+    if (activeBlockId != null) {
+      try {
+        final targetBlock = state.blocks.firstWhere(
+          (b) => b.id == activeBlockId,
+        );
+        targetContent = targetBlock.controller.text;
+      } catch (e) {
+        return;
+      }
+    }
+
+    // 조건 완화: 1글자라도 있으면 요청 (사용자가 테스트 중일 수 있으므로)
+    if (fullContext.trim().isEmpty && title.trim().isEmpty) return;
+    if (activeBlockId != null && targetContent.trim().isEmpty) return;
 
     state = state.copyWith(isLoading: true);
 
@@ -197,36 +214,30 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           ? 'http://10.0.2.2:8000'
           : 'http://localhost:8000';
 
-      // [프롬프트 수정] 한국어 출력 및 형식 강제
-      final systemPrompt =
+      // [프롬프트 수정] 명확한 리스트 요구
+      final systemPrompt = """
+역할: 지능형 노트 어시스턴트.
+[지시 사항]
+1. 전체 문맥을 참고하여 '타겟 내용'의 핵심을 설명하거나 요약하십시오.
+2. 타겟 내용이 단어라면 그 뜻을, 문장이라면 핵심 요약을 제공하십시오.
+3. **각 요약 문장은 반드시 '- '(하이픈과 공백)으로 시작하십시오.** (예: - 이것은 요약입니다.)
+4. 한국어로 작성하십시오.
+""";
+
+      final requestContent =
           """
-역할: 지능형 노트 어시스턴트 및 지식 관리자.
-목표: 사용자의 구체적인 요청에 따라 노트 내용을 처리하고 응답을 생성하십시오.
+[전체 문맥]
+$fullContext
 
-[컨텍스트 정보]
-1. **제목 (Title)**: "$title" (노트의 핵심 주제)
-2. **태그 (Tags)**: "$tags" (관련된 주요 개념 또는 카테고리)
-3. **사용자 요청 (Request)**: "$prompt" (당신이 수행해야 할 구체적인 지시사항)
-
-[처리 규칙]
-1. **맥락 분석**: '제목'과 '태그'를 활용하여 '본문(Content)'의 맥락과 분야를 파악하십시오.
-2. **행동 지침**: '사용자 요청'을 엄격히 따르십시오.
-   - 요청이 "요약"인 경우: 구조화된 요약본을 제공하십시오.
-   - 요청이 "설명"인 경우: 개념을 명확하게 정의하고 풀어서 설명하십시오.
-   - 요청이 모호한 경우: 핵심 통찰(Insight)이 포함된 포괄적인 요약을 제공하십시오.
-3. **빈약한 내용 보완**: 본문 내용이 너무 짧거나(1~2문장) 단순 키워드만 있는 경우, '백과사전'처럼 행동하십시오. 제목과 태그를 바탕으로 해당 용어를 정의하고 관련된 배경 지식을 풍부하게 설명하십시오.
-4. **언어**: 반드시 **한국어(Korean)**로 답변하십시오.
-5. **형식**: 가독성 좋은 **Markdown** 형식을 사용하십시오.
-   - 핵심 키워드는 **굵게(Bold)** 처리하십시오.
-   - 목록은 글머리 기호(-)를 사용하십시오.
-   - 중요한 인사이트는 인용구(>)를 사용하십시오.
+[타겟 내용]
+$targetContent
 """;
 
       final response = await http.post(
         Uri.parse('$baseUrl/api/files/summarize'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "content": content,
+          "content": requestContent,
           "tags": tags,
           "custom_prompt": systemPrompt,
         }),
@@ -234,8 +245,40 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        String summary = data['summary'];
-        state = state.copyWith(summaryContent: summary);
+        String rawSummary = data['summary'];
+
+        print("🔥 [AI 응답]: $rawSummary");
+
+        // [파싱 로직 개선]
+        List<String> newLines = [];
+
+        // 줄바꿈으로 나누고 순회
+        for (var line in rawSummary.split('\n')) {
+          // 불렛 제거 및 공백 제거
+          String cleanLine = line.replaceAll(RegExp(r'^[-*•]\s*'), '').trim();
+
+          // 빈 줄이 아니면 추가
+          if (cleanLine.isNotEmpty) {
+            newLines.add(cleanLine);
+          }
+        }
+
+        // 해당 블록의 기존 요약 삭제 (새 요약으로 갱신)
+        List<SummaryBlock> mergedBlocks = state.summaryBlocks
+            .where((b) => b.isSaved || b.relatedBlockId != activeBlockId)
+            .toList();
+
+        for (var line in newLines) {
+          mergedBlocks.add(
+            SummaryBlock(
+              content: line,
+              isSaved: false,
+              relatedBlockId: activeBlockId,
+            ),
+          );
+        }
+
+        state = state.copyWith(summaryBlocks: mergedBlocks);
       }
     } catch (e) {
       print("AI Error: $e");
@@ -244,12 +287,20 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     }
   }
 
-  // 요약 내용 직접 수정
-  void updateSummaryContent(String newContent) {
-    state = state.copyWith(summaryContent: newContent);
+  void toggleSummaryBlockSaved(int index) {
+    if (index >= state.summaryBlocks.length) return;
+    final newBlocks = [...state.summaryBlocks];
+    newBlocks[index].isSaved = !newBlocks[index].isSaved;
+    state = state.copyWith(summaryBlocks: newBlocks);
   }
 
-  // --- [블록 조작 메서드들] (기존 로직 유지) ---
+  void deleteSummaryBlock(int index) {
+    if (index >= state.summaryBlocks.length) return;
+    final newBlocks = [...state.summaryBlocks];
+    newBlocks.removeAt(index);
+    state = state.copyWith(summaryBlocks: newBlocks);
+  }
+
   void addBlock(
     int index, {
     BlockType type = BlockType.text,
@@ -271,10 +322,8 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   void updateBlockType(int index, BlockType newType) {
     final blocks = [...state.blocks];
-    final block = blocks[index];
-    block.type = newType;
-    block.controller.text = ""; // 타입 변경 시 내용 초기화 (선택사항)
-    if (newType == BlockType.checkbox) block.isChecked = false;
+    blocks[index].type = newType;
+    if (newType == BlockType.checkbox) blocks[index].isChecked = false;
     state = state.copyWith(blocks: blocks);
   }
 
