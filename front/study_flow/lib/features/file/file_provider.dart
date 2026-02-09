@@ -181,6 +181,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   // 3. AI 요약 요청 (기존 로직 유지)
   Future<void> requestAutoAISummary({
+    required String title,
     required String tags,
     required String prompt,
   }) async {
@@ -199,16 +200,26 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       // [프롬프트 수정] 한국어 출력 및 형식 강제
       final systemPrompt =
           """
-Role: Professional Summarizer.
-Task: Summarize the user's notes based on the request: "$prompt".
-Context Tags: "$tags".
+역할: 지능형 노트 어시스턴트 및 지식 관리자.
+목표: 사용자의 구체적인 요청에 따라 노트 내용을 처리하고 응답을 생성하십시오.
 
-[Rules]
-1. **Must respond in Korean (한국어).**
-2. Use valid **Markdown** format.
-3. Use bullet points (-) for clarity.
-4. **Do NOT** include conversational fillers like "Here is the summary". Just provide the summary directly.
-5. If the input is just a single word or too short, define that term or explain it briefly in Korean.
+[컨텍스트 정보]
+1. **제목 (Title)**: "$title" (노트의 핵심 주제)
+2. **태그 (Tags)**: "$tags" (관련된 주요 개념 또는 카테고리)
+3. **사용자 요청 (Request)**: "$prompt" (당신이 수행해야 할 구체적인 지시사항)
+
+[처리 규칙]
+1. **맥락 분석**: '제목'과 '태그'를 활용하여 '본문(Content)'의 맥락과 분야를 파악하십시오.
+2. **행동 지침**: '사용자 요청'을 엄격히 따르십시오.
+   - 요청이 "요약"인 경우: 구조화된 요약본을 제공하십시오.
+   - 요청이 "설명"인 경우: 개념을 명확하게 정의하고 풀어서 설명하십시오.
+   - 요청이 모호한 경우: 핵심 통찰(Insight)이 포함된 포괄적인 요약을 제공하십시오.
+3. **빈약한 내용 보완**: 본문 내용이 너무 짧거나(1~2문장) 단순 키워드만 있는 경우, '백과사전'처럼 행동하십시오. 제목과 태그를 바탕으로 해당 용어를 정의하고 관련된 배경 지식을 풍부하게 설명하십시오.
+4. **언어**: 반드시 **한국어(Korean)**로 답변하십시오.
+5. **형식**: 가독성 좋은 **Markdown** 형식을 사용하십시오.
+   - 핵심 키워드는 **굵게(Bold)** 처리하십시오.
+   - 목록은 글머리 기호(-)를 사용하십시오.
+   - 중요한 인사이트는 인용구(>)를 사용하십시오.
 """;
 
       final response = await http.post(

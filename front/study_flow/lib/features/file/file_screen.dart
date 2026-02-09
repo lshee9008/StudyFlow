@@ -214,6 +214,7 @@ class _FileScreenState extends ConsumerState<FileScreen> {
       await ref
           .read(fileEditorProvider.notifier)
           .requestAutoAISummary(
+            title: _titleController.text,
             tags: _tagsController.text,
             prompt: _aiPromptController.text.isEmpty
                 ? "내용을 분석하고 요약해줘"
