@@ -37,7 +37,8 @@ class LocalDatabase {
         name TEXT NOT NULL,
         join_path TEXT NOT NULL,
         password TEXT,
-        social_id TEXT
+        social_id TEXT,
+        is_login INTEGER NOT NULL DEFAULT 0
       )
     ''');
 

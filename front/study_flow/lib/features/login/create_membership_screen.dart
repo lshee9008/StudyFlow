@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+
 import '../home/home_screen.dart';
 import '../../models/user_model.dart';
+import '../../providers/user_provider.dart';
 
 class CreateMembershipScreen extends StatefulWidget {
   const CreateMembershipScreen({super.key});
@@ -10,20 +14,13 @@ class CreateMembershipScreen extends StatefulWidget {
 }
 
 class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
-  UserModel newUser = UserModel(
-    name: "",
-    join_path: '',
-    password: '',
-    social_id: '',
-    id: '',
-  );
   bool serverPossibleId = false;
   bool serverPossiblePassword = false;
   String possibleId = "";
   String possiblePassword = "";
   final _formKey = GlobalKey<FormState>();
   final newUserIdController = TextEditingController();
-  final newUserPaswordController = TextEditingController();
+  final newUserPasswordController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -84,9 +81,6 @@ class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
                               : Colors.red,
                         ),
                         onPressed: () {
-                          /* 서버에서 아이디 중복 확인 로직 추가 예정
-                          serverPossibleId = anySeverFuntion()
-                          */
                           serverPossibleId = true;
                           if (serverPossibleId == true) {
                             possibleId = newUserIdController.text;
@@ -103,6 +97,7 @@ class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
                       SizedBox(
                         width: screenWidth * 0.4,
                         child: TextFormField(
+                          controller: newUserPasswordController,
                           autovalidateMode: AutovalidateMode.onUserInteraction,
                           decoration: InputDecoration(labelText: "사용할 비밀번호 입력"),
                           onChanged: (value) {
@@ -118,7 +113,7 @@ class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
                             }
                             if (serverPossiblePassword &&
                                     possiblePassword !=
-                                        newUserPaswordController.text ||
+                                        newUserPasswordController.text ||
                                 !serverPossiblePassword) {
                               return '사용 가능한 아이디인지 확인해 주십시오';
                             }
@@ -135,12 +130,9 @@ class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
                               : Colors.red,
                         ),
                         onPressed: () {
-                          /* 서버에서 비밀번호 중복 확인 로직 추가 예정
-                          serverPossiblePassword = anySeverFuntion()
-                          */
                           serverPossiblePassword = true;
                           if (serverPossiblePassword == true) {
-                            possiblePassword = newUserPaswordController.text;
+                            possiblePassword = newUserPasswordController.text;
                           }
                           setState(() {});
                         },
@@ -151,36 +143,71 @@ class _CreateMembershipScreenState extends State<CreateMembershipScreen> {
               ),
             ),
             SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
-            ElevatedButton(
-              onPressed: () {
-                /* 서버에서 회원 생성 함수 예정
-                  UserModel newUser = createMembershipFuntion()
-                */
-                if (_formKey.currentState!.validate() &&
-                    serverPossibleId &&
-                    serverPossiblePassword) {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => HomeScreen()),
-                    (route) => false,
-                  );
-                }
-                setState(() {});
+            Consumer(
+              builder: (context, ref, child) {
+                return ElevatedButton(
+                  onPressed: () async {
+                    if (_formKey.currentState!.validate() &&
+                        serverPossibleId &&
+                        serverPossiblePassword) {
+                      UserModel newUser = UserModel(
+                        id: Uuid().v4(),
+                        name: newUserIdController.text,
+                        join_path: '',
+                        password: newUserPasswordController.text,
+                        social_id: '',
+                        is_login: 1,
+                      );
+                      print('create_user: ${newUser.password}');
+                      String? state = await ref.watch(userProvider.notifier).addUser(newUser);
+                      if (context.mounted) {
+                        if (state == null) {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => HomeScreen(),
+                            ),
+                            (route) => false,
+                          );
+                        } else {
+                          showDialog(
+                            context: context,
+                            builder: (context) {
+                              return AlertDialog(
+                                title: Text('회원가입 실패'),
+                                content: Text(state),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                    },
+                                    child: Text('확인'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        }
+                      }
+                    }
+                    setState(() {});
+                  },
+                  style: ElevatedButton.styleFrom(
+                    fixedSize: Size(screenWidth * 0.2, screenWidth * 0.05),
+                    backgroundColor: Color(0xFF3C3C3C),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  child: Text(
+                    "시작하기",
+                    style: TextStyle(
+                      fontSize: screenWidth * 0.03,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
               },
-              style: ElevatedButton.styleFrom(
-                fixedSize: Size(screenWidth * 0.2, screenWidth * 0.05),
-                backgroundColor: Color(0xFF3C3C3C),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              child: Text(
-                "시작하기",
-                style: TextStyle(
-                  fontSize: screenWidth * 0.03,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
             ),
           ],
         ),

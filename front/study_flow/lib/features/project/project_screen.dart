@@ -6,7 +6,6 @@ import 'package:study_flow/features/file/file_model.dart';
 import 'package:study_flow/features/project/project_model.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../core/local_db_helper.dart';
 import '../../core/theme.dart';
 import '../file/file_screen.dart';
 import 'project_provider.dart';
@@ -137,90 +136,109 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgPrimary,
-      appBar: AppBar(
+    bool isUseHardwareBackButton = false;
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didpop, result) {
+        if(didpop && isUseHardwareBackButton) {
+          widget.project.update_at = DateTime.now();
+          widget.project.name = _projectNameController.text;
+          widget.project.tags = _tags.join(',');
+          ref.read(projectProvider.notifier).updateProjectAll(widget.project);
+        }
+      },
+      child: Scaffold(
         backgroundColor: AppTheme.bgPrimary,
-        elevation: 0,
-        leading: BackButton(
-          color: AppTheme.textSecondary,
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(
-          children: [
-            const Icon(
-              Icons.folder_open,
-              size: 20,
-              color: AppTheme.textSecondary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _projectNameController,
-                style: AppTheme.titleSmall.copyWith(fontSize: 16),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  filled: false,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
+        appBar: AppBar(
+          backgroundColor: AppTheme.bgPrimary,
+          elevation: 0,
+          leading: BackButton(
+            color: AppTheme.textSecondary,
+            onPressed: () {
+              widget.project.update_at = DateTime.now();
+              widget.project.name = _projectNameController.text;
+              widget.project.tags = _tags.join(',');
+              ref.read(projectProvider.notifier).updateProjectAll(widget.project);
+              isUseHardwareBackButton = false;
+              Navigator.pop(context);
+            },
+          ),
+          title: Row(
+            children: [
+              const Icon(
+                Icons.folder_open,
+                size: 20,
+                color: AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _projectNameController,
+                  style: AppTheme.titleSmall.copyWith(fontSize: 16),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    filled: false,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: _updateName,
                 ),
-                onChanged: _updateName,
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.more_horiz, color: AppTheme.textSecondary),
+              onPressed: () {},
+            ),
+            const SizedBox(width: 12),
+          ],
+        ),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Tag Management (바로 반영되도록 수정됨)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  ..._tags.map((tag) => _buildTagChip(tag)),
+                  _buildAddTagButton(),
+                ],
+              ),
+            ),
+      
+            const Divider(height: 1, color: AppTheme.borderColor),
+      
+            // 2. File List
+            Expanded(
+              child: FutureBuilder<List<FileModel>>(
+                future: _filesFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: AppTheme.aiAccentColor,
+                      ),
+                    );
+                  }
+                  final files = snapshot.data ?? [];
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: files.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index == files.length) return _buildAddPageButton();
+                      return _buildFileItem(files[index]);
+                    },
+                  );
+                },
               ),
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_horiz, color: AppTheme.textSecondary),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 1. Tag Management (바로 반영되도록 수정됨)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ..._tags.map((tag) => _buildTagChip(tag)),
-                _buildAddTagButton(),
-              ],
-            ),
-          ),
-
-          const Divider(height: 1, color: AppTheme.borderColor),
-
-          // 2. File List
-          Expanded(
-            child: FutureBuilder<List<FileModel>>(
-              future: _filesFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      color: AppTheme.aiAccentColor,
-                    ),
-                  );
-                }
-                final files = snapshot.data ?? [];
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: files.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == files.length) return _buildAddPageButton();
-                    return _buildFileItem(files[index]);
-                  },
-                );
-              },
-            ),
-          ),
-        ],
       ),
     );
   }

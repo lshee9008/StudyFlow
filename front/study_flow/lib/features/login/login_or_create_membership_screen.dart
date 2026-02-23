@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:study_flow/features/login/create_membership_screen.dart';
+
+import 'create_membership_screen.dart';
 import 'login_screen.dart';
+import 'registered_users_screen.dart';
 
 class LoginOrCreateMembershipScreen extends StatelessWidget {
   const LoginOrCreateMembershipScreen({super.key});
@@ -35,7 +37,7 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: MediaQuery.sizeOf(context).height * 0.1),
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.04),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -58,12 +60,14 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(height: MediaQuery.sizeOf(context).height * 0.03),
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.02),
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => CreateMembershipScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => CreateMembershipScreen(),
+                  ),
                 );
               },
               style: ElevatedButton.styleFrom(
@@ -77,6 +81,31 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
                 "회원 가입하기",
                 style: TextStyle(
                   fontSize: screenWidth * 0.02,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.02),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => RegisteredUsersScreen(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                fixedSize: Size(screenWidth * 0.2, screenWidth * 0.05),
+                backgroundColor: Color(0xFF3C3C3C),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              child: Text(
+                "등록된 유저 사용하기",
+                style: TextStyle(
+                  fontSize: screenWidth * 0.018,
                   fontWeight: FontWeight.bold,
                 ),
               ),

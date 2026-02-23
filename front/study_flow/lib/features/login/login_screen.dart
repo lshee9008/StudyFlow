@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../home/home_screen.dart';
-import '../../models/user_model.dart';
+import '../../providers/user_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,6 +13,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+  final userIdController = TextEditingController();
+  final userPasswordController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       SizedBox(
                         width: screenWidth * 0.4,
                         child: TextFormField(
+                          controller: userIdController,
                           decoration: InputDecoration(labelText: "아이디 입력"),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
@@ -56,6 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     width: screenWidth * 0.4,
                     child: TextFormField(
+                      controller: userPasswordController,
                       decoration: InputDecoration(labelText: "비밀번호 입력"),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -69,31 +75,35 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
-            ElevatedButton(
-              onPressed: () {
-                /* 아이디 비밀번호 검사로직
-                UserModel user = serverLoginFuntion()
-                */
-                if(_formKey.currentState!.validate()){
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (context) => HomeScreen()),
-                    (route) => false,
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                fixedSize: Size(screenWidth * 0.2, screenWidth * 0.05),
-                backgroundColor: Color(0xFF3C3C3C),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+            Consumer(
+              builder: (context, ref, child) => ElevatedButton(
+                onPressed: () async {
+                  // 수정 : 현재 사용자 이름만 알면 로그인 가능
+                  String? loginUser = await ref
+                      .read(userProvider.notifier)
+                      .loginUser(userIdController.text, userPasswordController.text);
+
+                  if (loginUser == null && _formKey.currentState!.validate() && context.mounted) {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => HomeScreen()),
+                      (route) => false,
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  fixedSize: Size(screenWidth * 0.2, screenWidth * 0.05),
+                  backgroundColor: Color(0xFF3C3C3C),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
-              ),
-              child: Text(
-                "시작하기",
-                style: TextStyle(
-                  fontSize: screenWidth * 0.03,
-                  fontWeight: FontWeight.bold,
+                child: Text(
+                  "시작하기",
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.03,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),

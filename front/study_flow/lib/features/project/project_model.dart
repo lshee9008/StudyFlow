@@ -2,7 +2,7 @@ class ProjectModel {
   final String id;
   String user_id;
   final DateTime create_at;
-  final DateTime? update_at;
+  DateTime update_at;
   String name;
   String tags;
   int is_sync;
@@ -30,7 +30,7 @@ class ProjectModel {
           : DateTime.now(),
       name: json['name']?.toString() ?? '제목 없음',
       tags: json['tags']?.toString() ?? '',
-      is_sync: json['is_sync'] ?? 0,
+      is_sync: json['is_sync'] == 1 ? 1 : 0,
     );
   }
 
