@@ -1,25 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:study_flow/core/db_helper/all_db_helper.dart';
-import 'package:study_flow/core/local_db_helper.dart';
-import 'package:study_flow/features/project/project_model.dart';
-import 'package:study_flow/providers/user_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/db_helper/all_db_helper.dart';
 import '../../core/theme.dart';
 
 import 'profile_screen.dart';
+import '../login/initial_screen.dart';
 import '../project/project_provider.dart';
 import '../project/project_screen.dart';
+import '../project/project_model.dart';
+
+import '../../models/user_model.dart';
+import '../../providers/user_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final users = ref.watch(userProvider);
-    final projects = ref.watch(projectProvider);
+    UserModel? user = ref.watch(userProvider);
+
+    print('HomeScreen - users: $user');
+    if (user == null) {
+      return InitialScreen();
+    }
+    if (user.id == '') {
+      print('유저 조회중...');
+      return Center(child: CircularProgressIndicator());
+    }
+    List<ProjectModel> projects = ref.watch(projectProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
@@ -69,7 +80,7 @@ class HomeScreen extends ConsumerWidget {
             ),
           ],
         ),
-        actions: [profileScreen(context)],
+        actions: [profileScreen(context, ref, user)],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -312,15 +323,14 @@ class HomeScreen extends ConsumerWidget {
                   id: const Uuid().v4(),
                   user_id: userId, // [수정] 위에서 구한 userId 사용
                   create_at: DateTime.now(), // [주의] DB 컬럼명 create_at 확인
-                  update_at: null,
+                  update_at: DateTime.now(),
                   name: nameCtrl.text,
                   tags: tagCtrl.text,
                   is_sync: 0,
                 );
 
-                ref.read(projectProvider.notifier).addProject(newProject);
-
                 Navigator.pop(context);
+                ref.read(projectProvider.notifier).addProject(newProject);
               }
             },
             style: ElevatedButton.styleFrom(
@@ -357,7 +367,7 @@ class HomeScreen extends ConsumerWidget {
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  ref.read(projectProvider.notifier).deleteProject(project.id);
+                  ref.read(projectProvider.notifier).deleteProject(project);
                 },
               ),
             ],

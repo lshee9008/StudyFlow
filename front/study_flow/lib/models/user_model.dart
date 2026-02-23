@@ -4,6 +4,7 @@ class UserModel {
   String join_path;
   String password;
   String social_id;
+  int is_login;
 
   UserModel({
     required this.id,
@@ -11,6 +12,7 @@ class UserModel {
     required this.join_path,
     required this.password,
     required this.social_id,
+    required this.is_login,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -21,6 +23,7 @@ class UserModel {
       join_path: json['join_path']?.toString() ?? '',
       password: json['password']?.toString() ?? '',
       social_id: json['social_id']?.toString() ?? '',
+      is_login: json['is_login'] == 1 ? 1 : 0,
     );
   }
 
@@ -31,6 +34,7 @@ class UserModel {
       'join_path': join_path,
       'password': password,
       'social_id': social_id,
+      'is_login': is_login,
     };
   }
 
@@ -41,6 +45,7 @@ class UserModel {
       join_path: this.join_path,
       password: password ?? this.password,
       social_id: this.social_id,
+      is_login: this.is_login,
     );
   }
 }
