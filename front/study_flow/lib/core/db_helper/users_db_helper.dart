@@ -9,10 +9,22 @@ class UsersDBHelper {
   }
 
   // 유저 조회
-  static Future<List<UserModel>> selectUser() async {
+  static Future<UserModel?> selectUser() async {
+    final db = await LocalDatabase.instance.database;
+    final result = await db.query(
+      'users',
+      where: 'is_login = ?',
+      whereArgs: [1],
+    );
+    return result.isNotEmpty ? UserModel.fromJson(result.first) : null;
+  }
+
+  static Future<List<UserModel>?> selectUsers() async {
     final db = await LocalDatabase.instance.database;
     final result = await db.query('users');
-    return result.map((json) => UserModel.fromJson(json)).toList();
+    return result.isNotEmpty
+        ? result.map((json) => UserModel.fromJson(json)).toList()
+        : null;
   }
 
   // 유저 수정
@@ -20,11 +32,13 @@ class UsersDBHelper {
     String id, {
     String? name,
     String? password,
+    String? is_login,
   }) async {
     final db = await LocalDatabase.instance.database;
     final Map<String, dynamic> updates = {};
     if (name != null) updates['name'] = name;
     if (password != null) updates['password'] = password;
+    if (is_login != null) updates['is_login'] = is_login;
 
     if (updates.isEmpty) return 0;
     return await db.update('users', updates, where: 'id = ?', whereArgs: [id]);

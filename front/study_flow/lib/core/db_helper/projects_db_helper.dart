@@ -16,18 +16,17 @@ class ProjectsDBHelper {
 
   static Future<int> updateProject(
     String id, {
-    DateTime? updateAt,
+    String? updateAt,
     String? name,
     String? tags,
     int? isSync,
   }) async {
     final db = await LocalDatabase.instance.database;
     final Map<String, dynamic> updates = {};
-    if (updateAt != null)
-      updates['updateAt'] = updateAt; // DateTime 처리는 모델에서 확인 필요
+    if (updateAt != null) updates['update_at'] = updateAt; // DateTime 처리는 모델에서 확인 필요
     if (name != null) updates['name'] = name;
     if (tags != null) updates['tags'] = tags;
-    if (isSync != null) updates['isSync'] = isSync;
+    if (isSync != null) updates['is_sync'] = isSync;
 
     if (updates.isEmpty) return 0;
     return await db.update(
