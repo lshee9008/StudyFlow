@@ -107,7 +107,6 @@ class FileEditorState {
 class FileEditorNotifier extends StateNotifier<FileEditorState> {
   FileEditorNotifier() : super(FileEditorState(blocks: []));
 
-  // 1. 파일 불러오기
   Future<void> loadFileDetail(String fileId) async {
     state = state.copyWith(isLoading: true);
     final fileModel = await FilesDBHelper.getFile(fileId);
@@ -159,7 +158,6 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     }
   }
 
-  // 2. 저장하기
   Future<void> saveFile({
     required String fileId,
     required String title,
@@ -186,7 +184,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     );
   }
 
-  // 3. AI 요약 요청 (정렬 기능 추가)
+  // 🤖 [AI 핵심] 퀄리티의 끝판왕, 백과사전 수준의 프롬프트 튜닝
   Future<void> requestAutoAISummary({
     required String title,
     required String tags,
@@ -207,7 +205,6 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       }
     }
 
-    // 내용이 너무 짧으면 기존 자동 요약 삭제 (빈 내용 정리)
     if (activeBlockId != null && targetContent.trim().length < 2) {
       final cleanedSummaries = state.summaryBlocks
           .where((s) => s.isSaved || s.relatedBlockId != activeBlockId)
@@ -227,21 +224,37 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           ? 'http://10.0.2.2:8000'
           : 'http://localhost:8000';
 
-      final systemPrompt = """
-역할: 지능형 노트 어시스턴트.
-[지시 사항]
-1. 전체 문맥을 참고하여 '타겟 내용'의 핵심을 설명하거나 요약하십시오.
-2. 답변은 **명확한 문장**으로 작성하십시오. (빈칸이나 의미 없는 특수문자 금지)
-3. **각 요약 문장은 반드시 '- '(하이픈과 공백)으로 시작하십시오.**
-4. 한국어로 작성하십시오.
+      // 🚨 AI가 교수님 수준으로 완벽하게 정리하도록 강제하는 프롬프트
+      final systemPrompt =
+          """
+당신은 IT 및 학문 분야의 '최고 수준 전문가'이자 '백과사전 집필진'입니다.
+
+[배경 지식 도메인]
+- 문서 제목: "$title"
+- 관련 태그: "$tags"
+
+[절대 규칙 - 위반 시 치명적 오류 발생]
+1. 인사말, 서론, 부연 설명("알겠습니다", "설명해 드릴게요" 등)은 절대 출력하지 마세요. 즉시 본론만 출력하세요.
+2. [문서 제목]이나 [태그] 자체의 의미를 설명하지 마세요. 오직 문맥을 파악하는 용도로만 사용하세요.
+3. 사용자가 작성한 **[분석 대상 텍스트]**에 대해 단순 사전적 의미를 넘어, 실무적/학술적 관점에서 **매우 깊이 있고 상세하게** 분석하세요.
+4. 분석 대상이 짧은 단어(예: insert, print)일지라도, 해당 도메인 내에서의 동작 원리, 사용 목적, 중요성 등을 백과사전 수준으로 확장하여 설명하세요.
+
+[필수 작성 포맷 (마크다운 적극 활용)]
+응답은 반드시 아래의 구조화된 마크다운(Markdown) 포맷을 사용하여 가독성을 극대화하세요.
+- **📌 핵심 정의**: 대상 텍스트의 명확한 개념 설명 (굵은 글씨 활용)
+- **💡 주요 특징 및 원리**: 글머리 기호(-)를 활용한 상세한 리스트 나열
+- **💻 활용 예시 / 코드**: 구체적인 예시나 상황 (코드 블록 ` ``` ` 적극 활용)
+- **📊 비교 / 참고 (선택)**: 관련된 다른 개념이나 속성이 있다면 마크다운 표(Table)로 시각화
+
+다양한 시각적 요소(리스트, 표, 코드, 인용구 등)를 총동원하여 사용자에게 압도적인 퀄리티의 정보 카드를 제공하세요.
 """;
 
       final requestContent =
           """
-[전체 문맥]
+[전체 흐름 참고용]
 $fullContext
 
-[타겟 내용]
+[분석 대상 텍스트 (이것을 상세하고 깊이 있게 분석/설명하세요)]
 $targetContent
 """;
 
@@ -250,7 +263,7 @@ $targetContent
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "content": requestContent,
-          "tags": tags,
+          "tags": "",
           "custom_prompt": systemPrompt,
         }),
       );
@@ -259,38 +272,34 @@ $targetContent
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         String rawSummary = data['summary'];
 
-        print("🔥 [AI Raw Summary]: $rawSummary");
+        print("🔥 [AI Raw Summary]: \n$rawSummary");
 
-        List<String> newLines = rawSummary
-            .split('\n')
-            .map(
-              (line) => line.replaceAll(RegExp(r'^[-*•>0-9.]+\s*'), '').trim(),
-            )
-            .where((line) => line.length >= 2)
-            .toList();
+        // 🧹 마크다운 포맷 정리 (가끔 AI가 최상단에 ```markdown 을 붙이는 오류 방지)
+        String cleanSummary = rawSummary.trim();
+        cleanSummary = cleanSummary.replaceFirst(
+          RegExp(r'^```(markdown)?\n?'),
+          '',
+        );
+        cleanSummary = cleanSummary.replaceFirst(RegExp(r'\n?```$'), '');
+        cleanSummary = cleanSummary.trim();
 
-        // 1. 기존 요약 중 '현재 블록'의 저장 안 된 것들은 제외 (새 것으로 교체하기 위해)
         List<SummaryBlock> tempSummaries = state.summaryBlocks
             .where((b) => b.isSaved || b.relatedBlockId != activeBlockId)
             .toList();
 
-        // 2. 새 요약 추가
-        for (var line in newLines) {
+        if (cleanSummary.isNotEmpty) {
           tempSummaries.add(
             SummaryBlock(
-              content: line,
+              content: cleanSummary,
               isSaved: false,
               relatedBlockId: activeBlockId,
             ),
           );
         }
 
-        // 🔴 [최종 정렬] 블록의 순서대로 요약 카드 재정렬 (Sorting)
-        // 블록 ID -> 인덱스 맵 생성
         final blockOrder = {
           for (int i = 0; i < state.blocks.length; i++) state.blocks[i].id: i,
         };
-
         tempSummaries.sort((a, b) {
           final idxA = blockOrder[a.relatedBlockId] ?? 999999;
           final idxB = blockOrder[b.relatedBlockId] ?? 999999;
@@ -331,12 +340,9 @@ $targetContent
     state = state.copyWith(blocks: newBlocks);
   }
 
-  // 블록 삭제 시 관련 요약도 삭제
   void removeBlock(int index) {
     if (state.blocks.length <= 1) return;
-
     final String deletedBlockId = state.blocks[index].id;
-
     final newBlocks = [...state.blocks];
     newBlocks[index].dispose();
     newBlocks.removeAt(index);
