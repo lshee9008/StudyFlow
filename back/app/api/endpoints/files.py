@@ -21,15 +21,15 @@ class SummaryRequest(BaseModel):
 
 @router.post("/summarize")
 async def summarize_note(request: SummaryRequest):
-    # 💡 [수정] AI에게 TMI 금지령 내리기
+    # 💡 [수정] 제한적인 1타 강사 모드 해제 -> 완벽한 'AI 학습 스튜디오' 모드로 변경
     system_instruction = (
-        f"당신은 군더더기 없이 핵심만 찌르는 1타 강사 AI입니다.\n"
+        f"당신은 사용자의 노트를 완벽하게 분석하고 구조화하는 '최고의 AI 학습 스튜디오 어시스턴트'입니다.\n"
         f"관련 태그: {request.tags}\n"
         f"요청 사항: {request.custom_prompt}\n"
-        f"절대 장황하게 설명(TMI)하거나 인사말을 하지 마세요. 반드시 마크다운(Markdown)을 사용하여 가독성 좋고, 짧고 명확하게 한국어로 답변하세요."
+        f"반드시 마크다운(Markdown) 포맷(이모지, 리스트, 표 등)을 적극 활용하여 가장 가독성 좋고 세련된 한국어(Korean)로 답변하세요."
     )
 
-    full_prompt = f"{system_instruction}\n\n[분석 대상]:\n{request.content}"
+    full_prompt = f"{system_instruction}\n\n[사용자 작성 본문]:\n{request.content}"
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -40,8 +40,8 @@ async def summarize_note(request: SummaryRequest):
                     "prompt": full_prompt,
                     "stream": False,
                     "options": {
-                        "temperature": 0.3, # 💡 답변을 더 건조하고 팩트 위주로 생성
-                        "num_predict": 512, # 너무 길어지는 것 원천 차단
+                        "temperature": 0.4, # 구조화와 창의성의 완벽한 밸런스
+                        "num_predict": 2048, # 💡 [핵심] 사용자의 글이 잘리지 않도록 답변 길이를 대폭 늘림 (기존 512 -> 2048)
                     }
                 }
             )
@@ -52,4 +52,4 @@ async def summarize_note(request: SummaryRequest):
 
     except Exception as e:
         print(f"☁️ AI Cloud Error: {e}")
-        raise HTTPException(status_code=500, detail=f"AI 서버 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI 서버 응답 지연: {str(e)}")

@@ -11,17 +11,15 @@ import '../../core/db_helper/files_db_helper.dart';
 import '../../models/block_model.dart';
 import 'file_provider.dart';
 
-// 💎 Apple Intelligence & Notion 감성을 섞은 프리미엄 네온 다크 테마
-const Color _kBgPrimary = Color(0xFF09090B); // 칠흑 같은 블랙
-const Color _kBgSecondary = Color(0xFF121214); // 패널 배경
-const Color _kCardColor = Color(0xFF1C1C1F);
-const Color _kTextColor = Color(0xFFFAFAFA);
-const Color _kTextHint = Color(0xFF52525B);
-const Color _kTextSecondary = Color(0xFFA1A1AA);
-const Color _kBorderColor = Color(0xFF27272A);
-// ✨ 신비로운 오로라 네온 컬러
-const Color _kAccentNeonBlue = Color(0xFF00F2FE);
-const Color _kAccentNeonPurple = Color(0xFF8B5CF6);
+// 🖋️ 노션 & NotebookLM 감성을 섞은 극강의 프로페셔널 다크 테마
+const Color _kBgPrimary = Color(0xFF141414); // 에디터 배경 (살짝 밝은 블랙)
+const Color _kBgSecondary = Color(0xFF1E1E1E); // AI 스튜디오 패널 배경
+const Color _kCardColor = Color(0xFF2A2A2A); // 카드/속성 배경
+const Color _kTextColor = Color(0xFFF3F4F6); // 눈이 편한 오프화이트
+const Color _kTextHint = Color(0xFF737373);
+const Color _kTextSecondary = Color(0xFFA3A3A3);
+const Color _kBorderColor = Color(0xFF333333); // 은은한 구분선
+const Color _kAccentColor = Color(0xFF3B82F6); // 신뢰감 주는 블루 (AI 포인트)
 
 // -----------------------------------------------------------------------------
 // [WIDGET] Resizable Split View
@@ -34,7 +32,7 @@ class ResizableSplitView extends StatefulWidget {
     Key? key,
     required this.left,
     required this.right,
-    this.initialRatio = 0.65,
+    this.initialRatio = 0.55,
   }) : super(key: key);
   @override
   State<ResizableSplitView> createState() => _ResizableSplitViewState();
@@ -70,26 +68,14 @@ class _ResizableSplitViewState extends State<ResizableSplitView> {
                   if (_ratio > 0.7) _ratio = 0.7;
                 }),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: const Duration(milliseconds: 150),
                   width: 8,
                   color: Colors.transparent,
                   alignment: Alignment.center,
                   child: Container(
                     width: _isDragging ? 2 : 1,
                     height: double.infinity,
-                    decoration: BoxDecoration(
-                      color: _isDragging
-                          ? _kAccentNeonBlue
-                          : _kBorderColor.withOpacity(0.5),
-                      boxShadow: _isDragging
-                          ? [
-                              BoxShadow(
-                                color: _kAccentNeonBlue.withOpacity(0.6),
-                                blurRadius: 10,
-                              ),
-                            ]
-                          : [],
-                    ),
+                    color: _isDragging ? _kAccentColor : _kBorderColor,
                   ),
                 ),
               ),
@@ -115,7 +101,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
   final TextEditingController _tagsController = TextEditingController();
   final TextEditingController _aiPromptController = TextEditingController();
   late TabController _tabController;
-  late AnimationController _pulseController; // AI 로딩 효과 애니메이션
 
   Timer? _saveDebounceTimer;
   Timer? _aiDebounceTimer;
@@ -126,6 +111,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
   List<Map<String, dynamic>> _currentFilteredOptions = [];
   int _viewMode = 0;
   String _lastFocusedText = "";
+  bool _isSaving = false;
 
   final List<Map<String, dynamic>> _allMenuOptions = [
     {'type': BlockType.h1, 'label': '제목 1', 'icon': Icons.looks_one_rounded},
@@ -149,20 +135,12 @@ class _FileScreenState extends ConsumerState<FileScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-
-    // 신비로운 AI 숨쉬기(Pulse) 애니메이션
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-
+    _tabController = TabController(length: 4, vsync: this); // 💡 탭 4개로 확장
     _tabController.addListener(() {
       if (_tabController.index == 1 && _lastFocusedText.trim().isNotEmpty) {
         _triggerAIAnalysis(_lastFocusedText);
       }
     });
-
     WidgetsBinding.instance.addPostFrameCallback((_) => _initializeScreen());
   }
 
@@ -184,7 +162,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
   void dispose() {
     _saveDebounceTimer?.cancel();
     _aiDebounceTimer?.cancel();
-    _pulseController.dispose();
     _titleController.dispose();
     _tagsController.dispose();
     _aiPromptController.dispose();
@@ -193,7 +170,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
     super.dispose();
   }
 
-  // ⚡ [스마트 디바운싱] 서버가 죽지 않도록 저장과 AI 요청을 분리
   void _onContentChanged({String? activeBlockText}) {
     if (activeBlockText != null) {
       _lastFocusedText = activeBlockText;
@@ -201,9 +177,10 @@ class _FileScreenState extends ConsumerState<FileScreen>
           .read(fileEditorProvider)
           .copyWith(focusedText: activeBlockText);
     }
+    setState(() => _isSaving = true);
 
     if (_saveDebounceTimer?.isActive ?? false) _saveDebounceTimer!.cancel();
-    _saveDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+    _saveDebounceTimer = Timer(const Duration(milliseconds: 600), () async {
       await ref
           .read(fileEditorProvider.notifier)
           .saveFile(
@@ -213,14 +190,13 @@ class _FileScreenState extends ConsumerState<FileScreen>
             prompt: _aiPromptController.text,
             updateAt: DateTime.now(),
           );
+      if (mounted) setState(() => _isSaving = false);
     });
 
-    // 🚀 클라우드 모델로 변경되어 속도가 빨라졌으므로, 디바운스 시간을 1초로 단축하여 더 즉각적으로 반응하게 함
     if (_aiDebounceTimer?.isActive ?? false) _aiDebounceTimer!.cancel();
-    _aiDebounceTimer = Timer(const Duration(milliseconds: 1000), () {
-      if (_tabController.index == 1 && _lastFocusedText.trim().isNotEmpty) {
+    _aiDebounceTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (_tabController.index == 1 && _lastFocusedText.trim().isNotEmpty)
         _triggerAIAnalysis(_lastFocusedText);
-      }
     });
   }
 
@@ -253,7 +229,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
     if (text.endsWith(' ')) {
       BlockType? newType;
       String newText = text;
-
       if (text == '/h1 ' || text == '# ') {
         newType = BlockType.h1;
         newText = '';
@@ -295,7 +270,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
     } else {
       _removeOverlay();
     }
-
     _onContentChanged(activeBlockText: text);
   }
 
@@ -357,7 +331,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
       _moveFocus(index + 1);
       return KeyEventResult.handled;
     }
-
     return KeyEventResult.ignored;
   }
 
@@ -412,57 +385,59 @@ class _FileScreenState extends ConsumerState<FileScreen>
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
-        width: 240,
+        width: 220,
         child: CompositedTransformFollower(
           link: blocks[index].layerLink,
           showWhenUnlinked: false,
           offset: const Offset(0, 36),
-          child: Material(
-            elevation: 24,
-            borderRadius: BorderRadius.circular(16),
-            color: _kCardColor.withOpacity(0.85),
-            shadowColor: Colors.black.withOpacity(0.6),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: _kBorderColor.withOpacity(0.8)),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _currentFilteredOptions.length,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemBuilder: (context, i) => Container(
-                      color: i == _menuSelectedIndex
-                          ? _kAccentNeonBlue.withOpacity(0.15)
-                          : Colors.transparent,
-                      child: ListTile(
-                        dense: true,
-                        minLeadingWidth: 20,
-                        leading: Icon(
-                          _currentFilteredOptions[i]['icon'],
-                          size: 18,
-                          color: i == _menuSelectedIndex
-                              ? _kAccentNeonBlue
-                              : _kTextSecondary,
-                        ),
-                        title: Text(
-                          _currentFilteredOptions[i]['label'],
-                          style: TextStyle(
-                            color: i == _menuSelectedIndex
-                                ? Colors.white
-                                : _kTextSecondary,
-                            fontWeight: i == _menuSelectedIndex
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                          ),
-                        ),
-                        onTap: () =>
-                            _applyMenuOption(index, _currentFilteredOptions[i]),
+          child: TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            tween: Tween(begin: 0.95, end: 1.0),
+            builder: (context, val, child) => Transform.scale(
+              scale: val,
+              alignment: Alignment.topLeft,
+              child: Opacity(opacity: val.clamp(0.0, 1.0), child: child),
+            ),
+            child: Material(
+              elevation: 16,
+              borderRadius: BorderRadius.circular(8),
+              color: _kCardColor,
+              shadowColor: Colors.black.withOpacity(0.5),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: _kBorderColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _currentFilteredOptions.length,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  itemBuilder: (context, i) => Container(
+                    color: i == _menuSelectedIndex
+                        ? _kAccentColor.withOpacity(0.15)
+                        : Colors.transparent,
+                    child: ListTile(
+                      dense: true,
+                      minLeadingWidth: 20,
+                      leading: Icon(
+                        _currentFilteredOptions[i]['icon'],
+                        size: 16,
+                        color: i == _menuSelectedIndex
+                            ? _kAccentColor
+                            : _kTextSecondary,
                       ),
+                      title: Text(
+                        _currentFilteredOptions[i]['label'],
+                        style: TextStyle(
+                          color: i == _menuSelectedIndex
+                              ? Colors.white
+                              : _kTextSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                      onTap: () =>
+                          _applyMenuOption(index, _currentFilteredOptions[i]),
                     ),
                   ),
                 ),
@@ -494,8 +469,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
       '🎯',
       '🪐',
       '🧠',
-      '⚡️',
-      '🔮',
     ];
     ref
         .read(fileEditorProvider.notifier)
@@ -512,7 +485,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
       const SnackBar(
         content: Text("전체 복사 완료!"),
         duration: Duration(seconds: 1),
-        backgroundColor: _kAccentNeonBlue,
+        backgroundColor: _kAccentColor,
       ),
     );
   }
@@ -522,6 +495,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
     final fileState = ref.watch(fileEditorProvider);
     final blocks = fileState.blocks;
 
+    // 🖋️ 완벽한 노션 에디터 뷰
     Widget editorView = CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
@@ -531,14 +505,14 @@ class _FileScreenState extends ConsumerState<FileScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 60),
+                const SizedBox(height: 80), // 넉넉한 상단 여백
                 GestureDetector(
                   onTap: _changeRandomIcon,
                   child: MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: Text(
                       fileState.icon ?? '📄',
-                      style: const TextStyle(fontSize: 72),
+                      style: const TextStyle(fontSize: 64),
                     ),
                   ),
                 ),
@@ -546,11 +520,11 @@ class _FileScreenState extends ConsumerState<FileScreen>
                 TextField(
                   controller: _titleController,
                   style: const TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 42,
+                    fontWeight: FontWeight.w800,
                     color: Colors.white,
                     height: 1.2,
-                    letterSpacing: -1.0,
+                    letterSpacing: -0.5,
                   ),
                   decoration: const InputDecoration(
                     border: InputBorder.none,
@@ -562,22 +536,33 @@ class _FileScreenState extends ConsumerState<FileScreen>
                   ),
                   onChanged: (_) => _onContentChanged(),
                 ),
-                const SizedBox(height: 30),
-                _buildPropertyRow(
-                  Icons.local_offer_rounded,
-                  "태그",
-                  _tagsController,
-                  "비어 있음",
+                const SizedBox(height: 24),
+                // 노션 스타일 속성 영역
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: _kBorderColor, width: 1),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildNotionPropertyRow(
+                        Icons.local_offer_outlined,
+                        "태그",
+                        _tagsController,
+                        "비어 있음",
+                      ),
+                      _buildNotionPropertyRow(
+                        Icons.auto_awesome_outlined,
+                        "명령어",
+                        _aiPromptController,
+                        "AI에게 지시할 내용...",
+                      ),
+                    ],
+                  ),
                 ),
-                _buildPropertyRow(
-                  Icons.auto_awesome,
-                  "명령어",
-                  _aiPromptController,
-                  "AI에게 지시할 내용...",
-                ),
                 const SizedBox(height: 30),
-                const Divider(color: _kBorderColor, thickness: 1),
-                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -622,230 +607,255 @@ class _FileScreenState extends ConsumerState<FileScreen>
       ],
     );
 
-    // 🤖 AI 인사이트 우측 패널 (홀로그램 매칭 UX 적용)
+    // 🌟 NotebookLM 스타일 AI 스튜디오 패널
     Widget rightPanel = Container(
-      decoration: const BoxDecoration(
-        color: _kBgSecondary,
-        border: Border(left: BorderSide(color: _kBorderColor, width: 1)),
-      ),
+      color: _kBgSecondary,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // AI 스튜디오 헤더
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+            child: Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: _kAccentColor, size: 20),
+                const SizedBox(width: 8),
+                const Text(
+                  "AI 스튜디오",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 커스텀 탭바
           TabBar(
             controller: _tabController,
-            labelColor: _kAccentNeonBlue,
+            isScrollable: true,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+            labelColor: _kAccentColor,
             unselectedLabelColor: _kTextSecondary,
-            indicatorColor: _kAccentNeonBlue,
+            indicatorColor: _kAccentColor,
             indicatorWeight: 2,
-            dividerColor: Colors.transparent, // 탭바 하단 선 제거로 더 깔끔하게
+            dividerColor: _kBorderColor,
             tabs: const [
-              Tab(icon: Icon(Icons.auto_awesome, size: 18), text: "전체 요약"),
-              Tab(icon: Icon(Icons.hub_rounded, size: 18), text: "상세 분석"),
+              Tab(text: "✨ 전체 요약"),
+              Tab(text: "🔍 상세 분석"),
+              Tab(text: "🧠 핵심 암기"),
+              Tab(text: "🎯 AI 퀴즈"),
             ],
           ),
-          const Divider(height: 1, color: _kBorderColor),
           Expanded(
             child: TabBarView(
               controller: _tabController,
               children: [
-                // 1. 전체 요약 탭
+                // 1. 전체 요약
                 Stack(
                   children: [
                     _buildSummaryList(fileState.summaryBlocks),
                     if (fileState.isSummaryLoading)
                       Positioned.fill(
-                        child: _buildMagicLoader("문서 전체를 스캔하고 있습니다..."),
+                        child: _buildStudioLoader("문서를 스캔하고 있습니다..."),
                       ),
-
-                    // 💡 shadowColor 에러 해결 (속성 제거)
                     Positioned(
-                      bottom: 30,
-                      right: 30,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          boxShadow: [
-                            BoxShadow(
-                              color: _kAccentNeonPurple.withOpacity(0.5),
-                              blurRadius: 10,
-                              spreadRadius: 1,
-                              offset: const Offset(0, 4),
+                      bottom: 24,
+                      right: 24,
+                      child: FloatingActionButton.extended(
+                        onPressed: () => ref
+                            .read(fileEditorProvider.notifier)
+                            .requestAutoAISummary(
+                              title: _titleController.text,
+                              tags: _tagsController.text,
+                              prompt: "",
                             ),
-                          ],
-                          borderRadius: BorderRadius.circular(30),
+                        backgroundColor: _kCardColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: const BorderSide(color: _kBorderColor),
                         ),
-                        child: FloatingActionButton.extended(
-                          onPressed: () => ref
-                              .read(fileEditorProvider.notifier)
-                              .requestAutoAISummary(
-                                title: _titleController.text,
-                                tags: _tagsController.text,
-                                prompt: "",
-                              ),
-                          backgroundColor: _kAccentNeonPurple.withOpacity(0.9),
-                          icon: const Icon(
-                            Icons.auto_fix_high,
-                            color: Colors.white,
-                          ),
-                          label: const Text(
-                            "요약 생성",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          elevation:
-                              0, // Container 그림자를 쓰기 위해 기본 elevation은 0으로
+                        icon: const Icon(
+                          Icons.auto_fix_high,
+                          color: _kTextColor,
+                          size: 18,
                         ),
+                        label: const Text(
+                          "요약 생성",
+                          style: TextStyle(
+                            color: _kTextColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        elevation: 0,
                       ),
                     ),
                   ],
                 ),
 
-                // 2. 상세 분석 탭 (✨ 실시간 1:1 매칭 뷰)
+                // 2. 상세 분석 (포커스 기반)
                 Column(
                   children: [
-                    if (fileState.focusedText.trim().isNotEmpty)
-                      Container(
-                        margin: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.03),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: _kAccentNeonBlue.withOpacity(0.3),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _kAccentNeonBlue.withOpacity(0.05),
-                              blurRadius: 20,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.track_changes_rounded,
-                                  size: 14,
-                                  color: _kAccentNeonBlue,
-                                ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  "현재 포커스된 문맥",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: _kAccentNeonBlue,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              '"${fileState.focusedText}"',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontStyle: FontStyle.italic,
-                                height: 1.5,
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                      child: fileState.focusedText.trim().isNotEmpty
+                          ? Container(
+                              margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: _kBgPrimary,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: _kBorderColor),
                               ),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    Expanded(
-                      child: fileState.isAnalysisLoading
-                          ? _buildMagicLoader("Cloud AI가 숨은 의미를 찾는 중...")
-                          : fileState.currentBlockAnalysis == null ||
-                                fileState.focusedText.trim().isEmpty
-                          ? Center(
                               child: Column(
-                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(
-                                    Icons.bubble_chart_rounded,
-                                    size: 64,
-                                    color: _kBorderColor.withOpacity(0.5),
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.location_searching_rounded,
+                                        size: 14,
+                                        color: _kTextSecondary,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Text(
+                                        "분석 중인 문맥",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: _kTextSecondary,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: 8),
                                   Text(
-                                    "문단을 클릭하고 내용을 작성하세요.\nCloud AI가 즉시 반응합니다.",
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: _kTextSecondary.withOpacity(0.7),
+                                    '"${fileState.focusedText}"',
+                                    style: const TextStyle(
+                                      color: _kTextColor,
+                                      fontSize: 13,
                                       height: 1.5,
-                                      fontSize: 15,
+                                      fontStyle: FontStyle.italic,
                                     ),
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
                             )
-                          : SingleChildScrollView(
-                              padding: const EdgeInsets.fromLTRB(
-                                20,
-                                10,
-                                20,
-                                40,
-                              ),
-                              physics: const BouncingScrollPhysics(),
-                              child: Container(
-                                padding: const EdgeInsets.all(24),
-                                decoration: BoxDecoration(
-                                  color: _kCardColor,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: _kBorderColor),
-                                ),
+                          : const SizedBox.shrink(),
+                    ),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: fileState.isAnalysisLoading
+                            ? _buildStudioLoader("문맥 분석 중...")
+                            : fileState.currentBlockAnalysis == null ||
+                                  fileState.focusedText.trim().isEmpty
+                            ? _buildEmptyStudioState(
+                                Icons.article_outlined,
+                                "문단을 클릭하면\nAI가 실시간으로 분석합니다.",
+                              )
+                            : SingleChildScrollView(
+                                padding: const EdgeInsets.all(20),
+                                physics: const BouncingScrollPhysics(),
                                 child: MarkdownBody(
                                   data: fileState.currentBlockAnalysis!,
-                                  styleSheet: MarkdownStyleSheet(
-                                    p: const TextStyle(
-                                      color: _kTextColor,
-                                      fontSize: 15,
-                                      height: 1.8,
-                                    ),
-                                    strong: const TextStyle(
-                                      color: _kAccentNeonBlue,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    code: const TextStyle(
-                                      backgroundColor: Color(0xFF111111),
-                                      fontFamily: 'monospace',
-                                      color: _kAccentNeonPurple,
-                                      fontSize: 14,
-                                    ),
-                                    codeblockDecoration: BoxDecoration(
-                                      color: const Color(0xFF111111),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: _kBorderColor),
-                                    ),
-                                    tableBorder: TableBorder.all(
-                                      color: _kBorderColor,
-                                    ),
-                                    tableHead: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      backgroundColor: Color(0xFF1A1A1A),
-                                    ),
-                                    blockquoteDecoration: BoxDecoration(
-                                      border: const Border(
-                                        left: BorderSide(
-                                          color: _kAccentNeonPurple,
-                                          width: 4,
-                                        ),
-                                      ),
-                                      color: Colors.white.withOpacity(0.02),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
+                                  styleSheet: _getMarkdownStyle(),
                                 ),
                               ),
-                            ),
+                      ),
                     ),
+                  ],
+                ),
+
+                // 3. 핵심 암기 (Mockup)
+                Stack(
+                  children: [
+                    fileState.isStudioLoading
+                        ? _buildStudioLoader("핵심 개념을 추출 중입니다...")
+                        : fileState.currentMemo == null
+                        ? _buildEmptyStudioState(
+                            Icons.psychology_rounded,
+                            "시험에 나올 핵심만\nAI가 추출해 드립니다.",
+                          )
+                        : SingleChildScrollView(
+                            padding: const EdgeInsets.all(20),
+                            child: MarkdownBody(
+                              data: fileState.currentMemo!,
+                              styleSheet: _getMarkdownStyle(),
+                            ),
+                          ),
+                    if (fileState.currentMemo == null &&
+                        !fileState.isStudioLoading)
+                      Positioned(
+                        bottom: 24,
+                        right: 24,
+                        child: FloatingActionButton.extended(
+                          onPressed: () => ref
+                              .read(fileEditorProvider.notifier)
+                              .generateStudioContent('memo'),
+                          backgroundColor: _kCardColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: const BorderSide(color: _kBorderColor),
+                          ),
+                          label: const Text(
+                            "암기 노트 생성",
+                            style: TextStyle(
+                              color: _kTextColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                  ],
+                ),
+
+                // 4. AI 퀴즈 (Mockup)
+                Stack(
+                  children: [
+                    fileState.isStudioLoading
+                        ? _buildStudioLoader("퀴즈를 생성 중입니다...")
+                        : fileState.currentQuiz == null
+                        ? _buildEmptyStudioState(
+                            Icons.quiz_outlined,
+                            "본문 내용을 바탕으로\nAI가 문제를 출제합니다.",
+                          )
+                        : SingleChildScrollView(
+                            padding: const EdgeInsets.all(20),
+                            child: MarkdownBody(
+                              data: fileState.currentQuiz!,
+                              styleSheet: _getMarkdownStyle(),
+                            ),
+                          ),
+                    if (fileState.currentQuiz == null &&
+                        !fileState.isStudioLoading)
+                      Positioned(
+                        bottom: 24,
+                        right: 24,
+                        child: FloatingActionButton.extended(
+                          onPressed: () => ref
+                              .read(fileEditorProvider.notifier)
+                              .generateStudioContent('quiz'),
+                          backgroundColor: _kCardColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: const BorderSide(color: _kBorderColor),
+                          ),
+                          label: const Text(
+                            "퀴즈 출제하기",
+                            style: TextStyle(
+                              color: _kTextColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -865,6 +875,46 @@ class _FileScreenState extends ConsumerState<FileScreen>
           onPressed: () => Navigator.pop(context),
           color: _kTextSecondary,
         ),
+        title: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _isSaving
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _kTextSecondary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "저장 중...",
+                      style: TextStyle(color: _kTextSecondary, fontSize: 12),
+                    ),
+                  ],
+                )
+              : fileState.lastSavedAt != null
+              ? const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.cloud_done_outlined,
+                      size: 14,
+                      color: _kTextSecondary,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      "클라우드 저장됨",
+                      style: TextStyle(color: _kTextSecondary, fontSize: 12),
+                    ),
+                  ],
+                )
+              : const SizedBox.shrink(),
+        ),
+        centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.copy_all_rounded, size: 20),
@@ -875,7 +925,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
           IconButton(
             icon: Icon(
               _viewMode == 0
-                  ? Icons.auto_graph_rounded
+                  ? Icons.space_dashboard_rounded
                   : Icons.edit_note_rounded,
             ),
             onPressed: () => setState(() => _viewMode = _viewMode == 0 ? 1 : 0),
@@ -887,87 +937,125 @@ class _FileScreenState extends ConsumerState<FileScreen>
       body: _viewMode == 0
           ? ResizableSplitView(left: editorView, right: rightPanel)
           : const Center(
-              child: Text("지식 그래프 뷰", style: TextStyle(color: Colors.white)),
+              child: Text("대시보드 뷰", style: TextStyle(color: Colors.white)),
             ),
     );
   }
 
-  // ✨ 신비로운 글래스모피즘 로딩 애니메이션
-  Widget _buildMagicLoader(String text) {
-    return Center(
-      child: FadeTransition(
-        opacity: Tween<double>(begin: 0.5, end: 1.0).animate(_pulseController),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const CircularProgressIndicator(
-                    color: _kAccentNeonBlue,
-                    strokeWidth: 3,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    text,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+  // AI 스튜디오 공통 마크다운 스타일
+  MarkdownStyleSheet _getMarkdownStyle() {
+    return MarkdownStyleSheet(
+      p: const TextStyle(color: _kTextColor, fontSize: 14, height: 1.6),
+      strong: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      code: const TextStyle(
+        backgroundColor: _kBgPrimary,
+        fontFamily: 'monospace',
+        color: _kAccentColor,
+        fontSize: 13,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: _kBgPrimary,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _kBorderColor),
+      ),
+      tableBorder: TableBorder.all(color: _kBorderColor),
+      tableHead: const TextStyle(
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+        backgroundColor: _kCardColor,
+      ),
+      blockquoteDecoration: BoxDecoration(
+        border: const Border(left: BorderSide(color: _kBorderColor, width: 4)),
+        color: _kBgPrimary,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      listBullet: const TextStyle(color: _kTextSecondary),
+      h1: const TextStyle(
+        fontSize: 20,
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+      ),
+      h2: const TextStyle(
+        fontSize: 18,
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
       ),
     );
   }
 
-  Widget _buildPropertyRow(
+  Widget _buildEmptyStudioState(IconData icon, String text) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 48, color: _kBorderColor),
+          const SizedBox(height: 16),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _kTextSecondary,
+              height: 1.5,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStudioLoader(String text) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(color: _kAccentColor, strokeWidth: 2),
+          const SizedBox(height: 20),
+          Text(
+            text,
+            style: const TextStyle(color: _kTextSecondary, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🖋️ 노션 완벽 구현 속성 UI
+  Widget _buildNotionPropertyRow(
     IconData icon,
     String label,
     TextEditingController ctrl,
     String hint,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: _kTextHint),
-          const SizedBox(width: 12),
+          Icon(icon, size: 16, color: _kTextHint),
+          const SizedBox(width: 8),
           SizedBox(
             width: 100,
             child: Text(
               label,
-              style: const TextStyle(
-                color: _kTextHint,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(color: _kTextHint, fontSize: 14),
             ),
           ),
           Expanded(
             child: TextField(
               controller: ctrl,
-              style: const TextStyle(color: _kTextColor, fontSize: 15),
+              style: const TextStyle(color: _kTextColor, fontSize: 14),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
-                contentPadding: EdgeInsets.zero,
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 4,
+                  horizontal: 8,
+                ),
                 hintText: hint,
                 hintStyle: TextStyle(color: _kTextHint.withOpacity(0.5)),
-                filled: false,
+                filled: true,
+                fillColor: Colors.transparent,
+                hoverColor: _kCardColor.withOpacity(0.5),
               ),
               onChanged: (_) => _onContentChanged(),
             ),
@@ -979,31 +1067,26 @@ class _FileScreenState extends ConsumerState<FileScreen>
 
   Widget _buildSummaryList(List<SummaryBlock> summaries) {
     if (summaries.isEmpty)
-      return const Center(
-        child: Text(
-          "하단의 요약 버튼을 눌러주세요.",
-          style: TextStyle(color: _kTextSecondary),
-        ),
+      return _buildEmptyStudioState(
+        Icons.auto_awesome_mosaic_outlined,
+        "문서 전체 요약을 생성해 보세요.",
       );
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       itemCount: summaries.length,
       itemBuilder: (context, index) {
         final item = summaries[index];
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: _kCardColor,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: _kBorderColor),
           ),
           child: MarkdownBody(
             data: item.content,
-            styleSheet: MarkdownStyleSheet(
-              p: const TextStyle(color: _kTextColor, height: 1.7, fontSize: 15),
-              listBullet: const TextStyle(color: _kAccentNeonBlue),
-            ),
+            styleSheet: _getMarkdownStyle(),
           ),
         );
       },
@@ -1012,7 +1095,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
 }
 
 // -----------------------------------------------------------------------------
-// [WIDGET] HoverBlockItem
+// [WIDGET] HoverBlockItem (여백, 폰트, 그립 아이콘 완벽 최적화)
 // -----------------------------------------------------------------------------
 class HoverBlockItem extends StatefulWidget {
   final int index;
@@ -1069,39 +1152,41 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
     }
   }
 
+  // 🖋️ 타이포그래피 (스크린샷과 동일한 비율)
   TextStyle _getStyle(BlockType type) {
     switch (type) {
       case BlockType.h1:
         return const TextStyle(
-          fontSize: 36,
-          fontWeight: FontWeight.bold,
+          fontSize: 32,
+          fontWeight: FontWeight.w700,
           color: Colors.white,
-          height: 1.3,
+          height: 1.4,
         );
       case BlockType.h2:
         return const TextStyle(
-          fontSize: 28,
-          fontWeight: FontWeight.bold,
+          fontSize: 26,
+          fontWeight: FontWeight.w600,
           color: Colors.white,
-          height: 1.3,
+          height: 1.4,
         );
       case BlockType.h3:
         return const TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
           color: Colors.white,
-          height: 1.3,
+          height: 1.4,
         );
       case BlockType.code:
         return const TextStyle(
-          fontSize: 15,
+          fontSize: 14,
           fontFamily: 'monospace',
-          color: _kAccentNeonBlue,
+          color: _kAccentColor,
+          backgroundColor: _kCardColor,
         );
       case BlockType.bullet:
-        return const TextStyle(fontSize: 16, color: _kTextColor, height: 1.5);
+        return const TextStyle(fontSize: 16, color: _kTextColor, height: 1.6);
       default:
-        return const TextStyle(fontSize: 16, color: _kTextColor, height: 1.7);
+        return const TextStyle(fontSize: 16, color: _kTextColor, height: 1.6);
     }
   }
 
@@ -1128,139 +1213,145 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
     final bool isPrevList = widget.prevBlockType == BlockType.bullet;
     final double topPadding = (isList && isPrevList)
         ? 0.0
-        : (isList ? 4.0 : 6.0);
-    final double bottomPadding = isList ? 0.0 : 6.0;
+        : (isList ? 4.0 : 8.0);
+    final double bottomPadding = isList ? 0.0 : 8.0;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovering = true),
-      onExit: (_) => setState(() => _isHovering = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.only(
-          top: topPadding,
-          bottom: bottomPadding,
-          left: 4,
-        ),
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(
-              color: _isFocused
-                  ? _kAccentNeonBlue.withOpacity(0.8)
-                  : Colors.transparent,
-              width: 2,
+    return Material(
+      color: Colors.transparent,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovering = true),
+        onExit: (_) => setState(() => _isHovering = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: EdgeInsets.only(
+            top: topPadding,
+            bottom: bottomPadding,
+            left: 4,
+          ),
+          decoration: BoxDecoration(
+            color: _isFocused
+                ? Colors.white.withOpacity(0.01)
+                : Colors.transparent,
+            border: Border(
+              left: BorderSide(
+                color: _isFocused ? _kAccentColor : Colors.transparent,
+                width: 2,
+              ),
             ),
           ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 24,
-              height: 24,
-              alignment: Alignment.center,
-              margin: const EdgeInsets.only(top: 2, right: 8),
-              child: Opacity(
-                opacity: _isHovering ? 1.0 : 0.0,
-                child: ReorderableDragStartListener(
-                  index: widget.index,
-                  child: PopupMenuButton<String>(
-                    padding: EdgeInsets.zero,
-                    color: _kCardColor,
-                    offset: const Offset(0, 30),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: _kBorderColor),
-                    ),
-                    onSelected: (val) {
-                      if (val == 'del')
-                        widget.onDelete();
-                      else if (val == 'dup')
-                        widget.onDuplicate();
-                      else if (val == 'h1')
-                        widget.onTypeChange(BlockType.h1);
-                      else if (val == 'h2')
-                        widget.onTypeChange(BlockType.h2);
-                      else if (val == 'text')
-                        widget.onTypeChange(BlockType.text);
-                    },
-                    itemBuilder: (ctx) => [
-                      _menuItem('del', Icons.delete_outline, '삭제'),
-                      _menuItem('dup', Icons.content_copy, '복제'),
-                      const PopupMenuDivider(height: 10),
-                      _menuItem('h1', Icons.looks_one_rounded, '제목 1'),
-                      _menuItem('h2', Icons.looks_two_rounded, '제목 2'),
-                      _menuItem('text', Icons.short_text_rounded, '일반 텍스트'),
-                    ],
-                    child: const Icon(
-                      Icons.drag_indicator_rounded,
-                      size: 18,
-                      color: _kTextHint,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            if (widget.block.type == BlockType.bullet)
-              const Padding(
-                padding: EdgeInsets.only(top: 10, right: 12),
-                child: Icon(Icons.circle, size: 6, color: _kTextColor),
-              ),
-
-            if (widget.block.type == BlockType.checkbox)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, right: 12),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: Checkbox(
-                    value: widget.block.isChecked,
-                    onChanged: (val) => widget.onToggleCheckbox(val!),
-                    activeColor: _kAccentNeonBlue,
-                    checkColor: _kBgPrimary,
-                    side: const BorderSide(color: _kTextHint, width: 1.5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 🖋️ 노션의 핵심인 그립(Grip) 아이콘 완벽 재현
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                margin: const EdgeInsets.only(top: 2, right: 8),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 100),
+                  opacity: _isHovering ? 1.0 : 0.0,
+                  child: ReorderableDragStartListener(
+                    index: widget.index,
+                    child: PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      color: _kCardColor,
+                      offset: const Offset(0, 30),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: const BorderSide(color: _kBorderColor),
+                      ),
+                      onSelected: (val) {
+                        if (val == 'del')
+                          widget.onDelete();
+                        else if (val == 'dup')
+                          widget.onDuplicate();
+                        else if (val == 'h1')
+                          widget.onTypeChange(BlockType.h1);
+                        else if (val == 'h2')
+                          widget.onTypeChange(BlockType.h2);
+                        else if (val == 'text')
+                          widget.onTypeChange(BlockType.text);
+                      },
+                      itemBuilder: (ctx) => [
+                        _menuItem('del', Icons.delete_outline, '삭제'),
+                        _menuItem('dup', Icons.content_copy, '복제'),
+                        const PopupMenuDivider(height: 10),
+                        _menuItem('h1', Icons.looks_one_rounded, '제목 1'),
+                        _menuItem('h2', Icons.looks_two_rounded, '제목 2'),
+                        _menuItem('text', Icons.short_text_rounded, '일반 텍스트'),
+                      ],
+                      child: const Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 20,
+                        color: _kTextHint,
+                      ), // 노션과 유사한 6점 아이콘
                     ),
                   ),
                 ),
               ),
 
-            Expanded(
-              child: CompositedTransformTarget(
-                link: widget.block.layerLink,
-                child: TextField(
-                  controller: widget.block.controller,
-                  focusNode: widget.block.focusNode,
-                  maxLines: null,
-                  style: _getStyle(widget.block.type).copyWith(
-                    decoration:
-                        (widget.block.type == BlockType.checkbox &&
-                            widget.block.isChecked)
-                        ? TextDecoration.lineThrough
-                        : TextDecoration.none,
-                    color:
-                        (widget.block.type == BlockType.checkbox &&
-                            widget.block.isChecked)
-                        ? _kTextHint
-                        : null,
+              if (widget.block.type == BlockType.bullet)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10, right: 12),
+                  child: Icon(Icons.circle, size: 6, color: _kTextColor),
+                ),
+
+              if (widget.block.type == BlockType.checkbox)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, right: 12),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: Checkbox(
+                      value: widget.block.isChecked,
+                      onChanged: (val) => widget.onToggleCheckbox(val!),
+                      activeColor: _kAccentColor,
+                      checkColor: _kBgPrimary,
+                      side: const BorderSide(color: _kTextHint, width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
                   ),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    filled: false,
-                    hintText:
-                        (_isFocused && widget.block.controller.text.isEmpty)
-                        ? "명령어 '/' 입력"
-                        : "",
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.15)),
+                ),
+
+              Expanded(
+                child: CompositedTransformTarget(
+                  link: widget.block.layerLink,
+                  child: TextField(
+                    controller: widget.block.controller,
+                    focusNode: widget.block.focusNode,
+                    maxLines: null,
+                    style: _getStyle(widget.block.type).copyWith(
+                      decoration:
+                          (widget.block.type == BlockType.checkbox &&
+                              widget.block.isChecked)
+                          ? TextDecoration.lineThrough
+                          : TextDecoration.none,
+                      color:
+                          (widget.block.type == BlockType.checkbox &&
+                              widget.block.isChecked)
+                          ? _kTextHint
+                          : null,
+                    ),
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      filled: false,
+                      hintText:
+                          (_isFocused && widget.block.controller.text.isEmpty)
+                          ? "명령어 '/' 입력"
+                          : "",
+                      hintStyle: TextStyle(color: _kTextHint.withOpacity(0.4)),
+                    ),
+                    onChanged: (text) => widget.onChanged(text, widget.index),
                   ),
-                  onChanged: (text) => widget.onChanged(text, widget.index),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
