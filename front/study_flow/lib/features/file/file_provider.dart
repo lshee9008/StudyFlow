@@ -19,34 +19,26 @@ class SummaryBlock {
     this.isSaved = false,
     this.relatedBlockId,
   });
-
   Map<String, dynamic> toJson() => {
     'content': content,
     'isSaved': isSaved,
     'relatedBlockId': relatedBlockId,
   };
-
-  factory SummaryBlock.fromJson(Map<String, dynamic> json) {
-    return SummaryBlock(
-      content: json['content'] ?? '',
-      isSaved: json['isSaved'] ?? false,
-      relatedBlockId: json['relatedBlockId'],
-    );
-  }
+  factory SummaryBlock.fromJson(Map<String, dynamic> json) => SummaryBlock(
+    content: json['content'] ?? '',
+    isSaved: json['isSaved'] ?? false,
+    relatedBlockId: json['relatedBlockId'],
+  );
 }
 
-final filesProvider = StateNotifierProvider<FilesNotifier, List<FileModel>>((
-  ref,
-) {
-  return FilesNotifier();
-});
+final filesProvider = StateNotifierProvider<FilesNotifier, List<FileModel>>(
+  (ref) => FilesNotifier(),
+);
 
 class FilesNotifier extends StateNotifier<List<FileModel>> {
   FilesNotifier() : super([]);
-
   Future<void> loadFiles(String projectId) async {
-    final files = await FilesDBHelper.selectProjectFiles(projectId);
-    state = files;
+    state = await FilesDBHelper.selectProjectFiles(projectId);
   }
 
   Future<void> addFile(FileModel file) async {
@@ -69,46 +61,57 @@ class FilesNotifier extends StateNotifier<List<FileModel>> {
 }
 
 final fileEditorProvider =
-    StateNotifierProvider.autoDispose<FileEditorNotifier, FileEditorState>((
-      ref,
-    ) {
-      return FileEditorNotifier();
-    });
+    StateNotifierProvider.autoDispose<FileEditorNotifier, FileEditorState>(
+      (ref) => FileEditorNotifier(),
+    );
 
 class FileEditorState {
   final List<Block> blocks;
   final bool isLoading;
+  final bool isAnalysisLoading;
+  final bool isSummaryLoading;
   final String? icon;
   final List<SummaryBlock> summaryBlocks;
   final String? currentBlockAnalysis;
+  final String focusedText;
 
   FileEditorState({
     required this.blocks,
     this.isLoading = false,
+    this.isAnalysisLoading = false,
+    this.isSummaryLoading = false,
     this.icon,
     this.summaryBlocks = const [],
     this.currentBlockAnalysis,
+    this.focusedText = "",
   });
 
   FileEditorState copyWith({
     List<Block>? blocks,
     bool? isLoading,
+    bool? isAnalysisLoading,
+    bool? isSummaryLoading,
     String? icon,
     List<SummaryBlock>? summaryBlocks,
     String? currentBlockAnalysis,
+    String? focusedText,
   }) {
     return FileEditorState(
       blocks: blocks ?? this.blocks,
       isLoading: isLoading ?? this.isLoading,
+      isAnalysisLoading: isAnalysisLoading ?? this.isAnalysisLoading,
+      isSummaryLoading: isSummaryLoading ?? this.isSummaryLoading,
       icon: icon ?? this.icon,
       summaryBlocks: summaryBlocks ?? this.summaryBlocks,
       currentBlockAnalysis: currentBlockAnalysis ?? this.currentBlockAnalysis,
+      focusedText: focusedText ?? this.focusedText,
     );
   }
 }
 
 class FileEditorNotifier extends StateNotifier<FileEditorState> {
   FileEditorNotifier() : super(FileEditorState(blocks: []));
+  int _lastAnalysisRequestId = 0;
 
   Future<void> loadFileDetail(String fileId) async {
     state = state.copyWith(isLoading: true);
@@ -118,17 +121,22 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       List<Block> loadedBlocks = [];
       if (fileModel.content.isNotEmpty) {
         try {
-          final List<dynamic> jsonList = jsonDecode(fileModel.content);
-          loadedBlocks = jsonList.map((e) => Block.fromJson(e)).toList();
+          loadedBlocks = (jsonDecode(fileModel.content) as List)
+              .map((e) => Block.fromJson(e))
+              .toList();
         } catch (e) {
           final parsedList = MarkdownParser.parse(fileModel.content);
-          loadedBlocks = parsedList.asMap().entries.map((entry) {
-            return Block(
-              id: DateTime.now().toIso8601String() + "${entry.key}",
-              type: entry.value['type'],
-              content: entry.value['content'],
-            );
-          }).toList();
+          loadedBlocks = parsedList
+              .asMap()
+              .entries
+              .map(
+                (entry) => Block(
+                  id: DateTime.now().toIso8601String() + "${entry.key}",
+                  type: entry.value['type'],
+                  content: entry.value['content'],
+                ),
+              )
+              .toList();
           if (loadedBlocks.isEmpty)
             loadedBlocks = [_createBlock(0, content: fileModel.content)];
         }
@@ -139,8 +147,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       List<SummaryBlock> loadedSummary = [];
       if (fileModel.summary != null && fileModel.summary!.isNotEmpty) {
         try {
-          final List<dynamic> jsonList = jsonDecode(fileModel.summary!);
-          loadedSummary = jsonList
+          loadedSummary = (jsonDecode(fileModel.summary!) as List)
               .map((e) => SummaryBlock.fromJson(e))
               .toList();
         } catch (e) {
@@ -153,7 +160,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       state = state.copyWith(
         blocks: loadedBlocks,
         isLoading: false,
-        icon: fileModel.icon, // 아이콘 로드
+        icon: fileModel.icon,
         summaryBlocks: loadedSummary,
       );
     } else {
@@ -168,13 +175,6 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     required String prompt,
     required DateTime updateAt,
   }) async {
-    final List<Map<String, dynamic>> contentJson = state.blocks
-        .map((b) => b.toJson())
-        .toList();
-    final List<Map<String, dynamic>> summaryJson = state.summaryBlocks
-        .map((b) => b.toJson())
-        .toList();
-
     await FilesDBHelper.updateFile(
       fileId,
       updateAt: updateAt,
@@ -182,12 +182,11 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       tags: tags,
       icon: state.icon,
       prompt: prompt,
-      content: jsonEncode(contentJson),
-      summary: jsonEncode(summaryJson),
+      content: jsonEncode(state.blocks.map((b) => b.toJson()).toList()),
+      summary: jsonEncode(state.summaryBlocks.map((b) => b.toJson()).toList()),
     );
   }
 
-  // 🧠 [전체 요약]
   Future<void> requestAutoAISummary({
     required String title,
     required String tags,
@@ -196,63 +195,75 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     String fullContext = state.blocks.map((b) => b.controller.text).join("\n");
     if (fullContext.trim().isEmpty) return;
 
+    state = state.copyWith(isSummaryLoading: true);
     try {
       final String baseUrl = Platform.isAndroid
           ? 'http://10.0.2.2:8000'
           : 'http://localhost:8000';
-      final systemPrompt = """
-[역할] IT/학문 전문 지식 요약기
-[규칙]
-1. 문서 전체 내용을 바탕으로 **가장 중요한 핵심 3가지**를 마크다운 리스트로 요약하세요.
-2. 부연 설명 없이 결과만 출력하세요.
-""";
-
       final response = await http.post(
         Uri.parse('$baseUrl/api/files/summarize'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "content": fullContext,
           "tags": tags,
-          "custom_prompt": systemPrompt,
+          "custom_prompt": "전체 문서의 핵심 내용을 3줄 이내로 아주 간결하게 요약하세요.",
         }),
       );
-
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        String rawSummary = data['summary'];
-
         List<SummaryBlock> keptBlocks = state.summaryBlocks
             .where((b) => b.isSaved)
             .toList();
-        keptBlocks.add(SummaryBlock(content: rawSummary, isSaved: false));
-
-        state = state.copyWith(summaryBlocks: keptBlocks);
+        keptBlocks.insert(
+          0,
+          SummaryBlock(content: data['summary'], isSaved: false),
+        );
+        state = state.copyWith(
+          summaryBlocks: keptBlocks,
+          isSummaryLoading: false,
+        );
+      } else {
+        state = state.copyWith(isSummaryLoading: false);
       }
     } catch (e) {
-      print("Summary Error: $e");
+      state = state.copyWith(isSummaryLoading: false);
     }
   }
 
-  // 🔍 [상세 분석]
+  // 💡 [수정] 프롬프트 최적화: TMI를 없애고 핵심 의미만 묻기
   Future<void> requestBlockAnalysis({
     required String text,
     required String tags,
+    required String documentContext,
   }) async {
-    if (text.trim().length < 3) {
-      state = state.copyWith(currentBlockAnalysis: null);
+    state = state.copyWith(focusedText: text);
+    if (text.trim().length < 2) {
+      state = state.copyWith(
+        currentBlockAnalysis: null,
+        isAnalysisLoading: false,
+      );
       return;
     }
 
-    state = state.copyWith(isLoading: true);
+    final currentRequestId = ++_lastAnalysisRequestId;
+    state = state.copyWith(isAnalysisLoading: true);
 
     try {
       final String baseUrl = Platform.isAndroid
           ? 'http://10.0.2.2:8000'
           : 'http://localhost:8000';
-      final systemPrompt = """
-[역할] 코딩/학습 튜터
-[지시] 사용자가 입력한 내용에 대해 **구체적인 설명, 예시 코드, 혹은 관련 개념**을 마크다운으로 자세히 설명하세요.
-내용이 코드라면 해석을, 개념이라면 정의와 예시를, 표라면 데이터 분석을 제공하세요.
+
+      // 💡 여기가 핵심입니다. AI가 딴소리하지 못하도록 강력하게 제한합니다.
+      final prompt =
+          """
+전체 문맥([제목/주제]: $documentContext)을 고려했을 때, 
+사용자가 선택한 아래 문단이 무슨 의미인지 핵심만 파악하세요.
+[선택된 문단]: $text
+
+지시사항:
+1. 불필요한 배경 설명(TMI), 인사말, 서론은 모두 제외하세요.
+2. 이 문단이 뜻하는 핵심 개념이나 목적만 1~3문장 이내로 아주 간결하게 답변하세요.
+3. 보기 좋게 마크다운(예: 굵은 글씨, 짧은 리스트)을 활용하세요.
 """;
 
       final response = await http.post(
@@ -261,20 +272,24 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         body: jsonEncode({
           "content": text,
           "tags": tags,
-          "custom_prompt": systemPrompt,
+          "custom_prompt": prompt,
         }),
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        state = state.copyWith(
-          currentBlockAnalysis: data['summary'],
-          isLoading: false,
-        );
+      if (currentRequestId == _lastAnalysisRequestId) {
+        if (response.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          state = state.copyWith(
+            currentBlockAnalysis: data['summary'],
+            isAnalysisLoading: false,
+          );
+        } else {
+          state = state.copyWith(isAnalysisLoading: false);
+        }
       }
     } catch (e) {
-      print("Detail Error: $e");
-      state = state.copyWith(isLoading: false);
+      if (currentRequestId == _lastAnalysisRequestId)
+        state = state.copyWith(isAnalysisLoading: false);
     }
   }
 
@@ -289,17 +304,6 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     final newBlocks = [...state.summaryBlocks];
     newBlocks.removeAt(index);
     state = state.copyWith(summaryBlocks: newBlocks);
-  }
-
-  void addBlock(
-    int index, {
-    BlockType type = BlockType.text,
-    String initialContent = "",
-  }) {
-    final newBlock = _createBlock(index, type: type, content: initialContent);
-    final newBlocks = [...state.blocks];
-    newBlocks.insert(index, newBlock);
-    state = state.copyWith(blocks: newBlocks);
   }
 
   void insertBlocks(int index, List<String> contents) {
@@ -320,9 +324,10 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         type = BlockType.checkbox;
         text = text.replaceFirst(RegExp(r'\[\s?\]\s?'), '');
       }
-
-      final block = _createBlock(index + i, type: type, content: text);
-      newBlocks.insert(index + i, block);
+      newBlocks.insert(
+        index + i,
+        _createBlock(index + i, type: type, content: text),
+      );
     }
     state = state.copyWith(blocks: newBlocks);
   }
