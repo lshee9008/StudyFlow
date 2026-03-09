@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -10,22 +9,23 @@ import '../../core/db_helper/files_db_helper.dart';
 import '../../models/block_model.dart';
 import 'file_provider.dart';
 
-// 🖋️ 미니멀하고 깨끗한 NotebookLM 스타일 다크 테마
-const Color _kBgPrimary = Color(0xFF141414);
-const Color _kBgSecondary = Color(0xFF1A1A1A);
-const Color _kCardColor = Color(0xFF222222);
-const Color _kTextColor = Color(0xFFE5E7EB);
-const Color _kTextHint = Color(0xFF6B7280);
-const Color _kTextSecondary = Color(0xFF9CA3AF);
-const Color _kBorderColor = Color(0xFF333333);
-const Color _kAccentColor = Color(0xFF60A5FA);
+// 🖋️ 실리콘밸리 트렌드: 극도로 세련되고 차분한 다크 테마 (Notion & Linear 스타일)
+const Color _kBgPrimary = Color(0xFF171717); // 완전 블랙이 아닌 고급스러운 차콜 다크
+const Color _kBgSecondary = Color(0xFF1E1E1E); // 스튜디오 패널 배경
+const Color _kCardColor = Color(0xFF262626); // 보더 없이 색상으로만 구분되는 카드
+const Color _kHoverColor = Color(0xFF2C2C2C);
+const Color _kTextColor = Color(0xFFEDEDED); // 눈이 편안한 오프화이트
+const Color _kTextSecondary = Color(0xFFA0A0A0); // 세련된 연회색
+const Color _kTextHint = Color(0xFF6B6B6B);
+const Color _kBorderColor = Color(0xFF333333); // 아주 얇고 은은한 구분선
+const Color _kAccentColor = Color(0xFF5E81AC); // 튀지 않는 프로페셔널한 뮤트 블루
 
-// 퀴즈용 컬러
-const Color _kCorrectColor = Color(0xFF10B981);
-const Color _kWrongColor = Color(0xFFEF4444);
+// 퀴즈용 컬러 (파스텔 톤으로 안정감 부여)
+const Color _kCorrectColor = Color(0xFF509C76);
+const Color _kWrongColor = Color(0xFFBF616A);
 
 // -----------------------------------------------------------------------------
-// [WIDGET] Resizable Split View
+// [WIDGET] Resizable Split View (경계선 최적화)
 // -----------------------------------------------------------------------------
 class ResizableSplitView extends StatefulWidget {
   final Widget left;
@@ -72,13 +72,15 @@ class _ResizableSplitViewState extends State<ResizableSplitView> {
                 }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  width: 8,
+                  width: 4,
                   color: Colors.transparent,
                   alignment: Alignment.center,
                   child: Container(
-                    width: _isDragging ? 2 : 1,
+                    width: 1,
                     height: double.infinity,
-                    color: _isDragging ? _kAccentColor : _kBorderColor,
+                    color: _isDragging
+                        ? _kAccentColor
+                        : _kBorderColor.withOpacity(0.5),
                   ),
                 ),
               ),
@@ -347,7 +349,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
     }
 
     if (option['type'] == 'table') {
-      ctrl.text += "| 컬럼 1 | 컬럼 2 |\n|---|---|\n| 데이터 | 데이터 |";
+      ctrl.text += "| 열 1 | 열 2 |\n|---|---|\n| 내용 | 내용 |";
       ref
           .read(fileEditorProvider.notifier)
           .updateBlockType(index, BlockType.code);
@@ -392,56 +394,49 @@ class _FileScreenState extends ConsumerState<FileScreen>
         child: CompositedTransformFollower(
           link: blocks[index].layerLink,
           showWhenUnlinked: false,
-          offset: const Offset(0, 36),
-          child: TweenAnimationBuilder<double>(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutCubic,
-            tween: Tween(begin: 0.95, end: 1.0),
-            builder: (context, val, child) => Transform.scale(
-              scale: val,
-              alignment: Alignment.topLeft,
-              child: Opacity(opacity: val.clamp(0.0, 1.0), child: child),
-            ),
-            child: Material(
-              elevation: 16,
-              borderRadius: BorderRadius.circular(8),
-              color: _kCardColor,
-              shadowColor: Colors.black.withOpacity(0.5),
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: _kBorderColor),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _currentFilteredOptions.length,
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  itemBuilder: (context, i) => Container(
-                    color: i == _menuSelectedIndex
-                        ? _kAccentColor.withOpacity(0.15)
-                        : Colors.transparent,
-                    child: ListTile(
-                      dense: true,
-                      minLeadingWidth: 20,
-                      leading: Icon(
-                        _currentFilteredOptions[i]['icon'],
-                        size: 16,
-                        color: i == _menuSelectedIndex
-                            ? _kAccentColor
-                            : _kTextSecondary,
-                      ),
-                      title: Text(
-                        _currentFilteredOptions[i]['label'],
-                        style: TextStyle(
-                          color: i == _menuSelectedIndex
-                              ? Colors.white
-                              : _kTextSecondary,
-                          fontSize: 13,
-                        ),
-                      ),
-                      onTap: () =>
-                          _applyMenuOption(index, _currentFilteredOptions[i]),
+          offset: const Offset(0, 32),
+          child: Material(
+            elevation: 12,
+            borderRadius: BorderRadius.circular(12),
+            color: _kCardColor,
+            shadowColor: Colors.black.withOpacity(0.3),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: _kBorderColor, width: 0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _currentFilteredOptions.length,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                itemBuilder: (context, i) => Container(
+                  color: i == _menuSelectedIndex
+                      ? _kHoverColor
+                      : Colors.transparent,
+                  child: ListTile(
+                    dense: true,
+                    minLeadingWidth: 20,
+                    leading: Icon(
+                      _currentFilteredOptions[i]['icon'],
+                      size: 16,
+                      color: i == _menuSelectedIndex
+                          ? Colors.white
+                          : _kTextSecondary,
                     ),
+                    title: Text(
+                      _currentFilteredOptions[i]['label'],
+                      style: TextStyle(
+                        color: i == _menuSelectedIndex
+                            ? Colors.white
+                            : _kTextSecondary,
+                        fontSize: 13,
+                        fontWeight: i == _menuSelectedIndex
+                            ? FontWeight.w500
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    onTap: () =>
+                        _applyMenuOption(index, _currentFilteredOptions[i]),
                   ),
                 ),
               ),
@@ -465,9 +460,9 @@ class _FileScreenState extends ConsumerState<FileScreen>
     );
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text("전체 복사 완료!"),
+        content: Text("복사되었습니다.", style: TextStyle(color: Colors.white)),
         duration: Duration(seconds: 1),
-        backgroundColor: _kAccentColor,
+        backgroundColor: _kCardColor,
       ),
     );
   }
@@ -477,6 +472,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
     final fileState = ref.watch(fileEditorProvider);
     final blocks = fileState.blocks;
 
+    // 🖋️ 좌측 에디터 뷰 (여백과 정렬 최적화)
     Widget editorView = CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
@@ -486,13 +482,12 @@ class _FileScreenState extends ConsumerState<FileScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 80),
-                const SizedBox(height: 20),
+                const SizedBox(height: 60),
                 TextField(
                   controller: _titleController,
                   style: const TextStyle(
                     fontSize: 40,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.bold,
                     color: Colors.white,
                     height: 1.2,
                     letterSpacing: -0.5,
@@ -508,31 +503,26 @@ class _FileScreenState extends ConsumerState<FileScreen>
                   onChanged: (_) => _onContentChanged(),
                 ),
                 const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: _kBorderColor, width: 1),
+                // 속성 영역 (테두리 없이 패딩으로만 깔끔하게)
+                Column(
+                  children: [
+                    _buildNotionPropertyRow(
+                      Icons.local_offer_outlined,
+                      "태그",
+                      _tagsController,
+                      "비어 있음",
                     ),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildNotionPropertyRow(
-                        Icons.local_offer_outlined,
-                        "태그",
-                        _tagsController,
-                        "비어 있음",
-                      ),
-                      _buildNotionPropertyRow(
-                        Icons.auto_awesome_outlined,
-                        "명령어",
-                        _aiPromptController,
-                        "명령어 입력...",
-                      ),
-                    ],
-                  ),
+                    _buildNotionPropertyRow(
+                      Icons.auto_awesome_outlined,
+                      "프롬프트",
+                      _aiPromptController,
+                      "AI 지시사항...",
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 24),
+                const Divider(color: _kBorderColor, thickness: 0.5),
+                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -577,35 +567,58 @@ class _FileScreenState extends ConsumerState<FileScreen>
       ],
     );
 
-    // 🌟 AI 스튜디오 패널
+    // 🌟 우측 AI 스튜디오 패널 (NotebookLM 완벽 오마주)
     Widget rightPanel = Container(
-      color: _kBgSecondary,
+      decoration: const BoxDecoration(
+        color: _kBgSecondary,
+        border: Border(left: BorderSide(color: _kBorderColor, width: 0.5)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 💡 아이콘 위, 텍스트 아래의 깔끔한 탭바 구성
+          // 고급스러운 탭바 (아이콘 위, 텍스트 아래)
           Container(
-            padding: const EdgeInsets.only(top: 16),
+            padding: const EdgeInsets.only(top: 8),
             decoration: const BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: _kBorderColor, width: 1),
+                bottom: BorderSide(color: _kBorderColor, width: 0.5),
               ),
             ),
             child: TabBar(
               controller: _tabController,
-              labelColor: _kAccentColor,
+              labelColor: _kTextColor,
               unselectedLabelColor: _kTextSecondary,
-              indicatorColor: _kAccentColor,
-              indicatorWeight: 3,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 12),
+              indicatorColor: _kTextColor,
+              indicatorWeight: 2,
+              labelStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+              ),
               tabs: const [
                 Tab(
-                  icon: Icon(Icons.dashboard_customize_outlined),
-                  text: "전체 요약",
+                  iconMargin: EdgeInsets.only(bottom: 6),
+                  icon: Icon(Icons.subject_rounded, size: 22),
+                  text: "요약",
                 ),
-                Tab(icon: Icon(Icons.manage_search_rounded), text: "상세 분석"),
-                Tab(icon: Icon(Icons.lightbulb_outline_rounded), text: "핵심 암기"),
-                Tab(icon: Icon(Icons.fact_check_outlined), text: "AI 퀴즈"),
+                Tab(
+                  iconMargin: EdgeInsets.only(bottom: 6),
+                  icon: Icon(Icons.manage_search_rounded, size: 22),
+                  text: "분석",
+                ),
+                Tab(
+                  iconMargin: EdgeInsets.only(bottom: 6),
+                  icon: Icon(Icons.lightbulb_outline_rounded, size: 22),
+                  text: "암기",
+                ),
+                Tab(
+                  iconMargin: EdgeInsets.only(bottom: 6),
+                  icon: Icon(Icons.rule_rounded, size: 22),
+                  text: "퀴즈",
+                ),
               ],
             ),
           ),
@@ -613,13 +626,13 @@ class _FileScreenState extends ConsumerState<FileScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                // 1. 전체 요약
+                // 1. 전체 요약 탭
                 Stack(
                   children: [
                     _buildSummaryList(fileState.summaryBlocks),
                     if (fileState.isSummaryLoading)
                       Positioned.fill(
-                        child: _buildStudioLoader("문서를 스캔하고 있습니다..."),
+                        child: _buildStudioLoader("문서를 분석하고 구조화하는 중..."),
                       ),
                     Positioned(
                       bottom: 24,
@@ -634,28 +647,33 @@ class _FileScreenState extends ConsumerState<FileScreen>
                             ),
                         backgroundColor: _kCardColor,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: const BorderSide(color: _kBorderColor),
+                          borderRadius: BorderRadius.circular(24),
+                          side: const BorderSide(
+                            color: _kBorderColor,
+                            width: 0.5,
+                          ),
                         ),
                         icon: const Icon(
                           Icons.auto_fix_high,
-                          color: Colors.white,
+                          color: _kTextColor,
                           size: 18,
                         ),
                         label: const Text(
                           "요약 생성",
                           style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
+                            color: _kTextColor,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
                           ),
                         ),
                         elevation: 0,
+                        hoverElevation: 2,
                       ),
                     ),
                   ],
                 ),
 
-                // 2. 상세 분석
+                // 2. 상세 분석 탭
                 Column(
                   children: [
                     AnimatedSize(
@@ -663,42 +681,32 @@ class _FileScreenState extends ConsumerState<FileScreen>
                       curve: Curves.easeOut,
                       child: fileState.focusedText.trim().isNotEmpty
                           ? Container(
-                              margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                              width: double.infinity,
+                              margin: const EdgeInsets.fromLTRB(24, 24, 24, 0),
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: _kBgPrimary,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: _kBorderColor),
+                                color: _kCardColor,
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.location_searching_rounded,
-                                        size: 14,
-                                        color: _kTextSecondary,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Text(
-                                        "분석 중인 문맥",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: _kTextSecondary,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
+                                  const Text(
+                                    "현재 포커스",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: _kTextSecondary,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 6),
                                   Text(
-                                    '"${fileState.focusedText}"',
+                                    fileState.focusedText,
                                     style: const TextStyle(
                                       color: _kTextColor,
                                       fontSize: 13,
                                       height: 1.5,
-                                      fontStyle: FontStyle.italic,
                                     ),
                                     maxLines: 3,
                                     overflow: TextOverflow.ellipsis,
@@ -712,12 +720,12 @@ class _FileScreenState extends ConsumerState<FileScreen>
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         child: fileState.isAnalysisLoading
-                            ? _buildStudioLoader("문맥 분석 중...")
+                            ? _buildStudioLoader("문맥의 핵심을 파악 중...")
                             : fileState.currentBlockAnalysis == null ||
                                   fileState.focusedText.trim().isEmpty
                             ? _buildEmptyStudioState(
                                 Icons.article_outlined,
-                                "문단을 클릭하면\nAI가 실시간으로 분석합니다.",
+                                "에디터에서 문단을 클릭하면\n실시간 분석이 제공됩니다.",
                               )
                             : SingleChildScrollView(
                                 padding: const EdgeInsets.all(24),
@@ -732,15 +740,15 @@ class _FileScreenState extends ConsumerState<FileScreen>
                   ],
                 ),
 
-                // 3. 핵심 암기
+                // 3. 핵심 암기 탭
                 Stack(
                   children: [
                     fileState.isStudioLoading
-                        ? _buildStudioLoader("핵심 개념을 추출 중입니다...")
+                        ? _buildStudioLoader("핵심 개념을 추출 중...")
                         : fileState.currentMemo == null
                         ? _buildEmptyStudioState(
                             Icons.psychology_rounded,
-                            "시험에 나올 핵심만\nAI가 추출해 드립니다.",
+                            "본문에서 가장 중요한\n개념만 추출합니다.",
                           )
                         : SingleChildScrollView(
                             padding: const EdgeInsets.all(24),
@@ -760,14 +768,18 @@ class _FileScreenState extends ConsumerState<FileScreen>
                               .generateStudioContent('memo'),
                           backgroundColor: _kCardColor,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: const BorderSide(color: _kBorderColor),
+                            borderRadius: BorderRadius.circular(24),
+                            side: const BorderSide(
+                              color: _kBorderColor,
+                              width: 0.5,
+                            ),
                           ),
                           label: const Text(
                             "암기 노트 생성",
                             style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
+                              color: _kTextColor,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
                             ),
                           ),
                           elevation: 0,
@@ -776,15 +788,15 @@ class _FileScreenState extends ConsumerState<FileScreen>
                   ],
                 ),
 
-                // 4. 🎯 인터랙티브 AI 퀴즈 뷰
+                // 4. AI 퀴즈 탭
                 Stack(
                   children: [
                     fileState.isStudioLoading
-                        ? _buildStudioLoader("퀴즈를 생성 중입니다...")
+                        ? _buildStudioLoader("문제를 출제 중...")
                         : fileState.quizData == null
                         ? _buildEmptyStudioState(
-                            Icons.quiz_outlined,
-                            "본문 내용을 바탕으로\nAI가 객관식 문제를 출제합니다.",
+                            Icons.rule_rounded,
+                            "학습 내용을 바탕으로\n객관식 퀴즈를 풀어보세요.",
                           )
                         : _buildInteractiveQuiz(fileState),
                     if (fileState.quizData == null &&
@@ -798,14 +810,18 @@ class _FileScreenState extends ConsumerState<FileScreen>
                               .generateStudioContent('quiz'),
                           backgroundColor: _kCardColor,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: const BorderSide(color: _kBorderColor),
+                            borderRadius: BorderRadius.circular(24),
+                            side: const BorderSide(
+                              color: _kBorderColor,
+                              width: 0.5,
+                            ),
                           ),
                           label: const Text(
                             "퀴즈 출제하기",
                             style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
+                              color: _kTextColor,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
                             ),
                           ),
                           elevation: 0,
@@ -837,8 +853,8 @@ class _FileScreenState extends ConsumerState<FileScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const SizedBox(
-                      width: 12,
-                      height: 12,
+                      width: 10,
+                      height: 10,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: _kTextSecondary,
@@ -862,7 +878,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
                     ),
                     SizedBox(width: 6),
                     Text(
-                      "클라우드 저장됨",
+                      "저장됨",
                       style: TextStyle(color: _kTextSecondary, fontSize: 12),
                     ),
                   ],
@@ -872,16 +888,17 @@ class _FileScreenState extends ConsumerState<FileScreen>
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.copy_all_rounded, size: 20),
+            icon: const Icon(Icons.copy_rounded, size: 18),
             onPressed: _copyAllContent,
             color: _kTextSecondary,
-            tooltip: '전체 복사',
+            tooltip: '복사',
           ),
           IconButton(
             icon: Icon(
               _viewMode == 0
                   ? Icons.space_dashboard_rounded
                   : Icons.edit_note_rounded,
+              size: 18,
             ),
             onPressed: () => setState(() => _viewMode = _viewMode == 0 ? 1 : 0),
             color: _kTextSecondary,
@@ -897,11 +914,11 @@ class _FileScreenState extends ConsumerState<FileScreen>
     );
   }
 
-  // 💡 버튼으로 풀 수 있는 인터랙티브 퀴즈 UI
+  // 💡 버튼형 인터랙티브 퀴즈 UI (모던 스타일)
   Widget _buildInteractiveQuiz(FileEditorState fileState) {
     final quizList = fileState.quizData!;
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
       itemCount: quizList.length,
       itemBuilder: (context, qIndex) {
         final q = quizList[qIndex];
@@ -910,13 +927,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
         final int correctOpt = q['answer'] ?? 0;
 
         return Container(
-          margin: const EdgeInsets.only(bottom: 20),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: _kCardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _kBorderColor),
-          ),
+          margin: const EdgeInsets.only(bottom: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -924,8 +935,8 @@ class _FileScreenState extends ConsumerState<FileScreen>
                 "Q${qIndex + 1}. ${q['question']}",
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
                   height: 1.4,
                 ),
               ),
@@ -933,16 +944,19 @@ class _FileScreenState extends ConsumerState<FileScreen>
               ...List.generate((q['options'] as List).length, (optIndex) {
                 final optionText = q['options'][optIndex];
 
-                // 버튼 색상 로직 (정답 체크 후 색상 변화)
-                Color btnBgColor = _kBgPrimary;
-                Color btnBorderColor = _kBorderColor;
+                Color btnBgColor = _kCardColor;
+                Color btnBorderColor = Colors.transparent;
+                Color btnTextColor = _kTextColor;
+
                 if (isAnswered) {
                   if (optIndex == correctOpt) {
                     btnBgColor = _kCorrectColor.withOpacity(0.15);
-                    btnBorderColor = _kCorrectColor;
+                    btnBorderColor = _kCorrectColor.withOpacity(0.5);
+                    btnTextColor = _kCorrectColor;
                   } else if (optIndex == selectedOpt) {
                     btnBgColor = _kWrongColor.withOpacity(0.15);
-                    btnBorderColor = _kWrongColor;
+                    btnBorderColor = _kWrongColor.withOpacity(0.5);
+                    btnTextColor = _kWrongColor;
                   }
                 }
 
@@ -963,32 +977,28 @@ class _FileScreenState extends ConsumerState<FileScreen>
                       decoration: BoxDecoration(
                         color: btnBgColor,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: btnBorderColor),
+                        border: Border.all(color: btnBorderColor, width: 0.5),
                       ),
                       child: Text(
                         optionText,
-                        style: const TextStyle(
-                          color: _kTextColor,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: btnTextColor, fontSize: 14),
                       ),
                     ),
                   ),
                 );
               }),
 
-              // 정답 선택 후 해설 표시
               AnimatedSize(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeOut,
                 child: isAnswered
                     ? Container(
-                        margin: const EdgeInsets.only(top: 16),
+                        margin: const EdgeInsets.only(top: 12),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: _kBgPrimary.withOpacity(0.5),
+                          color: _kBgPrimary,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: _kBorderColor),
+                          border: Border.all(color: _kBorderColor, width: 0.5),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -997,22 +1007,21 @@ class _FileScreenState extends ConsumerState<FileScreen>
                               children: [
                                 Icon(
                                   selectedOpt == correctOpt
-                                      ? Icons.check_circle_rounded
-                                      : Icons.cancel_rounded,
-                                  size: 18,
+                                      ? Icons.check_circle_outline
+                                      : Icons.highlight_off_rounded,
+                                  size: 16,
                                   color: selectedOpt == correctOpt
                                       ? _kCorrectColor
                                       : _kWrongColor,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  selectedOpt == correctOpt
-                                      ? "정답입니다!"
-                                      : "오답입니다.",
+                                  selectedOpt == correctOpt ? "정답입니다" : "오답입니다",
                                   style: TextStyle(
                                     color: selectedOpt == correctOpt
                                         ? _kCorrectColor
                                         : _kWrongColor,
+                                    fontSize: 13,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -1020,11 +1029,11 @@ class _FileScreenState extends ConsumerState<FileScreen>
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              "해설: ${q['explanation']}",
+                              q['explanation'] ?? '',
                               style: const TextStyle(
                                 color: _kTextSecondary,
                                 height: 1.5,
-                                fontSize: 14,
+                                fontSize: 13,
                               ),
                             ),
                           ],
@@ -1039,47 +1048,63 @@ class _FileScreenState extends ConsumerState<FileScreen>
     );
   }
 
-  // AI 스튜디오 공통 마크다운 스타일 (깔끔한 텍스트/표/리스트 최적화)
+  // 🖋️ 마크다운 스타일 (가로선 표, 깔끔한 폰트)
   MarkdownStyleSheet _getMarkdownStyle() {
     return MarkdownStyleSheet(
-      p: const TextStyle(color: _kTextColor, fontSize: 14, height: 1.6),
-      strong: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      p: const TextStyle(
+        color: _kTextColor,
+        fontSize: 14,
+        height: 1.6,
+        letterSpacing: 0.2,
+      ),
+      strong: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
       code: const TextStyle(
-        backgroundColor: _kBgPrimary,
+        backgroundColor: _kCardColor,
         fontFamily: 'monospace',
-        color: _kAccentColor,
+        color: _kTextColor,
         fontSize: 13,
       ),
       codeblockDecoration: BoxDecoration(
-        color: _kBgPrimary,
+        color: _kCardColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _kBorderColor),
       ),
-      tableBorder: TableBorder.all(color: _kBorderColor),
+      // 💡 표(Table) 스타일을 완벽하게 다듬음 (가로선만 존재)
+      tableBorder: TableBorder(
+        horizontalInside: BorderSide(color: _kBorderColor, width: 0.5),
+        bottom: BorderSide(color: _kBorderColor, width: 0.5),
+      ),
       tableHead: const TextStyle(
-        fontWeight: FontWeight.bold,
-        color: Colors.white,
-        backgroundColor: _kBgPrimary,
+        fontWeight: FontWeight.w600,
+        color: _kTextSecondary,
+        fontSize: 13,
       ),
+      tableBody: const TextStyle(color: _kTextColor, fontSize: 13),
       tableCellsPadding: const EdgeInsets.symmetric(
         vertical: 12,
-        horizontal: 16,
+        horizontal: 8,
       ),
       blockquoteDecoration: BoxDecoration(
-        border: const Border(left: BorderSide(color: _kBorderColor, width: 4)),
-        color: _kBgPrimary,
-        borderRadius: BorderRadius.circular(4),
+        border: const Border(left: BorderSide(color: _kBorderColor, width: 3)),
+        color: Colors.transparent,
       ),
-      listBullet: const TextStyle(color: _kTextSecondary, fontSize: 18),
+      listBullet: const TextStyle(color: _kTextSecondary, fontSize: 16),
       h1: const TextStyle(
         fontSize: 20,
         color: Colors.white,
         fontWeight: FontWeight.bold,
+        height: 1.5,
       ),
       h2: const TextStyle(
-        fontSize: 18,
+        fontSize: 16,
         color: Colors.white,
-        fontWeight: FontWeight.bold,
+        fontWeight: FontWeight.w600,
+        height: 1.5,
+      ),
+      h3: const TextStyle(
+        fontSize: 14,
+        color: Colors.white,
+        fontWeight: FontWeight.w600,
+        height: 1.5,
       ),
     );
   }
@@ -1089,15 +1114,15 @@ class _FileScreenState extends ConsumerState<FileScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 48, color: _kBorderColor),
+          Icon(icon, size: 40, color: _kTextHint.withOpacity(0.5)),
           const SizedBox(height: 16),
           Text(
             text,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: _kTextSecondary,
+              color: _kTextHint,
               height: 1.5,
-              fontSize: 14,
+              fontSize: 13,
             ),
           ),
         ],
@@ -1110,12 +1135,13 @@ class _FileScreenState extends ConsumerState<FileScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(color: _kAccentColor, strokeWidth: 2),
-          const SizedBox(height: 20),
-          Text(
-            text,
-            style: const TextStyle(color: _kTextSecondary, fontSize: 13),
+          const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(color: _kTextHint, strokeWidth: 2),
           ),
+          const SizedBox(height: 16),
+          Text(text, style: const TextStyle(color: _kTextHint, fontSize: 12)),
         ],
       ),
     );
@@ -1134,28 +1160,28 @@ class _FileScreenState extends ConsumerState<FileScreen>
           Icon(icon, size: 16, color: _kTextHint),
           const SizedBox(width: 8),
           SizedBox(
-            width: 100,
+            width: 80,
             child: Text(
               label,
-              style: const TextStyle(color: _kTextHint, fontSize: 14),
+              style: const TextStyle(color: _kTextHint, fontSize: 13),
             ),
           ),
           Expanded(
             child: TextField(
               controller: ctrl,
-              style: const TextStyle(color: _kTextColor, fontSize: 14),
+              style: const TextStyle(color: _kTextColor, fontSize: 13),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(
-                  vertical: 4,
+                  vertical: 6,
                   horizontal: 8,
                 ),
                 hintText: hint,
                 hintStyle: TextStyle(color: _kTextHint.withOpacity(0.5)),
                 filled: true,
                 fillColor: Colors.transparent,
-                hoverColor: _kCardColor.withOpacity(0.5),
+                hoverColor: _kCardColor,
               ),
               onChanged: (_) => _onContentChanged(),
             ),
@@ -1168,22 +1194,16 @@ class _FileScreenState extends ConsumerState<FileScreen>
   Widget _buildSummaryList(List<SummaryBlock> summaries) {
     if (summaries.isEmpty)
       return _buildEmptyStudioState(
-        Icons.auto_awesome_mosaic_outlined,
-        "문서를 기반으로 요약을 생성해 보세요.",
+        Icons.subject_rounded,
+        "문서를 구조화된 노트로 요약합니다.",
       );
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
       itemCount: summaries.length,
       itemBuilder: (context, index) {
         final item = summaries[index];
         return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: _kCardColor,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: _kBorderColor),
-          ),
+          margin: const EdgeInsets.only(bottom: 24),
           child: MarkdownBody(
             data: item.content,
             styleSheet: _getMarkdownStyle(),
@@ -1263,14 +1283,14 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
         );
       case BlockType.h2:
         return const TextStyle(
-          fontSize: 26,
+          fontSize: 24,
           fontWeight: FontWeight.w600,
           color: Colors.white,
           height: 1.4,
         );
       case BlockType.h3:
         return const TextStyle(
-          fontSize: 20,
+          fontSize: 18,
           fontWeight: FontWeight.w600,
           color: Colors.white,
           height: 1.4,
@@ -1279,25 +1299,30 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
         return const TextStyle(
           fontSize: 14,
           fontFamily: 'monospace',
-          color: _kAccentColor,
+          color: _kTextColor,
           backgroundColor: _kCardColor,
         );
       case BlockType.bullet:
-        return const TextStyle(fontSize: 16, color: _kTextColor, height: 1.6);
+        return const TextStyle(fontSize: 15, color: _kTextColor, height: 1.6);
       default:
-        return const TextStyle(fontSize: 16, color: _kTextColor, height: 1.6);
+        return const TextStyle(
+          fontSize: 15,
+          color: _kTextColor,
+          height: 1.6,
+          letterSpacing: 0.2,
+        );
     }
   }
 
   PopupMenuItem<String> _menuItem(String val, IconData icon, String txt) {
     return PopupMenuItem(
       value: val,
-      height: 36,
+      height: 32,
       child: Row(
         children: [
-          Icon(icon, size: 18, color: _kTextSecondary),
+          Icon(icon, size: 16, color: _kTextSecondary),
           const SizedBox(width: 12),
-          Text(txt, style: const TextStyle(color: Colors.white, fontSize: 14)),
+          Text(txt, style: const TextStyle(color: Colors.white, fontSize: 13)),
         ],
       ),
     );
@@ -1312,8 +1337,8 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
     final bool isPrevList = widget.prevBlockType == BlockType.bullet;
     final double topPadding = (isList && isPrevList)
         ? 0.0
-        : (isList ? 4.0 : 8.0);
-    final double bottomPadding = isList ? 0.0 : 8.0;
+        : (isList ? 4.0 : 6.0);
+    final double bottomPadding = isList ? 0.0 : 6.0;
 
     return Material(
       color: Colors.transparent,
@@ -1333,7 +1358,7 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                 : Colors.transparent,
             border: Border(
               left: BorderSide(
-                color: _isFocused ? _kAccentColor : Colors.transparent,
+                color: _isFocused ? _kBorderColor : Colors.transparent,
                 width: 2,
               ),
             ),
@@ -1354,10 +1379,13 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                     child: PopupMenuButton<String>(
                       padding: EdgeInsets.zero,
                       color: _kCardColor,
-                      offset: const Offset(0, 30),
+                      offset: const Offset(0, 24),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
-                        side: const BorderSide(color: _kBorderColor),
+                        side: const BorderSide(
+                          color: _kBorderColor,
+                          width: 0.5,
+                        ),
                       ),
                       onSelected: (val) {
                         if (val == 'del')
@@ -1377,11 +1405,11 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                         const PopupMenuDivider(height: 10),
                         _menuItem('h1', Icons.looks_one_rounded, '제목 1'),
                         _menuItem('h2', Icons.looks_two_rounded, '제목 2'),
-                        _menuItem('text', Icons.short_text_rounded, '일반 텍스트'),
+                        _menuItem('text', Icons.short_text_rounded, '텍스트'),
                       ],
                       child: const Icon(
                         Icons.drag_indicator_rounded,
-                        size: 20,
+                        size: 18,
                         color: _kTextHint,
                       ),
                     ),
@@ -1392,19 +1420,19 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
               if (widget.block.type == BlockType.bullet)
                 const Padding(
                   padding: EdgeInsets.only(top: 10, right: 12),
-                  child: Icon(Icons.circle, size: 6, color: _kTextColor),
+                  child: Icon(Icons.circle, size: 5, color: _kTextColor),
                 ),
 
               if (widget.block.type == BlockType.checkbox)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, right: 12),
                   child: SizedBox(
-                    width: 18,
-                    height: 18,
+                    width: 16,
+                    height: 16,
                     child: Checkbox(
                       value: widget.block.isChecked,
                       onChanged: (val) => widget.onToggleCheckbox(val!),
-                      activeColor: _kAccentColor,
+                      activeColor: _kTextSecondary,
                       checkColor: _kBgPrimary,
                       side: const BorderSide(color: _kTextHint, width: 1.5),
                       shape: RoundedRectangleBorder(
@@ -1440,9 +1468,12 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                       filled: false,
                       hintText:
                           (_isFocused && widget.block.controller.text.isEmpty)
-                          ? "명령어 '/' 입력"
+                          ? "'/' 명령어를 입력하세요"
                           : "",
-                      hintStyle: TextStyle(color: _kTextHint.withOpacity(0.4)),
+                      hintStyle: TextStyle(
+                        color: _kTextHint.withOpacity(0.5),
+                        fontSize: 14,
+                      ),
                     ),
                     onChanged: (text) => widget.onChanged(text, widget.index),
                   ),

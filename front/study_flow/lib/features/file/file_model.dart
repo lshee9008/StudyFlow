@@ -1,5 +1,3 @@
-import 'dart:io';
-
 class FileModel {
   final String id;
   final String project_id;
