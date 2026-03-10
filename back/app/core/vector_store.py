@@ -1,6 +1,6 @@
 import os
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # 한국어 성능이 우수한 경량화 임베딩 모델 (Local)
 MODEL_NAME = "jhgan/ko-sbert-nli"
