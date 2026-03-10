@@ -10,15 +10,15 @@ import '../../models/block_model.dart';
 import 'file_provider.dart';
 
 // 🖋️ 실리콘밸리 트렌드: 극도로 세련되고 차분한 다크 테마 (Notion & Linear 스타일)
-const Color _kBgPrimary = Color(0xFF171717); // 완전 블랙이 아닌 고급스러운 차콜 다크
-const Color _kBgSecondary = Color(0xFF1E1E1E); // 스튜디오 패널 배경
-const Color _kCardColor = Color(0xFF262626); // 보더 없이 색상으로만 구분되는 카드
+const Color _kBgPrimary = Color(0xFF171717);
+const Color _kBgSecondary = Color(0xFF1E1E1E);
+const Color _kCardColor = Color(0xFF262626);
 const Color _kHoverColor = Color(0xFF2C2C2C);
-const Color _kTextColor = Color(0xFFEDEDED); // 눈이 편안한 오프화이트
-const Color _kTextSecondary = Color(0xFFA0A0A0); // 세련된 연회색
+const Color _kTextColor = Color(0xFFEDEDED);
+const Color _kTextSecondary = Color(0xFFA0A0A0);
 const Color _kTextHint = Color(0xFF6B6B6B);
-const Color _kBorderColor = Color(0xFF333333); // 아주 얇고 은은한 구분선
-const Color _kAccentColor = Color(0xFF5E81AC); // 튀지 않는 프로페셔널한 뮤트 블루
+const Color _kBorderColor = Color(0xFF333333);
+const Color _kAccentColor = Color(0xFF5E81AC);
 
 // 퀴즈용 컬러 (파스텔 톤으로 안정감 부여)
 const Color _kCorrectColor = Color(0xFF509C76);
@@ -95,7 +95,9 @@ class _ResizableSplitViewState extends State<ResizableSplitView> {
 
 class FileScreen extends ConsumerStatefulWidget {
   final String fileId;
-  const FileScreen({Key? key, required this.fileId}) : super(key: key);
+  final String projectId; // RAG 검색용 Project ID 추가
+  const FileScreen({Key? key, required this.fileId, this.projectId = "default"})
+    : super(key: key);
   @override
   ConsumerState<FileScreen> createState() => _FileScreenState();
 }
@@ -105,10 +107,12 @@ class _FileScreenState extends ConsumerState<FileScreen>
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _tagsController = TextEditingController();
   final TextEditingController _aiPromptController = TextEditingController();
+  final TextEditingController _qaController =
+      TextEditingController(); // Quick Ask용
   late TabController _tabController;
 
   Timer? _saveDebounceTimer;
-  Timer? _aiDebounceTimer;
+  Timer? _focusDebounceTimer;
 
   OverlayEntry? _overlayEntry;
   int _activeBlockIndex = -1;
@@ -140,12 +144,10 @@ class _FileScreenState extends ConsumerState<FileScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.index == 1 && _lastFocusedText.trim().isNotEmpty) {
-        _triggerAIAnalysis(_lastFocusedText);
-      }
-    });
+    _tabController = TabController(
+      length: 5,
+      vsync: this,
+    ); // 5개 탭으로 확장 (Quick Ask 포함)
     WidgetsBinding.instance.addPostFrameCallback((_) => _initializeScreen());
   }
 
@@ -166,10 +168,11 @@ class _FileScreenState extends ConsumerState<FileScreen>
   @override
   void dispose() {
     _saveDebounceTimer?.cancel();
-    _aiDebounceTimer?.cancel();
+    _focusDebounceTimer?.cancel();
     _titleController.dispose();
     _tagsController.dispose();
     _aiPromptController.dispose();
+    _qaController.dispose();
     _tabController.dispose();
     _removeOverlay();
     super.dispose();
@@ -197,22 +200,21 @@ class _FileScreenState extends ConsumerState<FileScreen>
           );
       if (mounted) setState(() => _isSaving = false);
     });
-
-    if (_aiDebounceTimer?.isActive ?? false) _aiDebounceTimer!.cancel();
-    _aiDebounceTimer = Timer(const Duration(milliseconds: 1200), () {
-      if (_tabController.index == 1 && _lastFocusedText.trim().isNotEmpty)
-        _triggerAIAnalysis(_lastFocusedText);
-    });
   }
 
-  void _triggerAIAnalysis(String text) {
-    ref
-        .read(fileEditorProvider.notifier)
-        .requestBlockAnalysis(
-          text: text,
-          tags: _tagsController.text,
-          documentContext: _titleController.text,
-        );
+  // 🎯 Track 2: 포커스 감지 시 자동으로 상세 분석 트리거
+  void _onBlockFocus(String text) {
+    if (_focusDebounceTimer?.isActive ?? false) _focusDebounceTimer!.cancel();
+    _focusDebounceTimer = Timer(const Duration(milliseconds: 1000), () {
+      if (text.trim().isNotEmpty) {
+        ref
+            .read(fileEditorProvider.notifier)
+            .requestBlockAnalysis(
+              text: text,
+              contextTitle: _titleController.text,
+            );
+      }
+    });
   }
 
   void _handleTextChanged(String text, int index) {
@@ -472,7 +474,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
     final fileState = ref.watch(fileEditorProvider);
     final blocks = fileState.blocks;
 
-    // 🖋️ 좌측 에디터 뷰 (여백과 정렬 최적화)
+    // 🖋️ 좌측 에디터 뷰
     Widget editorView = CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
@@ -503,7 +505,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
                   onChanged: (_) => _onContentChanged(),
                 ),
                 const SizedBox(height: 24),
-                // 속성 영역 (테두리 없이 패딩으로만 깔끔하게)
+                // 속성 영역
                 Column(
                   children: [
                     _buildNotionPropertyRow(
@@ -553,13 +555,14 @@ class _FileScreenState extends ConsumerState<FileScreen>
                 onTypeChange: (type) => ref
                     .read(fileEditorProvider.notifier)
                     .updateBlockType(index, type),
-                onFocus: () {
-                  _lastFocusedText = block.controller.text;
-                  _onContentChanged(activeBlockText: block.controller.text);
-                },
                 onToggleCheckbox: (val) => ref
                     .read(fileEditorProvider.notifier)
                     .toggleCheckbox(index, val),
+                onFocus: () {
+                  _lastFocusedText = block.controller.text;
+                  _onContentChanged(activeBlockText: block.controller.text);
+                  _onBlockFocus(block.controller.text); // 포커스 분석 트리거
+                },
               );
             },
           ),
@@ -567,7 +570,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
       ],
     );
 
-    // 🌟 우측 AI 스튜디오 패널 (NotebookLM 완벽 오마주)
+    // 🌟 우측 AI 스튜디오 패널 (5개의 강력한 탭)
     Widget rightPanel = Container(
       decoration: const BoxDecoration(
         color: _kBgSecondary,
@@ -576,7 +579,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 고급스러운 탭바 (아이콘 위, 텍스트 아래)
           Container(
             padding: const EdgeInsets.only(top: 8),
             decoration: const BoxDecoration(
@@ -586,38 +588,44 @@ class _FileScreenState extends ConsumerState<FileScreen>
             ),
             child: TabBar(
               controller: _tabController,
+              isScrollable: true, // 탭이 많아져서 스크롤 가능하게 변경
               labelColor: _kTextColor,
               unselectedLabelColor: _kTextSecondary,
               indicatorColor: _kTextColor,
               indicatorWeight: 2,
               labelStyle: const TextStyle(
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
               unselectedLabelStyle: const TextStyle(
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: FontWeight.normal,
               ),
               tabs: const [
                 Tab(
                   iconMargin: EdgeInsets.only(bottom: 6),
-                  icon: Icon(Icons.subject_rounded, size: 22),
-                  text: "요약",
+                  icon: Icon(Icons.subject_rounded, size: 20),
+                  text: "전체 요약",
                 ),
                 Tab(
                   iconMargin: EdgeInsets.only(bottom: 6),
-                  icon: Icon(Icons.manage_search_rounded, size: 22),
-                  text: "분석",
+                  icon: Icon(Icons.manage_search_rounded, size: 20),
+                  text: "상세 분석",
                 ),
                 Tab(
                   iconMargin: EdgeInsets.only(bottom: 6),
-                  icon: Icon(Icons.lightbulb_outline_rounded, size: 22),
-                  text: "암기",
+                  icon: Icon(Icons.lightbulb_outline_rounded, size: 20),
+                  text: "핵심 암기",
                 ),
                 Tab(
                   iconMargin: EdgeInsets.only(bottom: 6),
-                  icon: Icon(Icons.rule_rounded, size: 22),
-                  text: "퀴즈",
+                  icon: Icon(Icons.rule_rounded, size: 20),
+                  text: "AI 퀴즈",
+                ),
+                Tab(
+                  iconMargin: EdgeInsets.only(bottom: 6),
+                  icon: Icon(Icons.forum_outlined, size: 20),
+                  text: "Quick Ask",
                 ),
               ],
             ),
@@ -626,209 +634,11 @@ class _FileScreenState extends ConsumerState<FileScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                // 1. 전체 요약 탭
-                Stack(
-                  children: [
-                    _buildSummaryList(fileState.summaryBlocks),
-                    if (fileState.isSummaryLoading)
-                      Positioned.fill(
-                        child: _buildStudioLoader("문서를 분석하고 구조화하는 중..."),
-                      ),
-                    Positioned(
-                      bottom: 24,
-                      right: 24,
-                      child: FloatingActionButton.extended(
-                        onPressed: () => ref
-                            .read(fileEditorProvider.notifier)
-                            .requestAutoAISummary(
-                              title: _titleController.text,
-                              tags: _tagsController.text,
-                              prompt: "",
-                            ),
-                        backgroundColor: _kCardColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          side: const BorderSide(
-                            color: _kBorderColor,
-                            width: 0.5,
-                          ),
-                        ),
-                        icon: const Icon(
-                          Icons.auto_fix_high,
-                          color: _kTextColor,
-                          size: 18,
-                        ),
-                        label: const Text(
-                          "요약 생성",
-                          style: TextStyle(
-                            color: _kTextColor,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
-                          ),
-                        ),
-                        elevation: 0,
-                        hoverElevation: 2,
-                      ),
-                    ),
-                  ],
-                ),
-
-                // 2. 상세 분석 탭
-                Column(
-                  children: [
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                      child: fileState.focusedText.trim().isNotEmpty
-                          ? Container(
-                              width: double.infinity,
-                              margin: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: _kCardColor,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    "현재 포커스",
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: _kTextSecondary,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    fileState.focusedText,
-                                    style: const TextStyle(
-                                      color: _kTextColor,
-                                      fontSize: 13,
-                                      height: 1.5,
-                                    ),
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
-                        child: fileState.isAnalysisLoading
-                            ? _buildStudioLoader("문맥의 핵심을 파악 중...")
-                            : fileState.currentBlockAnalysis == null ||
-                                  fileState.focusedText.trim().isEmpty
-                            ? _buildEmptyStudioState(
-                                Icons.article_outlined,
-                                "에디터에서 문단을 클릭하면\n실시간 분석이 제공됩니다.",
-                              )
-                            : SingleChildScrollView(
-                                padding: const EdgeInsets.all(24),
-                                physics: const BouncingScrollPhysics(),
-                                child: MarkdownBody(
-                                  data: fileState.currentBlockAnalysis!,
-                                  styleSheet: _getMarkdownStyle(),
-                                ),
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // 3. 핵심 암기 탭
-                Stack(
-                  children: [
-                    fileState.isStudioLoading
-                        ? _buildStudioLoader("핵심 개념을 추출 중...")
-                        : fileState.currentMemo == null
-                        ? _buildEmptyStudioState(
-                            Icons.psychology_rounded,
-                            "본문에서 가장 중요한\n개념만 추출합니다.",
-                          )
-                        : SingleChildScrollView(
-                            padding: const EdgeInsets.all(24),
-                            child: MarkdownBody(
-                              data: fileState.currentMemo!,
-                              styleSheet: _getMarkdownStyle(),
-                            ),
-                          ),
-                    if (fileState.currentMemo == null &&
-                        !fileState.isStudioLoading)
-                      Positioned(
-                        bottom: 24,
-                        right: 24,
-                        child: FloatingActionButton.extended(
-                          onPressed: () => ref
-                              .read(fileEditorProvider.notifier)
-                              .generateStudioContent('memo'),
-                          backgroundColor: _kCardColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            side: const BorderSide(
-                              color: _kBorderColor,
-                              width: 0.5,
-                            ),
-                          ),
-                          label: const Text(
-                            "암기 노트 생성",
-                            style: TextStyle(
-                              color: _kTextColor,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 13,
-                            ),
-                          ),
-                          elevation: 0,
-                        ),
-                      ),
-                  ],
-                ),
-
-                // 4. AI 퀴즈 탭
-                Stack(
-                  children: [
-                    fileState.isStudioLoading
-                        ? _buildStudioLoader("문제를 출제 중...")
-                        : fileState.quizData == null
-                        ? _buildEmptyStudioState(
-                            Icons.rule_rounded,
-                            "학습 내용을 바탕으로\n객관식 퀴즈를 풀어보세요.",
-                          )
-                        : _buildInteractiveQuiz(fileState),
-                    if (fileState.quizData == null &&
-                        !fileState.isStudioLoading)
-                      Positioned(
-                        bottom: 24,
-                        right: 24,
-                        child: FloatingActionButton.extended(
-                          onPressed: () => ref
-                              .read(fileEditorProvider.notifier)
-                              .generateStudioContent('quiz'),
-                          backgroundColor: _kCardColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            side: const BorderSide(
-                              color: _kBorderColor,
-                              width: 0.5,
-                            ),
-                          ),
-                          label: const Text(
-                            "퀴즈 출제하기",
-                            style: TextStyle(
-                              color: _kTextColor,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 13,
-                            ),
-                          ),
-                          elevation: 0,
-                        ),
-                      ),
-                  ],
-                ),
+                _buildSummaryTab(fileState),
+                _buildAnalysisTab(fileState),
+                _buildMemoTab(fileState),
+                _buildQuizTab(fileState),
+                _buildQATab(fileState),
               ],
             ),
           ),
@@ -851,8 +661,8 @@ class _FileScreenState extends ConsumerState<FileScreen>
           child: _isSaving
               ? Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
+                  children: const [
+                    SizedBox(
                       width: 10,
                       height: 10,
                       child: CircularProgressIndicator(
@@ -860,17 +670,17 @@ class _FileScreenState extends ConsumerState<FileScreen>
                         color: _kTextSecondary,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
+                    SizedBox(width: 8),
+                    Text(
                       "저장 중...",
                       style: TextStyle(color: _kTextSecondary, fontSize: 12),
                     ),
                   ],
                 )
               : fileState.lastSavedAt != null
-              ? const Row(
+              ? Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: [
+                  children: const [
                     Icon(
                       Icons.cloud_done_outlined,
                       size: 14,
@@ -914,141 +724,421 @@ class _FileScreenState extends ConsumerState<FileScreen>
     );
   }
 
-  // 💡 버튼형 인터랙티브 퀴즈 UI (모던 스타일)
-  Widget _buildInteractiveQuiz(FileEditorState fileState) {
-    final quizList = fileState.quizData!;
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
-      itemCount: quizList.length,
-      itemBuilder: (context, qIndex) {
-        final q = quizList[qIndex];
-        final bool isAnswered = fileState.quizAnswers.containsKey(qIndex);
-        final int? selectedOpt = fileState.quizAnswers[qIndex];
-        final int correctOpt = q['answer'] ?? 0;
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Q${qIndex + 1}. ${q['question']}",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4,
+  // --- 탭 1: 전체 요약 ---
+  Widget _buildSummaryTab(FileEditorState state) {
+    return Stack(
+      children: [
+        if (state.summaryBlocks.isEmpty)
+          _buildEmptyStudioState(Icons.subject_rounded, "문서를 구조화된 노트로 요약합니다."),
+        ListView.builder(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+          itemCount: state.summaryBlocks.length,
+          itemBuilder: (context, index) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 24),
+              child: MarkdownBody(
+                data: state.summaryBlocks[index].content,
+                styleSheet: _getMarkdownStyle(),
+              ),
+            );
+          },
+        ),
+        if (state.isSummaryLoading)
+          Positioned.fill(child: _buildStudioLoader("문서를 분석하고 구조화하는 중...")),
+        Positioned(
+          bottom: 24,
+          right: 24,
+          child: FloatingActionButton.extended(
+            onPressed: () => ref
+                .read(fileEditorProvider.notifier)
+                .requestAutoAISummary(
+                  title: _titleController.text,
+                  tags: _tagsController.text,
                 ),
+            backgroundColor: _kCardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: const BorderSide(color: _kBorderColor, width: 0.5),
+            ),
+            icon: const Icon(Icons.auto_fix_high, color: _kTextColor, size: 18),
+            label: const Text(
+              "요약 생성",
+              style: TextStyle(
+                color: _kTextColor,
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
               ),
-              const SizedBox(height: 16),
-              ...List.generate((q['options'] as List).length, (optIndex) {
-                final optionText = q['options'][optIndex];
-
-                Color btnBgColor = _kCardColor;
-                Color btnBorderColor = Colors.transparent;
-                Color btnTextColor = _kTextColor;
-
-                if (isAnswered) {
-                  if (optIndex == correctOpt) {
-                    btnBgColor = _kCorrectColor.withOpacity(0.15);
-                    btnBorderColor = _kCorrectColor.withOpacity(0.5);
-                    btnTextColor = _kCorrectColor;
-                  } else if (optIndex == selectedOpt) {
-                    btnBgColor = _kWrongColor.withOpacity(0.15);
-                    btnBorderColor = _kWrongColor.withOpacity(0.5);
-                    btnTextColor = _kWrongColor;
-                  }
-                }
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: InkWell(
-                    onTap: () => ref
-                        .read(fileEditorProvider.notifier)
-                        .answerQuiz(qIndex, optIndex),
-                    borderRadius: BorderRadius.circular(8),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                        horizontal: 16,
-                      ),
-                      decoration: BoxDecoration(
-                        color: btnBgColor,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: btnBorderColor, width: 0.5),
-                      ),
-                      child: Text(
-                        optionText,
-                        style: TextStyle(color: btnTextColor, fontSize: 14),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-
-              AnimatedSize(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-                child: isAnswered
-                    ? Container(
-                        margin: const EdgeInsets.only(top: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: _kBgPrimary,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: _kBorderColor, width: 0.5),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  selectedOpt == correctOpt
-                                      ? Icons.check_circle_outline
-                                      : Icons.highlight_off_rounded,
-                                  size: 16,
-                                  color: selectedOpt == correctOpt
-                                      ? _kCorrectColor
-                                      : _kWrongColor,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  selectedOpt == correctOpt ? "정답입니다" : "오답입니다",
-                                  style: TextStyle(
-                                    color: selectedOpt == correctOpt
-                                        ? _kCorrectColor
-                                        : _kWrongColor,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              q['explanation'] ?? '',
-                              style: const TextStyle(
-                                color: _kTextSecondary,
-                                height: 1.5,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
+            ),
+            elevation: 0,
+            hoverElevation: 2,
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
-  // 🖋️ 마크다운 스타일 (가로선 표, 깔끔한 폰트)
+  // --- 탭 2: 상세 분석 ---
+  Widget _buildAnalysisTab(FileEditorState state) {
+    return Column(
+      children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          child: state.focusedText.trim().isNotEmpty
+              ? Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _kCardColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "현재 포커스",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _kTextSecondary,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        state.focusedText,
+                        style: const TextStyle(
+                          color: _kTextColor,
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: state.isAnalysisLoading
+                ? _buildStudioLoader("문맥의 핵심을 파악 중...")
+                : state.currentBlockAnalysis == null ||
+                      state.focusedText.trim().isEmpty
+                ? _buildEmptyStudioState(
+                    Icons.article_outlined,
+                    "에디터에서 문단을 클릭하면\n실시간 분석이 제공됩니다.",
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    physics: const BouncingScrollPhysics(),
+                    child: MarkdownBody(
+                      data: state.currentBlockAnalysis!,
+                      styleSheet: _getMarkdownStyle(),
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- 탭 3: 핵심 암기 ---
+  Widget _buildMemoTab(FileEditorState state) {
+    return Stack(
+      children: [
+        if (state.currentMemo == null && !state.isStudioLoading)
+          _buildEmptyStudioState(
+            Icons.psychology_rounded,
+            "본문에서 가장 중요한\n개념만 추출합니다.",
+          ),
+        if (state.currentMemo != null)
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: MarkdownBody(
+              data: state.currentMemo!,
+              styleSheet: _getMarkdownStyle(),
+            ),
+          ),
+        if (state.isStudioLoading)
+          Positioned.fill(child: _buildStudioLoader("핵심 개념을 추출 중...")),
+        if (state.currentMemo == null && !state.isStudioLoading)
+          Positioned(
+            bottom: 24,
+            right: 24,
+            child: FloatingActionButton.extended(
+              onPressed: () => ref
+                  .read(fileEditorProvider.notifier)
+                  .generateStudioContent('memo'),
+              backgroundColor: _kCardColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+                side: const BorderSide(color: _kBorderColor, width: 0.5),
+              ),
+              label: const Text(
+                "암기 노트 생성",
+                style: TextStyle(
+                  color: _kTextColor,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+              ),
+              elevation: 0,
+            ),
+          ),
+      ],
+    );
+  }
+
+  // --- 탭 4: AI 퀴즈 ---
+  Widget _buildQuizTab(FileEditorState state) {
+    return Stack(
+      children: [
+        if (state.quizData == null && !state.isStudioLoading)
+          _buildEmptyStudioState(
+            Icons.rule_rounded,
+            "학습 내용을 바탕으로\n객관식 퀴즈를 풀어보세요.",
+          ),
+        if (state.quizData != null)
+          ListView.builder(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+            itemCount: state.quizData!.length,
+            itemBuilder: (context, qIndex) {
+              final q = state.quizData![qIndex];
+              final isAnswered = state.quizAnswers.containsKey(qIndex);
+              final selectedOpt = state.quizAnswers[qIndex];
+              final correctOpt = q['answer'] ?? 0;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Q${qIndex + 1}. ${q['question']}",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ...List.generate((q['options'] as List).length, (optIndex) {
+                      Color btnBgColor = _kCardColor,
+                          btnBorderColor = Colors.transparent,
+                          btnTextColor = _kTextColor;
+                      if (isAnswered) {
+                        if (optIndex == correctOpt) {
+                          btnBgColor = _kCorrectColor.withOpacity(0.15);
+                          btnBorderColor = _kCorrectColor.withOpacity(0.5);
+                          btnTextColor = _kCorrectColor;
+                        } else if (optIndex == selectedOpt) {
+                          btnBgColor = _kWrongColor.withOpacity(0.15);
+                          btnBorderColor = _kWrongColor.withOpacity(0.5);
+                          btnTextColor = _kWrongColor;
+                        }
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: InkWell(
+                          onTap: () => ref
+                              .read(fileEditorProvider.notifier)
+                              .answerQuiz(qIndex, optIndex),
+                          borderRadius: BorderRadius.circular(8),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                              horizontal: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: btnBgColor,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: btnBorderColor,
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Text(
+                              q['options'][optIndex],
+                              style: TextStyle(
+                                color: btnTextColor,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                      child: isAnswered
+                          ? Container(
+                              margin: const EdgeInsets.only(top: 12),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: _kBgPrimary,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _kBorderColor,
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        selectedOpt == correctOpt
+                                            ? Icons.check_circle_outline
+                                            : Icons.highlight_off_rounded,
+                                        size: 16,
+                                        color: selectedOpt == correctOpt
+                                            ? _kCorrectColor
+                                            : _kWrongColor,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        selectedOpt == correctOpt
+                                            ? "정답입니다"
+                                            : "오답입니다",
+                                        style: TextStyle(
+                                          color: selectedOpt == correctOpt
+                                              ? _kCorrectColor
+                                              : _kWrongColor,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    q['explanation'] ?? '',
+                                    style: const TextStyle(
+                                      color: _kTextSecondary,
+                                      height: 1.5,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        if (state.isStudioLoading)
+          Positioned.fill(child: _buildStudioLoader("문제를 출제 중...")),
+        if (state.quizData == null && !state.isStudioLoading)
+          Positioned(
+            bottom: 24,
+            right: 24,
+            child: FloatingActionButton.extended(
+              onPressed: () => ref
+                  .read(fileEditorProvider.notifier)
+                  .generateStudioContent('quiz'),
+              backgroundColor: _kCardColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+                side: const BorderSide(color: _kBorderColor, width: 0.5),
+              ),
+              label: const Text(
+                "퀴즈 출제하기",
+                style: TextStyle(
+                  color: _kTextColor,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+              ),
+              elevation: 0,
+            ),
+          ),
+      ],
+    );
+  }
+
+  // --- 탭 5: Quick Ask (RAG 시스템) ---
+  Widget _buildQATab(FileEditorState state) {
+    return Column(
+      children: [
+        Expanded(
+          child: state.isQALoading
+              ? _buildStudioLoader("내 노트와 인터넷을 검색 중...")
+              : state.qaAnswer == null
+              ? _buildEmptyStudioState(
+                  Icons.forum_outlined,
+                  "궁금한 점을 자유롭게 물어보세요.\n이전 기록과 인터넷을 동시 검색합니다.",
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: MarkdownBody(
+                    data: state.qaAnswer!,
+                    styleSheet: _getMarkdownStyle(),
+                  ),
+                ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _qaController,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: "질문 입력 (예: 이 개념 다시 설명해줘)",
+                    hintStyle: const TextStyle(color: _kTextHint),
+                    filled: true,
+                    fillColor: _kCardColor,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onSubmitted: (val) {
+                    ref
+                        .read(fileEditorProvider.notifier)
+                        .askAI(val, widget.projectId);
+                    _qaController.clear();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              CircleAvatar(
+                backgroundColor: _kAccentColor,
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_upward, color: Colors.white),
+                  onPressed: () {
+                    ref
+                        .read(fileEditorProvider.notifier)
+                        .askAI(_qaController.text, widget.projectId);
+                    _qaController.clear();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- 스타일 및 유틸리티 위젯 ---
   MarkdownStyleSheet _getMarkdownStyle() {
     return MarkdownStyleSheet(
       p: const TextStyle(
@@ -1068,8 +1158,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
         color: _kCardColor,
         borderRadius: BorderRadius.circular(8),
       ),
-      // 💡 표(Table) 스타일을 완벽하게 다듬음 (가로선만 존재)
-      tableBorder: TableBorder(
+      tableBorder: const TableBorder(
         horizontalInside: BorderSide(color: _kBorderColor, width: 0.5),
         bottom: BorderSide(color: _kBorderColor, width: 0.5),
       ),
@@ -1083,8 +1172,8 @@ class _FileScreenState extends ConsumerState<FileScreen>
         vertical: 12,
         horizontal: 8,
       ),
-      blockquoteDecoration: BoxDecoration(
-        border: const Border(left: BorderSide(color: _kBorderColor, width: 3)),
+      blockquoteDecoration: const BoxDecoration(
+        border: Border(left: BorderSide(color: _kBorderColor, width: 3)),
         color: Colors.transparent,
       ),
       listBullet: const TextStyle(color: _kTextSecondary, fontSize: 16),
@@ -1188,28 +1277,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildSummaryList(List<SummaryBlock> summaries) {
-    if (summaries.isEmpty)
-      return _buildEmptyStudioState(
-        Icons.subject_rounded,
-        "문서를 구조화된 노트로 요약합니다.",
-      );
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
-      itemCount: summaries.length,
-      itemBuilder: (context, index) {
-        final item = summaries[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 24),
-          child: MarkdownBody(
-            data: item.content,
-            styleSheet: _getMarkdownStyle(),
-          ),
-        );
-      },
     );
   }
 }
@@ -1416,13 +1483,11 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                   ),
                 ),
               ),
-
               if (widget.block.type == BlockType.bullet)
                 const Padding(
                   padding: EdgeInsets.only(top: 10, right: 12),
                   child: Icon(Icons.circle, size: 5, color: _kTextColor),
                 ),
-
               if (widget.block.type == BlockType.checkbox)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, right: 12),
@@ -1441,7 +1506,6 @@ class _HoverBlockItemState extends State<HoverBlockItem> {
                     ),
                   ),
                 ),
-
               Expanded(
                 child: CompositedTransformTarget(
                   link: widget.block.layerLink,

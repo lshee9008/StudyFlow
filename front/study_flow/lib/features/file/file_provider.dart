@@ -1,59 +1,64 @@
-import 'dart:io';
-
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io' as io;
+
+import 'package:flutter/foundation.dart'; // kIsWeb
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../../core/db_helper/files_db_helper.dart';
 import '../../models/block_model.dart';
 import '../../core/markdown_parser.dart';
 import 'file_model.dart';
 
+// API 베이스 URL (웹/안드로이드/iOS 분기)
+String get apiBaseUrl {
+  if (kIsWeb) return 'http://localhost:8000';
+  if (io.Platform.isAndroid) return 'http://10.0.2.2:8000';
+  return 'http://localhost:8000';
+}
+
 class SummaryBlock {
   String content;
   bool isSaved;
-  String? relatedBlockId;
-
-  SummaryBlock({
-    required this.content,
-    this.isSaved = false,
-    this.relatedBlockId,
-  });
-  Map<String, dynamic> toJson() => {
-    'content': content,
-    'isSaved': isSaved,
-    'relatedBlockId': relatedBlockId,
-  };
+  SummaryBlock({required this.content, this.isSaved = false});
+  Map<String, dynamic> toJson() => {'content': content, 'isSaved': isSaved};
   factory SummaryBlock.fromJson(Map<String, dynamic> json) => SummaryBlock(
     content: json['content'] ?? '',
     isSaved: json['isSaved'] ?? false,
-    relatedBlockId: json['relatedBlockId'],
   );
 }
 
+// -----------------------------------------------------------------------------
+// [FilesNotifier] 프로젝트 내 파일 목록 관리
+// -----------------------------------------------------------------------------
 final filesProvider = StateNotifierProvider<FilesNotifier, List<FileModel>>(
   (ref) => FilesNotifier(),
 );
 
 class FilesNotifier extends StateNotifier<List<FileModel>> {
   FilesNotifier() : super([]);
+
   Future<void> loadFiles(String projectId) async {
-    state = await FilesDBHelper.selectProjectFiles(projectId);
+    if (!kIsWeb) {
+      state = await FilesDBHelper.selectProjectFiles(projectId);
+    } else {
+      state = []; // 🌐 웹에서는 API로 로드 (현재는 로컬 리스트 유지)
+    }
   }
 
   Future<void> addFile(FileModel file) async {
-    await FilesDBHelper.insertFile(file);
+    if (!kIsWeb) await FilesDBHelper.insertFile(file);
     state = [file, ...state];
   }
 
   Future<void> deleteFile(String fileId) async {
-    await FilesDBHelper.deleteFile(fileId);
+    if (!kIsWeb) await FilesDBHelper.deleteFile(fileId);
     state = state.where((f) => f.id != fileId).toList();
   }
 
   Future<void> updateFileTitle(String fileId, String newTitle) async {
-    await FilesDBHelper.updateFile(fileId, title: newTitle);
+    if (!kIsWeb) await FilesDBHelper.updateFile(fileId, title: newTitle);
     state = [
       for (final f in state)
         if (f.id == fileId) f.updateWith(title: newTitle) else f,
@@ -61,6 +66,9 @@ class FilesNotifier extends StateNotifier<List<FileModel>> {
   }
 }
 
+// -----------------------------------------------------------------------------
+// [FileEditorNotifier] 개별 파일 에디터 상태 관리 (AI 스튜디오 포함)
+// -----------------------------------------------------------------------------
 final fileEditorProvider =
     StateNotifierProvider.autoDispose<FileEditorNotifier, FileEditorState>(
       (ref) => FileEditorNotifier(),
@@ -69,16 +77,18 @@ final fileEditorProvider =
 class FileEditorState {
   final List<Block> blocks;
   final bool isLoading;
-  final bool isAnalysisLoading;
-  final bool isSummaryLoading;
-  final bool isStudioLoading;
+  final bool isSummaryLoading; // [Track 1] 전체 요약 로딩
+  final bool isAnalysisLoading; // [Track 2] 포커스 분석 로딩
+  final bool isStudioLoading; // 암기/퀴즈 로딩
+  final bool isQALoading; // Quick Ask 로딩
+
   final String? icon;
-  final List<SummaryBlock> summaryBlocks;
-  final String? currentBlockAnalysis;
-  final String? currentMemo;
-  // 💡 인터랙티브 퀴즈용 상태 추가
-  final List<dynamic>? quizData;
-  final Map<int, int> quizAnswers; // 문제 인덱스 -> 사용자가 선택한 답 인덱스
+  final List<SummaryBlock> summaryBlocks; // 전체 요약
+  final String? currentBlockAnalysis; // 포커스 요약
+  final String? currentMemo; // 핵심 암기
+  final List<dynamic>? quizData; // 인터랙티브 퀴즈
+  final Map<int, int> quizAnswers; // 유저 퀴즈 정답
+  final String? qaAnswer; // Quick Ask 답변
 
   final String focusedText;
   final DateTime? lastSavedAt;
@@ -86,15 +96,17 @@ class FileEditorState {
   FileEditorState({
     required this.blocks,
     this.isLoading = false,
-    this.isAnalysisLoading = false,
     this.isSummaryLoading = false,
+    this.isAnalysisLoading = false,
     this.isStudioLoading = false,
+    this.isQALoading = false,
     this.icon,
     this.summaryBlocks = const [],
     this.currentBlockAnalysis,
     this.currentMemo,
     this.quizData,
     this.quizAnswers = const {},
+    this.qaAnswer,
     this.focusedText = "",
     this.lastSavedAt,
   });
@@ -102,30 +114,34 @@ class FileEditorState {
   FileEditorState copyWith({
     List<Block>? blocks,
     bool? isLoading,
-    bool? isAnalysisLoading,
     bool? isSummaryLoading,
+    bool? isAnalysisLoading,
     bool? isStudioLoading,
+    bool? isQALoading,
     String? icon,
     List<SummaryBlock>? summaryBlocks,
     String? currentBlockAnalysis,
     String? currentMemo,
     List<dynamic>? quizData,
     Map<int, int>? quizAnswers,
+    String? qaAnswer,
     String? focusedText,
     DateTime? lastSavedAt,
   }) {
     return FileEditorState(
       blocks: blocks ?? this.blocks,
       isLoading: isLoading ?? this.isLoading,
-      isAnalysisLoading: isAnalysisLoading ?? this.isAnalysisLoading,
       isSummaryLoading: isSummaryLoading ?? this.isSummaryLoading,
+      isAnalysisLoading: isAnalysisLoading ?? this.isAnalysisLoading,
       isStudioLoading: isStudioLoading ?? this.isStudioLoading,
+      isQALoading: isQALoading ?? this.isQALoading,
       icon: icon ?? this.icon,
       summaryBlocks: summaryBlocks ?? this.summaryBlocks,
       currentBlockAnalysis: currentBlockAnalysis ?? this.currentBlockAnalysis,
       currentMemo: currentMemo ?? this.currentMemo,
       quizData: quizData ?? this.quizData,
       quizAnswers: quizAnswers ?? this.quizAnswers,
+      qaAnswer: qaAnswer ?? this.qaAnswer,
       focusedText: focusedText ?? this.focusedText,
       lastSavedAt: lastSavedAt ?? this.lastSavedAt,
     );
@@ -134,11 +150,13 @@ class FileEditorState {
 
 class FileEditorNotifier extends StateNotifier<FileEditorState> {
   FileEditorNotifier() : super(FileEditorState(blocks: []));
-  int _lastAnalysisRequestId = 0;
+
+  String _lastAnalyzedText = "";
 
   Future<void> loadFileDetail(String fileId) async {
     state = state.copyWith(isLoading: true);
-    final fileModel = await FilesDBHelper.getFile(fileId);
+    FileModel? fileModel;
+    if (!kIsWeb) fileModel = await FilesDBHelper.getFile(fileId);
 
     if (fileModel != null) {
       List<Block> loadedBlocks = [];
@@ -160,12 +178,9 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
                 ),
               )
               .toList();
-          if (loadedBlocks.isEmpty)
-            loadedBlocks = [_createBlock(0, content: fileModel.content)];
         }
-      } else {
-        loadedBlocks = [_createBlock(0)];
       }
+      if (loadedBlocks.isEmpty) loadedBlocks = [_createBlock(0)];
 
       List<SummaryBlock> loadedSummary = [];
       if (fileModel.summary != null && fileModel.summary!.isNotEmpty) {
@@ -204,44 +219,46 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       return json;
     }).toList();
 
-    await FilesDBHelper.updateFile(
-      fileId,
-      updateAt: updateAt,
-      title: title,
-      tags: tags,
-      icon: state.icon,
-      prompt: prompt,
-      content: jsonEncode(blocksDataToSave),
-      summary: jsonEncode(state.summaryBlocks.map((b) => b.toJson()).toList()),
-    );
+    if (!kIsWeb) {
+      await FilesDBHelper.updateFile(
+        fileId,
+        updateAt: updateAt,
+        title: title,
+        tags: tags,
+        icon: state.icon,
+        prompt: prompt,
+        content: jsonEncode(blocksDataToSave),
+        summary: jsonEncode(
+          state.summaryBlocks.map((b) => b.toJson()).toList(),
+        ),
+      );
+    }
     state = state.copyWith(lastSavedAt: DateTime.now());
   }
 
-  // 💡 [전체 요약] 표(Table)와 리스트를 스마트하게 판단하여 작성하도록 프롬프트 고도화
+  // 🌟 [Track 1] 전체 구조적 요약
+  // 🌟 [Track 1] 전체 구조적 요약 (디버그 로그 추가 버전)
   Future<void> requestAutoAISummary({
     required String title,
     required String tags,
-    required String prompt,
   }) async {
     String fullContext = state.blocks.map((b) => b.controller.text).join("\n");
-    if (fullContext.trim().isEmpty) return;
+
+    if (fullContext.trim().isEmpty) {
+      print("⚠️ [Front] 에디터에 작성된 내용이 없어서 서버에 요약을 요청하지 않습니다.");
+      return;
+    }
 
     state = state.copyWith(isSummaryLoading: true);
+
     try {
-      final String baseUrl = Platform.isAndroid
-          ? 'http://10.0.2.2:8000'
-          : 'http://localhost:8000';
-      final customPrompt = """
-사용자가 작성한 본문을 구조화된 최고 품질의 '요약 노트'로 재구성해 주세요.
-지시사항:
-1. 내용을 스스로 판단하여, 여러 개념을 '비교'하거나 '장단점/특징'을 나열해야 하는 경우 **반드시 마크다운 표(Table)를 생성**하여 한눈에 보기 좋게 정리하세요.
-2. 표로 만들기 애매한 줄글은 글머리 기호(-, 1. 등)를 활용하여 구조화하세요.
-3. 어떠한 이모티콘(Emoji)도 절대 사용하지 마세요.
-4. 전문적이고 학술적인 톤을 유지하며, 중요한 개념은 **굵은 글씨**로 강조하세요.
-""";
+      final customPrompt =
+          "문서 제목: $title\n문서 내용 전체를 구조화된 요약 노트(개조식, 마크다운 표 포함)로 정리해 주세요. 이모티콘은 제외하고 학술적으로 작성하세요.";
+
+      print("🚀 [Front] 요약 API 요청 시작: $apiBaseUrl/api/ai/summarize");
 
       final response = await http.post(
-        Uri.parse('$baseUrl/api/files/summarize'),
+        Uri.parse('$apiBaseUrl/api/ai/summarize'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "content": fullContext,
@@ -250,110 +267,86 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         }),
       );
 
+      print("📥 [Front] 요약 API 응답 코드: ${response.statusCode}");
+
       if (response.statusCode == 200) {
+        print("✅ [Front] 요약 생성 성공!");
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        List<SummaryBlock> keptBlocks = state.summaryBlocks
-            .where((b) => b.isSaved)
-            .toList();
-        keptBlocks.insert(
-          0,
-          SummaryBlock(content: data['summary'], isSaved: false),
-        );
+        List<SummaryBlock> newSummaries = [
+          SummaryBlock(content: data['summary']),
+          ...state.summaryBlocks,
+        ];
         state = state.copyWith(
-          summaryBlocks: keptBlocks,
+          summaryBlocks: newSummaries,
           isSummaryLoading: false,
         );
       } else {
+        print("❌ [Front] 요약 API 실패: ${response.body}");
         state = state.copyWith(isSummaryLoading: false);
       }
     } catch (e) {
+      print("💥 [Front] 요약 API 통신 에러 (서버가 꺼져있거나 주소가 틀림): $e");
       state = state.copyWith(isSummaryLoading: false);
     }
   }
 
+  // 🎯 [Track 2] 포커스 부분 심층 분석
   Future<void> requestBlockAnalysis({
     required String text,
-    required String tags,
-    required String documentContext,
+    required String contextTitle,
   }) async {
-    state = state.copyWith(focusedText: text);
-    if (text.trim().length < 2) {
-      state = state.copyWith(
-        currentBlockAnalysis: null,
-        isAnalysisLoading: false,
-      );
-      return;
-    }
+    // 🚨 2. 문제의 'text == state.focusedText' 조건을 지우고 _lastAnalyzedText와 비교합니다.
+    if (text.trim().length < 5 || text == _lastAnalyzedText) return;
 
-    final currentRequestId = ++_lastAnalysisRequestId;
-    state = state.copyWith(isAnalysisLoading: true);
+    _lastAnalyzedText = text; // 서버로 보낼 텍스트를 기억
+    state = state.copyWith(focusedText: text, isAnalysisLoading: true);
 
     try {
-      final String baseUrl = Platform.isAndroid
-          ? 'http://10.0.2.2:8000'
-          : 'http://localhost:8000';
       final prompt =
-          "전체 문맥([제목]: $documentContext)을 고려하여 선택된 문단의 핵심 의미를 1~3문장으로 아주 명확히 설명하세요. 필요하다면 간결한 표를 사용해도 좋습니다. 이모티콘은 쓰지 마세요.\n[선택된 문단]: $text";
+          "문서($contextTitle)의 문맥을 고려하여 다음 문단/문장의 핵심 의미를 3줄 내외로 아주 명확히 심층 분석해 주세요.\n내용: $text";
+
+      print("🚀 [Front] 상세 분석 API 요청 시작...");
 
       final response = await http.post(
-        Uri.parse('$baseUrl/api/files/summarize'),
+        Uri.parse('$apiBaseUrl/api/ai/summarize'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "content": text,
-          "tags": tags,
+          "tags": "",
           "custom_prompt": prompt,
         }),
       );
 
-      if (currentRequestId == _lastAnalysisRequestId &&
-          response.statusCode == 200) {
+      print("📥 [Front] 상세 분석 API 응답 코드: ${response.statusCode}");
+
+      if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         state = state.copyWith(
           currentBlockAnalysis: data['summary'],
           isAnalysisLoading: false,
         );
-      } else if (currentRequestId == _lastAnalysisRequestId) {
+      } else {
         state = state.copyWith(isAnalysisLoading: false);
       }
     } catch (e) {
-      if (currentRequestId == _lastAnalysisRequestId)
-        state = state.copyWith(isAnalysisLoading: false);
+      print("💥 [Front] 상세 분석 통신 에러: $e");
+      state = state.copyWith(isAnalysisLoading: false);
     }
   }
 
-  // 💡 [핵심 암기 및 퀴즈 생성] 퀴즈는 프론트가 그릴 수 있도록 JSON 배열을 요청합니다.
+  // 💡 [학습 도구] 암기 및 인터랙티브 퀴즈
   Future<void> generateStudioContent(String type) async {
     String fullContext = state.blocks.map((b) => b.controller.text).join("\n");
     if (fullContext.trim().isEmpty) return;
 
     state = state.copyWith(isStudioLoading: true);
     try {
-      final String baseUrl = Platform.isAndroid
-          ? 'http://10.0.2.2:8000'
-          : 'http://localhost:8000';
-
-      String customPrompt = "";
-      if (type == 'memo') {
-        customPrompt =
-            "본문 내용 중 시험에 무조건 나올 만한 '핵심 암기 사항' 5가지를 이모티콘 없이 명확한 리스트와 표를 활용하여 추출해 주세요.";
-      } else {
-        // 💡 퀴즈는 앱에서 버튼으로 렌더링하기 위해 엄격한 JSON 규칙을 부여
-        customPrompt = """
-본문 내용을 바탕으로 학습을 점검할 수 있는 객관식 퀴즈 3문제를 출제해 주세요.
-반드시 아래의 순수 JSON 배열(Array) 형식으로만 응답해야 하며, 마크다운(```json)이나 다른 설명은 절대 넣지 마세요.
-[
-  {
-    "question": "문제 내용",
-    "options": ["보기1", "보기2", "보기3", "보기4"],
-    "answer": 0, 
-    "explanation": "정답인 이유 간략 설명"
-  }
-]
-""";
-      }
+      String customPrompt = type == 'memo'
+          ? "본문 내용 중 시험에 무조건 나올 만한 '핵심 암기 사항' 5가지를 이모티콘 없이 명확한 리스트와 표를 활용하여 추출해 주세요."
+          : "본문 내용을 바탕으로 객관식 퀴즈 3문제를 출제해 주세요. 반드시 다음의 순수 JSON 배열 형식으로만 응답해야 합니다: [{\"question\":\"문제\",\"options\":[\"1\",\"2\",\"3\",\"4\"],\"answer\":0,\"explanation\":\"해설\"}]";
 
       final response = await http.post(
-        Uri.parse('$baseUrl/api/files/summarize'),
+        Uri.parse('$apiBaseUrl/api/ai/summarize'),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "content": fullContext,
@@ -370,22 +363,23 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
             isStudioLoading: false,
           );
         } else {
-          // JSON 파싱 로직 (AI가 마크다운 코드블록을 붙였을 경우를 대비해 전처리)
-          String resText = data['summary'].toString();
-          resText = resText.replaceAll(RegExp(r'```json|```'), '').trim();
-
+          String resText = data['summary']
+              .toString()
+              .replaceAll(RegExp(r'```json|```'), '')
+              .trim();
           int startIdx = resText.indexOf('[');
           int endIdx = resText.lastIndexOf(']');
           if (startIdx != -1 && endIdx != -1) {
-            String jsonStr = resText.substring(startIdx, endIdx + 1);
-            List<dynamic> parsedQuiz = jsonDecode(jsonStr);
+            List<dynamic> parsedQuiz = jsonDecode(
+              resText.substring(startIdx, endIdx + 1),
+            );
             state = state.copyWith(
               quizData: parsedQuiz,
               quizAnswers: {},
               isStudioLoading: false,
             );
           } else {
-            state = state.copyWith(isStudioLoading: false); // 파싱 실패 시
+            state = state.copyWith(isStudioLoading: false);
           }
         }
       } else {
@@ -396,15 +390,43 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     }
   }
 
-  // 💡 사용자가 퀴즈 보기 버튼을 눌렀을 때 실행되는 함수
   void answerQuiz(int questionIndex, int selectedOptionIndex) {
-    if (state.quizAnswers.containsKey(questionIndex)) return; // 이미 푼 문제는 무시
+    if (state.quizAnswers.containsKey(questionIndex)) return;
     final newAnswers = Map<int, int>.from(state.quizAnswers);
     newAnswers[questionIndex] = selectedOptionIndex;
     state = state.copyWith(quizAnswers: newAnswers);
   }
 
-  // 블록 편집 기능들
+  // 🔍 [RAG 시스템] Quick Ask (내 노트 + 웹 검색)
+  Future<void> askAI(String query, String projectId) async {
+    if (query.trim().isEmpty) return;
+
+    state = state.copyWith(isQALoading: true);
+    try {
+      final response = await http.post(
+        Uri.parse('$apiBaseUrl/api/ai/ask'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "query": query,
+          "project_id": projectId,
+          "use_web_search": true,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        // 출처(Source) 표시를 위해 답변 조립
+        final finalAnswer =
+            "### 💡 AI 답변 (출처: ${data['source']})\n\n${data['answer']}";
+        state = state.copyWith(qaAnswer: finalAnswer, isQALoading: false);
+      } else {
+        state = state.copyWith(isQALoading: false, qaAnswer: "응답을 가져오지 못했습니다.");
+      }
+    } catch (e) {
+      state = state.copyWith(isQALoading: false, qaAnswer: "오류가 발생했습니다.");
+    }
+  }
+
+  // [에디터 블록 로직]
   void insertBlocks(int index, List<String> contents) {
     final newBlocks = [...state.blocks];
     for (int i = 0; i < contents.length; i++) {
@@ -421,7 +443,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         text = text.substring(2);
       } else if (text.startsWith('[] ')) {
         type = BlockType.checkbox;
-        text = text.replaceFirst(RegExp(r'\[\s?\]\s?'), '');
+        text = text.replaceFirst(RegExp(r'^\[\]\s?'), '');
       }
       newBlocks.insert(
         index + i,
