@@ -272,10 +272,12 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       if (response.statusCode == 200) {
         print("✅ [Front] 요약 생성 성공!");
         final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+        // ✅ 이전 요약본은 지우고, 방금 받은 최신 요약본 딱 1개만 리스트에 넣음
         List<SummaryBlock> newSummaries = [
           SummaryBlock(content: data['summary']),
-          ...state.summaryBlocks,
         ];
+
         state = state.copyWith(
           summaryBlocks: newSummaries,
           isSummaryLoading: false,
