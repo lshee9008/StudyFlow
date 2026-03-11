@@ -153,6 +153,24 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   String _lastAnalyzedText = "";
 
+  // 📌 [추가] 요약본 확정(잠금) 상태를 토글하는 함수
+  void toggleSummarySave(int index) {
+    final newSummaries = List<SummaryBlock>.from(state.summaryBlocks);
+    newSummaries[index] = SummaryBlock(
+      content: newSummaries[index].content,
+      isSaved: !newSummaries[index].isSaved,
+    );
+    state = state.copyWith(summaryBlocks: newSummaries);
+    // 상태 변경 후 파일 전체 저장(DB 업데이트)을 백그라운드로 실행
+    saveFile(
+      fileId: "current_file_id", // 호출부에서 알아서 처리되므로 상태만 변경
+      title: "auto",
+      tags: "",
+      prompt: "",
+      updateAt: DateTime.now(),
+    );
+  }
+
   Future<void> loadFileDetail(String fileId) async {
     state = state.copyWith(isLoading: true);
     FileModel? fileModel;
@@ -237,24 +255,49 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   }
 
   // 🌟 [Track 1] 전체 구조적 요약
+  // 🌟 [Track 1] 전체 구조적 요약 (점진적 요약 업데이트 버전)
   Future<void> requestAutoAISummary({
     required String title,
     required String tags,
   }) async {
     String fullContext = state.blocks.map((b) => b.controller.text).join("\n");
 
-    if (fullContext.trim().isEmpty) {
-      print("⚠️ [Front] 에디터에 작성된 내용이 없어서 서버에 요약을 요청하지 않습니다.");
-      return;
-    }
+    if (fullContext.trim().isEmpty) return;
 
     state = state.copyWith(isSummaryLoading: true);
 
     try {
-      final customPrompt =
-          "문서 제목: $title\n문서 내용 전체를 구조화된 요약 노트(개조식, 마크다운 표 포함)로 정리해 주세요. 이모티콘은 제외하고 학술적으로 작성하세요.";
+      // 💡 [핵심 로직] 이미 확정(체크)된 요약본들을 하나로 모읍니다.
+      List<SummaryBlock> savedBlocks = state.summaryBlocks
+          .where((b) => b.isSaved)
+          .toList();
+      String savedText = savedBlocks.map((b) => b.content).join("\n\n");
 
-      print("🚀 [Front] 요약 API 요청 시작: $apiBaseUrl/api/ai/summarize");
+      String customPrompt;
+      if (savedText.isNotEmpty) {
+        // 확정된 요약이 있다면 -> 새로운 내용만 추출하라고 지시 (점진적 요약)
+        customPrompt =
+            """
+        문서 제목: $title
+        [기존에 확정된 요약]
+        $savedText
+        
+        [현재 문서 전체 내용]
+        $fullContext
+        
+        당신은 위 [현재 문서 전체 내용]과 [기존에 확정된 요약]을 꼼꼼히 비교해야 합니다.
+        기존 요약에 이미 포함된 내용은 **절대 중복해서 작성하지 말고 제외**하세요.
+        문서에 '새롭게 추가되었거나 변경된 핵심 내용'만 추출하여 구조화된 마크다운으로 [추가 요약]을 작성해 주세요.
+        만약 새롭게 추가된 내용이 없다면 반드시 "추가된 내용이 없습니다."라고만 대답하세요.
+        """;
+      } else {
+        // 확정된 요약이 없다면 -> 전체 문서 요약
+        customPrompt =
+            """
+        문서 제목: $title
+        문서 내용 전체를 구조화된 요약 노트(개조식, 마크다운 표 포함)로 정리해 주세요. 이모티콘은 제외하고 학술적으로 작성하세요.
+        """;
+      }
 
       final response = await http.post(
         Uri.parse('$apiBaseUrl/api/ai/summarize'),
@@ -266,32 +309,33 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         }),
       );
 
-      print("📥 [Front] 요약 API 응답 코드: ${response.statusCode}");
-
       if (response.statusCode == 200) {
-        print("✅ [Front] 요약 생성 성공!");
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-
-        // ✅ 내가 아직 살아있는지(화면이 안 닫혔는지) 확인
         if (!mounted) return;
 
-        // 이전 요약본은 지우고, 방금 받은 최신 요약본 딱 1개만 리스트에 넣음
-        List<SummaryBlock> newSummaries = [
-          SummaryBlock(content: data['summary']),
-        ];
+        String newSummaryText = data['summary'].toString().trim();
+
+        // 확정(체크)된 기존 요약들은 그대로 유지합니다.
+        List<SummaryBlock> newSummaries = List.from(savedBlocks);
+
+        // 추가할 내용이 있다면, 잠금 해제된 '최신 요약' 블록으로 맨 아래에 추가합니다.
+        if (newSummaryText.isNotEmpty &&
+            !newSummaryText.contains("추가된 내용이 없습니다")) {
+          newSummaries.add(
+            SummaryBlock(content: newSummaryText, isSaved: false),
+          );
+        }
 
         state = state.copyWith(
           summaryBlocks: newSummaries,
           isSummaryLoading: false,
         );
       } else {
-        print("❌ [Front] 요약 API 실패: ${response.body}");
-        if (!mounted) return; // ✅ 추가
+        if (!mounted) return;
         state = state.copyWith(isSummaryLoading: false);
       }
     } catch (e) {
-      print("💥 [Front] 요약 API 통신 에러: $e");
-      if (!mounted) return; // ✅ 추가
+      if (!mounted) return;
       state = state.copyWith(isSummaryLoading: false);
     }
   }

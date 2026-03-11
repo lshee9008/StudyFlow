@@ -9,7 +9,6 @@ from app.crud import crud_projects
 
 router = APIRouter()
 
-
 # 1. 🟢 특정 유저의 프로젝트 목록 조회 (이 부분이 없어서 404 에러가 났습니다!)
 @router.get("/{user_id}", response_model=List[ProjectRead])
 def read_projects(

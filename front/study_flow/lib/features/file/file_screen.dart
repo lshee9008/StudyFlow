@@ -109,6 +109,38 @@ class _FileScreenState extends ConsumerState<FileScreen>
 
   Timer? _saveDebounceTimer;
   Timer? _focusDebounceTimer;
+  Timer? _autoSummaryTimer; // 💡 1. 자동 요약을 위한 타이머 추가
+
+  // 💡 1. 마지막으로 요약이 성공했을 때의 글자 수를 기억합니다.
+  int _lastSummarizedLength = 0;
+
+  // 💡 2. 요약 조건을 검사하고 실행하는 핵심 함수 추가
+  void _triggerAutoSummary() {
+    final currentFullContent = ref
+        .read(fileEditorProvider)
+        .blocks
+        .map((b) => b.controller.text)
+        .join("\n");
+
+    // 조건: 이전 요약 시점보다 글자 수가 50자 이상 변경되었을 때만!
+    if ((currentFullContent.length - _lastSummarizedLength).abs() >= 50) {
+      if (_autoSummaryTimer?.isActive ?? false)
+        _autoSummaryTimer!.cancel(); // 기존 대기 타이머 무시
+
+      // 요약 탭을 보고 있고, 로딩 중이 아닐 때만 API 호출
+      if (_tabController.index == 0 &&
+          !ref.read(fileEditorProvider).isSummaryLoading) {
+        _lastSummarizedLength = currentFullContent.length; // 갱신된 글자 수 기억
+
+        ref
+            .read(fileEditorProvider.notifier)
+            .requestAutoAISummary(
+              title: _titleController.text,
+              tags: _tagsController.text,
+            );
+      }
+    }
+  }
 
   OverlayEntry? _overlayEntry;
   int _activeBlockIndex = -1;
@@ -117,6 +149,9 @@ class _FileScreenState extends ConsumerState<FileScreen>
   int _viewMode = 0;
   String _lastFocusedText = "";
   bool _isSaving = false;
+
+  // 💡 1. 전체 문서의 이전 내용을 기억할 변수 추가!
+  String _lastFullContent = "";
 
   final List<Map<String, dynamic>> _allMenuOptions = [
     {'type': BlockType.h1, 'label': '제목 1', 'icon': Icons.looks_one_rounded},
@@ -162,6 +197,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
   void dispose() {
     _saveDebounceTimer?.cancel();
     _focusDebounceTimer?.cancel();
+    _autoSummaryTimer?.cancel(); // 💡 2. 화면 종료 시 자동 요약 타이머도 취소
     _titleController.dispose();
     _tagsController.dispose();
     _aiPromptController.dispose();
@@ -171,6 +207,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
     super.dispose();
   }
 
+  // 💡 2. _onContentChanged 함수 덮어쓰기
   void _onContentChanged({String? activeBlockText}) {
     if (activeBlockText != null) {
       _lastFocusedText = activeBlockText;
@@ -180,6 +217,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
     }
     setState(() => _isSaving = true);
 
+    // [자동 저장 로직]
     if (_saveDebounceTimer?.isActive ?? false) _saveDebounceTimer!.cancel();
     _saveDebounceTimer = Timer(const Duration(milliseconds: 600), () async {
       await ref
@@ -193,9 +231,27 @@ class _FileScreenState extends ConsumerState<FileScreen>
           );
       if (mounted) setState(() => _isSaving = false);
     });
+
+    // 💡 [변경량 + 타이머 기반 감지]
+    final currentFullContent = ref
+        .read(fileEditorProvider)
+        .blocks
+        .map((b) => b.controller.text)
+        .join("\n");
+
+    if ((currentFullContent.length - _lastSummarizedLength).abs() >= 50) {
+      if (_autoSummaryTimer?.isActive ?? false) _autoSummaryTimer!.cancel();
+      // 타자를 멈추고 5초가 지나면 요약 실행
+      _autoSummaryTimer = Timer(const Duration(seconds: 5), () {
+        _triggerAutoSummary();
+      });
+    }
   }
 
   void _onBlockFocus(String text) {
+    // 💡 [포커스 이동 감지] 다른 블록을 클릭했으므로 조건 검사 후 즉시 요약 시도
+    _triggerAutoSummary();
+
     if (_focusDebounceTimer?.isActive ?? false) _focusDebounceTimer!.cancel();
     _focusDebounceTimer = Timer(const Duration(milliseconds: 1000), () {
       if (text.trim().isNotEmpty) {
@@ -222,6 +278,9 @@ class _FileScreenState extends ConsumerState<FileScreen>
         );
       }
       _onContentChanged(activeBlockText: lines[0]);
+
+      // 💡 [엔터 감지] 문단 작성이 끝났으므로 조건 검사 후 즉시 요약 시도
+      _triggerAutoSummary();
       return;
     }
 
@@ -827,6 +886,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
   }
 
   // --- 패널별 탭 구현 ---
+  // --- 패널별 탭 구현 ---
   Widget _buildSummaryTab(FileEditorState state) {
     return Stack(
       children: [
@@ -835,20 +895,142 @@ class _FileScreenState extends ConsumerState<FileScreen>
             Icons.auto_awesome_rounded,
             "AI가 문서를 분석하여\n구조화된 요약 노트를 생성합니다.",
           ),
+
         ListView.builder(
-          padding: const EdgeInsets.fromLTRB(32, 24, 32, 120),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
           itemCount: state.summaryBlocks.length,
-          itemBuilder: (context, index) => Container(
-            margin: const EdgeInsets.only(bottom: 32),
-            child: MarkdownBody(
-              data: state.summaryBlocks[index].content,
-              styleSheet: _getMarkdownStyle(),
-            ),
-          ),
+          itemBuilder: (context, index) {
+            final block = state.summaryBlocks[index];
+            final bool isSaved = block.isSaved;
+
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: isSaved ? _kBgSecondary : _kCardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSaved
+                      ? _kAccentColor.withOpacity(0.5)
+                      : _kBorderColor,
+                  width: isSaved ? 1.5 : 1,
+                ),
+                boxShadow: isSaved
+                    ? [
+                        BoxShadow(
+                          color: _kAccentColor.withOpacity(0.05),
+                          blurRadius: 10,
+                        ),
+                      ]
+                    : [],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 🛡️ 요약 블록 헤더 (체크/잠금 버튼)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSaved
+                          ? _kAccentColor.withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(15),
+                      ),
+                      border: const Border(
+                        bottom: BorderSide(color: _kBorderColor, width: 0.5),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              isSaved
+                                  ? Icons.check_circle_rounded
+                                  : Icons.radio_button_unchecked_rounded,
+                              size: 16,
+                              color: isSaved ? _kAccentColor : _kTextSecondary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isSaved ? "확정된 요약 (유지됨)" : "최신 분석 결과 (임시)",
+                              style: TextStyle(
+                                color: isSaved
+                                    ? _kAccentColor
+                                    : _kTextSecondary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // 토글 버튼
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => ref
+                                .read(fileEditorProvider.notifier)
+                                .toggleSummarySave(index),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    isSaved
+                                        ? Icons.lock_rounded
+                                        : Icons.push_pin_outlined,
+                                    size: 14,
+                                    color: isSaved ? _kAccentColor : _kTextHint,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    isSaved ? "잠금 해제" : "확정하기",
+                                    style: TextStyle(
+                                      color: isSaved
+                                          ? _kAccentColor
+                                          : _kTextHint,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 본문 내용
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: MarkdownBody(
+                      data: block.content,
+                      styleSheet: _getMarkdownStyle(),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
+
         _buildBottomGradientFade(),
+
+        // 버튼 텍스트 동적 변경 (확정된 게 있으면 '추가 요약', 없으면 '요약 생성')
         _buildStudioFloatingButton(
-          label: "요약 생성",
+          label: state.summaryBlocks.any((b) => b.isSaved)
+              ? "변경된 내용만 업데이트"
+              : "요약 생성",
           icon: Icons.auto_fix_high_rounded,
           isLoading: state.isSummaryLoading,
           onPressed: () => ref
