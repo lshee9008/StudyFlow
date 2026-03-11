@@ -89,3 +89,50 @@ async def summarize_content(req: SummaryRequest):
     response = llm.invoke(messages)
 
     return {"summary": response.content}
+
+
+# --- [추가할 코드] ---
+class GraphRequest(BaseModel):
+    content: str
+
+
+@router.post("/graph")
+async def extract_graph(req: GraphRequest):
+    """
+    [지식 그래프] AI가 텍스트에서 핵심 키워드(노드)와 관계(엣지)를 추출합니다.
+    """
+    if len(req.content.strip()) < 10:
+        return {"nodes": [], "edges": []}
+
+    system_prompt = """
+    당신은 지식 그래프(Knowledge Graph) 추출기입니다. 
+    제공된 텍스트를 분석하여 가장 중요한 핵심 개념(Keyword) 최대 10개를 추출하고, 그 개념들 간의 연관성(Edge)을 찾아주세요.
+
+    [반드시 아래의 순수 JSON 형식으로만 응답할 것. 백틱(```)이나 다른 설명은 절대 금지]
+    {
+      "nodes": [
+        {"id": "운영체제", "label": "운영체제"},
+        {"id": "메모리", "label": "메모리 관리"}
+      ],
+      "edges": [
+        {"source": "운영체제", "target": "메모리"}
+      ]
+    }
+    """
+
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=f"텍스트:\n{req.content}")
+    ]
+
+    print("🤖 [gemma3:27b-cloud] 지식 그래프 키워드 추출 중...")
+    response = llm.invoke(messages)
+
+    try:
+        # LLM이 뱉은 마크다운 잔재(```json) 제거 후 순수 JSON 파싱
+        raw_text = response.content.replace("```json", "").replace("```", "").strip()
+        graph_data = json.loads(raw_text)
+        return graph_data
+    except Exception as e:
+        print(f"Graph Parse Error: {e}")
+        return {"nodes": [], "edges": []}

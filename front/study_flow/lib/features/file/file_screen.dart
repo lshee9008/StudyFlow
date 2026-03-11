@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,22 +10,22 @@ import '../../models/block_model.dart';
 import 'file_provider.dart';
 
 // 💎 프리미엄 다크 테마 팔레트 (Linear & Vercel 스타일)
-const Color _kBgPrimary = Color(0xFF0E0E11); // 아주 깊고 고급스러운 블랙
-const Color _kBgSecondary = Color(0xFF161618); // 사이드 패널
-const Color _kCardColor = Color(0xFF1C1C1F); // 카드 및 인풋
-const Color _kHoverColor = Color(0xFF27272A); // 호버 상태
-const Color _kTextColor = Color(0xFFF4F4F5); // 눈이 편안한 고대비 화이트
-const Color _kTextSecondary = Color(0xFFA1A1AA); // 뮤트된 텍스트
-const Color _kTextHint = Color(0xFF52525B); // 플레이스홀더
-const Color _kBorderColor = Color(0xFF27272A); // 매우 얇고 은은한 보더
-const Color _kAccentColor = Color(0xFFCCFF66); // AI 포인트 컬러 (라임)
-const Color _kAccentMuted = Color(0xFF2A331E); // AI 포인트 바탕
+const Color _kBgPrimary = Color(0xFF0E0E11);
+const Color _kBgSecondary = Color(0xFF161618);
+const Color _kCardColor = Color(0xFF1C1C1F);
+const Color _kHoverColor = Color(0xFF27272A);
+const Color _kTextColor = Color(0xFFF4F4F5);
+const Color _kTextSecondary = Color(0xFFA1A1AA);
+const Color _kTextHint = Color(0xFF52525B);
+const Color _kBorderColor = Color(0xFF27272A);
+const Color _kAccentColor = Color(0xFFCCFF66);
+const Color _kAccentMuted = Color(0xFF2A331E);
 
-const Color _kCorrectColor = Color(0xFF34D399); // 세련된 에메랄드 그린
-const Color _kWrongColor = Color(0xFFF87171); // 부드러운 로즈 레드
+const Color _kCorrectColor = Color(0xFF34D399);
+const Color _kWrongColor = Color(0xFFF87171);
 
 // -----------------------------------------------------------------------------
-// [WIDGET] Resizable Split View (경계선 최적화)
+// [WIDGET] Resizable Split View
 // -----------------------------------------------------------------------------
 class ResizableSplitView extends StatefulWidget {
   final Widget left;
@@ -109,12 +110,10 @@ class _FileScreenState extends ConsumerState<FileScreen>
 
   Timer? _saveDebounceTimer;
   Timer? _focusDebounceTimer;
-  Timer? _autoSummaryTimer; // 💡 1. 자동 요약을 위한 타이머 추가
+  Timer? _autoSummaryTimer;
 
-  // 💡 1. 마지막으로 요약이 성공했을 때의 글자 수를 기억합니다.
   int _lastSummarizedLength = 0;
 
-  // 💡 2. 요약 조건을 검사하고 실행하는 핵심 함수 추가
   void _triggerAutoSummary() {
     final currentFullContent = ref
         .read(fileEditorProvider)
@@ -122,15 +121,12 @@ class _FileScreenState extends ConsumerState<FileScreen>
         .map((b) => b.controller.text)
         .join("\n");
 
-    // 조건: 이전 요약 시점보다 글자 수가 50자 이상 변경되었을 때만!
     if ((currentFullContent.length - _lastSummarizedLength).abs() >= 50) {
-      if (_autoSummaryTimer?.isActive ?? false)
-        _autoSummaryTimer!.cancel(); // 기존 대기 타이머 무시
+      if (_autoSummaryTimer?.isActive ?? false) _autoSummaryTimer!.cancel();
 
-      // 요약 탭을 보고 있고, 로딩 중이 아닐 때만 API 호출
       if (_tabController.index == 0 &&
           !ref.read(fileEditorProvider).isSummaryLoading) {
-        _lastSummarizedLength = currentFullContent.length; // 갱신된 글자 수 기억
+        _lastSummarizedLength = currentFullContent.length;
 
         ref
             .read(fileEditorProvider.notifier)
@@ -150,7 +146,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
   String _lastFocusedText = "";
   bool _isSaving = false;
 
-  // 💡 1. 전체 문서의 이전 내용을 기억할 변수 추가!
   String _lastFullContent = "";
 
   final List<Map<String, dynamic>> _allMenuOptions = [
@@ -197,7 +192,7 @@ class _FileScreenState extends ConsumerState<FileScreen>
   void dispose() {
     _saveDebounceTimer?.cancel();
     _focusDebounceTimer?.cancel();
-    _autoSummaryTimer?.cancel(); // 💡 2. 화면 종료 시 자동 요약 타이머도 취소
+    _autoSummaryTimer?.cancel();
     _titleController.dispose();
     _tagsController.dispose();
     _aiPromptController.dispose();
@@ -207,7 +202,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
     super.dispose();
   }
 
-  // 💡 2. _onContentChanged 함수 덮어쓰기
   void _onContentChanged({String? activeBlockText}) {
     if (activeBlockText != null) {
       _lastFocusedText = activeBlockText;
@@ -217,7 +211,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
     }
     setState(() => _isSaving = true);
 
-    // [자동 저장 로직]
     if (_saveDebounceTimer?.isActive ?? false) _saveDebounceTimer!.cancel();
     _saveDebounceTimer = Timer(const Duration(milliseconds: 600), () async {
       await ref
@@ -232,7 +225,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
       if (mounted) setState(() => _isSaving = false);
     });
 
-    // 💡 [변경량 + 타이머 기반 감지]
     final currentFullContent = ref
         .read(fileEditorProvider)
         .blocks
@@ -241,7 +233,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
 
     if ((currentFullContent.length - _lastSummarizedLength).abs() >= 50) {
       if (_autoSummaryTimer?.isActive ?? false) _autoSummaryTimer!.cancel();
-      // 타자를 멈추고 5초가 지나면 요약 실행
       _autoSummaryTimer = Timer(const Duration(seconds: 5), () {
         _triggerAutoSummary();
       });
@@ -249,7 +240,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
   }
 
   void _onBlockFocus(String text) {
-    // 💡 [포커스 이동 감지] 다른 블록을 클릭했으므로 조건 검사 후 즉시 요약 시도
     _triggerAutoSummary();
 
     if (_focusDebounceTimer?.isActive ?? false) _focusDebounceTimer!.cancel();
@@ -278,8 +268,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
         );
       }
       _onContentChanged(activeBlockText: lines[0]);
-
-      // 💡 [엔터 감지] 문단 작성이 끝났으므로 조건 검사 후 즉시 요약 시도
       _triggerAutoSummary();
       return;
     }
@@ -631,7 +619,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 모던 Pill 스타일 탭바
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: const BoxDecoration(
@@ -810,13 +797,10 @@ class _FileScreenState extends ConsumerState<FileScreen>
       ),
       body: _viewMode == 0
           ? ResizableSplitView(left: editorView, right: rightPanel)
-          : const Center(
-              child: Text("대시보드 뷰", style: TextStyle(color: Colors.white)),
-            ),
+          : _buildDashboardView(fileState),
     );
   }
 
-  // --- 프리미엄 하단 버튼 (Glassmorphism & Gradient Fade) ---
   Widget _buildStudioFloatingButton({
     required String label,
     required IconData icon,
@@ -885,8 +869,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
     );
   }
 
-  // --- 패널별 탭 구현 ---
-  // --- 패널별 탭 구현 ---
   Widget _buildSummaryTab(FileEditorState state) {
     return Stack(
       children: [
@@ -927,7 +909,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 🛡️ 요약 블록 헤더 (체크/잠금 버튼)
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -969,7 +950,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
                             ),
                           ],
                         ),
-                        // 토글 버튼
                         Material(
                           color: Colors.transparent,
                           child: InkWell(
@@ -1010,7 +990,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
                       ],
                     ),
                   ),
-                  // 본문 내용
                   Padding(
                     padding: const EdgeInsets.all(20),
                     child: MarkdownBody(
@@ -1026,7 +1005,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
 
         _buildBottomGradientFade(),
 
-        // 버튼 텍스트 동적 변경 (확정된 게 있으면 '추가 요약', 없으면 '요약 생성')
         _buildStudioFloatingButton(
           label: state.summaryBlocks.any((b) => b.isSaved)
               ? "변경된 내용만 업데이트"
@@ -1408,7 +1386,6 @@ class _FileScreenState extends ConsumerState<FileScreen>
     );
   }
 
-  // --- 유틸리티 UI ---
   Widget _buildPropertyRow(
     IconData icon,
     String label,
@@ -1600,6 +1577,406 @@ class _FileScreenState extends ConsumerState<FileScreen>
       ),
     );
   }
+
+  // -----------------------------------------------------------------------------
+  // 🌟 [추가] 프리미엄 AI 대시보드 뷰
+  // -----------------------------------------------------------------------------
+  Widget _buildDashboardView(FileEditorState state) {
+    // 💡 화면이 렌더링될 때 그래프 데이터가 없으면 AI에게 요청
+    if (state.aiGraphData == null && !state.isGraphLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(fileEditorProvider.notifier).requestAIGraph();
+      });
+    }
+
+    int totalChars = state.blocks.fold(
+      0,
+      (sum, b) => sum + b.controller.text.length,
+    );
+    int totalWords = state.blocks
+        .map((b) => b.controller.text)
+        .join(' ')
+        .split(RegExp(r'\s+'))
+        .length;
+
+    return Padding(
+      padding: const EdgeInsets.all(32.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Document Analytics",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              // 새로고침 버튼 (AI에게 다시 키워드 뽑으라고 지시)
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: _kTextSecondary),
+                onPressed: () =>
+                    ref.read(fileEditorProvider.notifier).requestAIGraph(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          // 📊 상단 통계 카드
+          Row(
+            children: [
+              _buildStatCard(
+                Icons.article_rounded,
+                "총 블록 수",
+                "${state.blocks.length}개",
+              ),
+              const SizedBox(width: 16),
+              _buildStatCard(Icons.text_fields_rounded, "글자 수", "$totalChars자"),
+              const SizedBox(width: 16),
+              _buildStatCard(
+                Icons.auto_awesome_rounded,
+                "AI 요약본",
+                "${state.summaryBlocks.where((b) => b.isSaved).length}개 확정됨",
+                color: _kAccentColor,
+              ),
+              const SizedBox(width: 16),
+              _buildStatCard(
+                Icons.timer_rounded,
+                "예상 읽기 시간",
+                "${(totalWords / 200).ceil()}분",
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          // 🌌 하단 지식 그래프
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: _kCardColor,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: _kBorderColor),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Stack(
+                  children: [
+                    // 💡 로딩 중일 때와 로딩 완료되었을 때 분기
+                    if (state.isGraphLoading)
+                      const Center(
+                        child: CircularProgressIndicator(color: _kAccentColor),
+                      )
+                    else if (state.aiGraphData != null)
+                      KnowledgeGraphWidget(
+                        aiGraphData: state.aiGraphData!,
+                      ), // AI 데이터 전달!
+
+                    Positioned(
+                      top: 32,
+                      left: 32,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: const [
+                              Icon(
+                                Icons.hub_rounded,
+                                color: _kAccentColor,
+                                size: 20,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                "AI Semantic Graph",
+                                style: TextStyle(
+                                  color: _kAccentColor,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            "Gemma3 모델이 문맥을 분석하여 핵심 키워드와 관계를 도출합니다.",
+                            style: TextStyle(
+                              color: _kTextSecondary,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+    IconData icon,
+    String title,
+    String value, {
+    Color color = Colors.white,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: _kCardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _kBorderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: _kTextHint, size: 24),
+            const SizedBox(height: 16),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              style: const TextStyle(
+                color: _kTextSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 🌌 [위젯] AI 기반 지식 그래프 (AI Semantic Graph)
+// -----------------------------------------------------------------------------
+class KnowledgeGraphWidget extends StatefulWidget {
+  final Map<String, dynamic> aiGraphData; // 서버에서 받은 JSON 데이터
+  const KnowledgeGraphWidget({Key? key, required this.aiGraphData})
+    : super(key: key);
+
+  @override
+  State<KnowledgeGraphWidget> createState() => _KnowledgeGraphWidgetState();
+}
+
+class _KnowledgeGraphWidgetState extends State<KnowledgeGraphWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  List<GraphNode> _nodes = [];
+  List<GraphEdge> _edges = [];
+  double _time = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller =
+        AnimationController(vsync: this, duration: const Duration(days: 365))
+          ..addListener(() {
+            setState(() {
+              _time += 0.01;
+              _updateNodesPhysics();
+            });
+          })
+          ..forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _buildAIGraph());
+  }
+
+  @override
+  void didUpdateWidget(covariant KnowledgeGraphWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.aiGraphData != widget.aiGraphData) _buildAIGraph();
+  }
+
+  void _buildAIGraph() {
+    final size = context.size ?? const Size(800, 600);
+    final center = Offset(size.width / 2, size.height / 2);
+    _nodes.clear();
+    _edges.clear();
+
+    List<dynamic> rawNodes = widget.aiGraphData['nodes'] ?? [];
+    List<dynamic> rawEdges = widget.aiGraphData['edges'] ?? [];
+
+    if (rawNodes.isEmpty) return;
+
+    // 첫 번째 노드를 코어(중앙) 노드로 설정
+    for (int i = 0; i < rawNodes.length; i++) {
+      String id = rawNodes[i]['id'].toString();
+      String label = rawNodes[i]['label'].toString();
+
+      bool isCore = i == 0;
+      double radius = isCore ? 16.0 : 8.0;
+      Color color = isCore ? const Color(0xFFCCFF66) : const Color(0xFF60A5FA);
+
+      _nodes.add(
+        GraphNode(
+          id: id,
+          label: label,
+          radius: radius,
+          color: color,
+          baseRadius: isCore
+              ? 0
+              : 80 + (math.Random().nextDouble() * 150), // 코어를 중심으로 궤도 형성
+          baseAngle: (2 * math.pi / (rawNodes.length - 1)) * i,
+          x: center.dx,
+          y: center.dy,
+          isCore: isCore,
+        ),
+      );
+    }
+
+    // 엣지 연결
+    for (var e in rawEdges) {
+      _edges.add(GraphEdge(e['source'].toString(), e['target'].toString()));
+    }
+  }
+
+  void _updateNodesPhysics() {
+    final size = context.size ?? const Size(800, 600);
+    final center = Offset(size.width / 2, size.height / 2);
+
+    for (var node in _nodes) {
+      if (node.isCore) {
+        node.x = center.dx;
+        node.y = center.dy;
+        continue;
+      }
+      // 행성처럼 공전하는 애니메이션
+      double targetX =
+          center.dx +
+          math.cos(node.baseAngle + (_time * 0.5)) * node.baseRadius;
+      double targetY =
+          center.dy +
+          math.sin(node.baseAngle + (_time * 0.5)) * node.baseRadius +
+          math.sin(_time * 2 + node.baseAngle) * 20;
+
+      node.x += (targetX - node.x) * 0.05;
+      node.y += (targetY - node.y) * 0.05;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: SemanticGraphPainter(nodes: _nodes, edges: _edges),
+      size: Size.infinite,
+    );
+  }
+}
+
+class GraphNode {
+  String id;
+  String? label;
+  double radius;
+  Color color;
+  double x, y;
+
+  double baseRadius;
+  double baseAngle;
+  bool isCore;
+
+  GraphNode({
+    required this.id,
+    this.label,
+    required this.radius,
+    required this.color,
+    required this.baseRadius,
+    required this.baseAngle,
+    required this.x,
+    required this.y,
+    this.isCore = false,
+  });
+}
+
+class GraphEdge {
+  String sourceId;
+  String targetId;
+  GraphEdge(this.sourceId, this.targetId);
+}
+
+class SemanticGraphPainter extends CustomPainter {
+  final List<GraphNode> nodes;
+  final List<GraphEdge> edges;
+
+  SemanticGraphPainter({required this.nodes, required this.edges});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke
+      ..color = const Color(0xFF27272A);
+    final highlightLinePaint = Paint()
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke
+      ..color = const Color(0xFFCCFF66).withOpacity(0.3);
+
+    for (var edge in edges) {
+      final source = nodes.where((n) => n.id == edge.sourceId).firstOrNull;
+      final target = nodes.where((n) => n.id == edge.targetId).firstOrNull;
+      if (source != null && target != null) {
+        canvas.drawLine(
+          Offset(source.x, source.y),
+          Offset(target.x, target.y),
+          source.isCore ? highlightLinePaint : linePaint,
+        );
+      }
+    }
+
+    for (var node in nodes) {
+      final nodePaint = Paint()
+        ..color = node.color
+        ..style = PaintingStyle.fill
+        ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 4);
+      canvas.drawCircle(Offset(node.x, node.y), node.radius, nodePaint);
+
+      if (node.label != null) {
+        String displayLabel = node.label!.length > 10
+            ? "${node.label!.substring(0, 10)}..."
+            : node.label!;
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: displayLabel,
+            style: TextStyle(
+              color: node.isCore ? Colors.white : const Color(0xFFA1A1AA),
+              fontSize: node.isCore ? 14 : 11,
+              fontWeight: node.isCore ? FontWeight.w800 : FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(node.x - (textPainter.width / 2), node.y + node.radius + 6),
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
 // -----------------------------------------------------------------------------

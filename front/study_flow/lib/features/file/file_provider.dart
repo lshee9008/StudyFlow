@@ -81,6 +81,7 @@ class FileEditorState {
   final bool isAnalysisLoading; // [Track 2] 포커스 분석 로딩
   final bool isStudioLoading; // 암기/퀴즈 로딩
   final bool isQALoading; // Quick Ask 로딩
+  final bool isGraphLoading; // [Track 3] AI 지식 그래프 로딩
 
   final String? icon;
   final List<SummaryBlock> summaryBlocks; // 전체 요약
@@ -89,6 +90,7 @@ class FileEditorState {
   final List<dynamic>? quizData; // 인터랙티브 퀴즈
   final Map<int, int> quizAnswers; // 유저 퀴즈 정답
   final String? qaAnswer; // Quick Ask 답변
+  final Map<String, dynamic>? aiGraphData; // AI가 추출한 그래프 데이터
 
   final String focusedText;
   final DateTime? lastSavedAt;
@@ -100,6 +102,7 @@ class FileEditorState {
     this.isAnalysisLoading = false,
     this.isStudioLoading = false,
     this.isQALoading = false,
+    this.isGraphLoading = false,
     this.icon,
     this.summaryBlocks = const [],
     this.currentBlockAnalysis,
@@ -107,6 +110,7 @@ class FileEditorState {
     this.quizData,
     this.quizAnswers = const {},
     this.qaAnswer,
+    this.aiGraphData,
     this.focusedText = "",
     this.lastSavedAt,
   });
@@ -118,6 +122,7 @@ class FileEditorState {
     bool? isAnalysisLoading,
     bool? isStudioLoading,
     bool? isQALoading,
+    bool? isGraphLoading,
     String? icon,
     List<SummaryBlock>? summaryBlocks,
     String? currentBlockAnalysis,
@@ -125,6 +130,7 @@ class FileEditorState {
     List<dynamic>? quizData,
     Map<int, int>? quizAnswers,
     String? qaAnswer,
+    Map<String, dynamic>? aiGraphData,
     String? focusedText,
     DateTime? lastSavedAt,
   }) {
@@ -135,6 +141,7 @@ class FileEditorState {
       isAnalysisLoading: isAnalysisLoading ?? this.isAnalysisLoading,
       isStudioLoading: isStudioLoading ?? this.isStudioLoading,
       isQALoading: isQALoading ?? this.isQALoading,
+      isGraphLoading: isGraphLoading ?? this.isGraphLoading,
       icon: icon ?? this.icon,
       summaryBlocks: summaryBlocks ?? this.summaryBlocks,
       currentBlockAnalysis: currentBlockAnalysis ?? this.currentBlockAnalysis,
@@ -142,6 +149,7 @@ class FileEditorState {
       quizData: quizData ?? this.quizData,
       quizAnswers: quizAnswers ?? this.quizAnswers,
       qaAnswer: qaAnswer ?? this.qaAnswer,
+      aiGraphData: aiGraphData ?? this.aiGraphData,
       focusedText: focusedText ?? this.focusedText,
       lastSavedAt: lastSavedAt ?? this.lastSavedAt,
     );
@@ -161,9 +169,8 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       isSaved: !newSummaries[index].isSaved,
     );
     state = state.copyWith(summaryBlocks: newSummaries);
-    // 상태 변경 후 파일 전체 저장(DB 업데이트)을 백그라운드로 실행
     saveFile(
-      fileId: "current_file_id", // 호출부에서 알아서 처리되므로 상태만 변경
+      fileId: "current_file_id",
       title: "auto",
       tags: "",
       prompt: "",
@@ -255,19 +262,16 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   }
 
   // 🌟 [Track 1] 전체 구조적 요약
-  // 🌟 [Track 1] 전체 구조적 요약 (점진적 요약 업데이트 버전)
   Future<void> requestAutoAISummary({
     required String title,
     required String tags,
   }) async {
     String fullContext = state.blocks.map((b) => b.controller.text).join("\n");
-
     if (fullContext.trim().isEmpty) return;
 
     state = state.copyWith(isSummaryLoading: true);
 
     try {
-      // 💡 [핵심 로직] 이미 확정(체크)된 요약본들을 하나로 모읍니다.
       List<SummaryBlock> savedBlocks = state.summaryBlocks
           .where((b) => b.isSaved)
           .toList();
@@ -275,7 +279,6 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
       String customPrompt;
       if (savedText.isNotEmpty) {
-        // 확정된 요약이 있다면 -> 새로운 내용만 추출하라고 지시 (점진적 요약)
         customPrompt =
             """
         문서 제목: $title
@@ -291,7 +294,6 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         만약 새롭게 추가된 내용이 없다면 반드시 "추가된 내용이 없습니다."라고만 대답하세요.
         """;
       } else {
-        // 확정된 요약이 없다면 -> 전체 문서 요약
         customPrompt =
             """
         문서 제목: $title
@@ -314,11 +316,8 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         if (!mounted) return;
 
         String newSummaryText = data['summary'].toString().trim();
-
-        // 확정(체크)된 기존 요약들은 그대로 유지합니다.
         List<SummaryBlock> newSummaries = List.from(savedBlocks);
 
-        // 추가할 내용이 있다면, 잠금 해제된 '최신 요약' 블록으로 맨 아래에 추가합니다.
         if (newSummaryText.isNotEmpty &&
             !newSummaryText.contains("추가된 내용이 없습니다")) {
           newSummaries.add(
@@ -345,17 +344,14 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     required String text,
     required String contextTitle,
   }) async {
-    // 중복 요청 방지 로직 (이전 텍스트와 동일하면 무시)
     if (text.trim().length < 5 || text == _lastAnalyzedText) return;
 
-    _lastAnalyzedText = text; // 서버로 보낼 텍스트를 기억
+    _lastAnalyzedText = text;
     state = state.copyWith(focusedText: text, isAnalysisLoading: true);
 
     try {
       final prompt =
           "문서($contextTitle)의 문맥을 고려하여 다음 문단/문장의 핵심 의미를 3줄 내외로 아주 명확히 심층 분석해 주세요.\n내용: $text";
-
-      print("🚀 [Front] 상세 분석 API 요청 시작...");
 
       final response = await http.post(
         Uri.parse('$apiBaseUrl/api/ai/summarize'),
@@ -367,25 +363,19 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         }),
       );
 
-      print("📥 [Front] 상세 분석 API 응답 코드: ${response.statusCode}");
-
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-
-        // ✅ 내가 아직 살아있는지(화면이 안 닫혔는지) 확인
         if (!mounted) return;
-
         state = state.copyWith(
           currentBlockAnalysis: data['summary'],
           isAnalysisLoading: false,
         );
       } else {
-        if (!mounted) return; // ✅ 추가
+        if (!mounted) return;
         state = state.copyWith(isAnalysisLoading: false);
       }
     } catch (e) {
-      print("💥 [Front] 상세 분석 통신 에러: $e");
-      if (!mounted) return; // ✅ 추가
+      if (!mounted) return;
       state = state.copyWith(isAnalysisLoading: false);
     }
   }
@@ -415,7 +405,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
 
         if (type == 'memo') {
-          if (!mounted) return; // ✅ 추가
+          if (!mounted) return;
           state = state.copyWith(
             currentMemo: data['summary'],
             isStudioLoading: false,
@@ -432,23 +422,23 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
               resText.substring(startIdx, endIdx + 1),
             );
 
-            if (!mounted) return; // ✅ 추가
+            if (!mounted) return;
             state = state.copyWith(
               quizData: parsedQuiz,
               quizAnswers: {},
               isStudioLoading: false,
             );
           } else {
-            if (!mounted) return; // ✅ 추가
+            if (!mounted) return;
             state = state.copyWith(isStudioLoading: false);
           }
         }
       } else {
-        if (!mounted) return; // ✅ 추가
+        if (!mounted) return;
         state = state.copyWith(isStudioLoading: false);
       }
     } catch (e) {
-      if (!mounted) return; // ✅ 추가
+      if (!mounted) return;
       state = state.copyWith(isStudioLoading: false);
     }
   }
@@ -478,19 +468,46 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        // 출처(Source) 표시를 위해 답변 조립
         final finalAnswer =
             "### 💡 AI 답변 (출처: ${data['source']})\n\n${data['answer']}";
 
-        if (!mounted) return; // ✅ 추가
+        if (!mounted) return;
         state = state.copyWith(qaAnswer: finalAnswer, isQALoading: false);
       } else {
-        if (!mounted) return; // ✅ 추가
+        if (!mounted) return;
         state = state.copyWith(isQALoading: false, qaAnswer: "응답을 가져오지 못했습니다.");
       }
     } catch (e) {
-      if (!mounted) return; // ✅ 추가
+      if (!mounted) return;
       state = state.copyWith(isQALoading: false, qaAnswer: "오류가 발생했습니다.");
+    }
+  }
+
+  // 🌌 [AI 지식 그래프 추출]
+  Future<void> requestAIGraph() async {
+    String fullContext = state.blocks.map((b) => b.controller.text).join("\n");
+    if (fullContext.trim().length < 20) return;
+
+    state = state.copyWith(isGraphLoading: true);
+
+    try {
+      final response = await http.post(
+        Uri.parse('$apiBaseUrl/api/ai/graph'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"content": fullContext}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        if (!mounted) return;
+        state = state.copyWith(aiGraphData: data, isGraphLoading: false);
+      } else {
+        if (!mounted) return;
+        state = state.copyWith(isGraphLoading: false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      state = state.copyWith(isGraphLoading: false);
     }
   }
 
