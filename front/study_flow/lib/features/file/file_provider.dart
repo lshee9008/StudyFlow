@@ -13,9 +13,9 @@ import 'file_model.dart';
 
 // API 베이스 URL (웹/안드로이드/iOS 분기)
 String get apiBaseUrl {
-  if (kIsWeb) return 'http://localhost:8000';
+  if (kIsWeb) return 'http://127.0.0.1:8000';
   if (io.Platform.isAndroid) return 'http://10.0.2.2:8000';
-  return 'http://localhost:8000';
+  return 'http://127.0.0.1:8000';
 }
 
 class SummaryBlock {
@@ -237,7 +237,6 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   }
 
   // 🌟 [Track 1] 전체 구조적 요약
-  // 🌟 [Track 1] 전체 구조적 요약 (디버그 로그 추가 버전)
   Future<void> requestAutoAISummary({
     required String title,
     required String tags,
@@ -273,7 +272,10 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         print("✅ [Front] 요약 생성 성공!");
         final data = jsonDecode(utf8.decode(response.bodyBytes));
 
-        // ✅ 이전 요약본은 지우고, 방금 받은 최신 요약본 딱 1개만 리스트에 넣음
+        // ✅ 내가 아직 살아있는지(화면이 안 닫혔는지) 확인
+        if (!mounted) return;
+
+        // 이전 요약본은 지우고, 방금 받은 최신 요약본 딱 1개만 리스트에 넣음
         List<SummaryBlock> newSummaries = [
           SummaryBlock(content: data['summary']),
         ];
@@ -284,10 +286,12 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         );
       } else {
         print("❌ [Front] 요약 API 실패: ${response.body}");
+        if (!mounted) return; // ✅ 추가
         state = state.copyWith(isSummaryLoading: false);
       }
     } catch (e) {
-      print("💥 [Front] 요약 API 통신 에러 (서버가 꺼져있거나 주소가 틀림): $e");
+      print("💥 [Front] 요약 API 통신 에러: $e");
+      if (!mounted) return; // ✅ 추가
       state = state.copyWith(isSummaryLoading: false);
     }
   }
@@ -297,7 +301,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     required String text,
     required String contextTitle,
   }) async {
-    // 🚨 2. 문제의 'text == state.focusedText' 조건을 지우고 _lastAnalyzedText와 비교합니다.
+    // 중복 요청 방지 로직 (이전 텍스트와 동일하면 무시)
     if (text.trim().length < 5 || text == _lastAnalyzedText) return;
 
     _lastAnalyzedText = text; // 서버로 보낼 텍스트를 기억
@@ -323,15 +327,21 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
+
+        // ✅ 내가 아직 살아있는지(화면이 안 닫혔는지) 확인
+        if (!mounted) return;
+
         state = state.copyWith(
           currentBlockAnalysis: data['summary'],
           isAnalysisLoading: false,
         );
       } else {
+        if (!mounted) return; // ✅ 추가
         state = state.copyWith(isAnalysisLoading: false);
       }
     } catch (e) {
       print("💥 [Front] 상세 분석 통신 에러: $e");
+      if (!mounted) return; // ✅ 추가
       state = state.copyWith(isAnalysisLoading: false);
     }
   }
@@ -359,7 +369,9 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
+
         if (type == 'memo') {
+          if (!mounted) return; // ✅ 추가
           state = state.copyWith(
             currentMemo: data['summary'],
             isStudioLoading: false,
@@ -375,19 +387,24 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
             List<dynamic> parsedQuiz = jsonDecode(
               resText.substring(startIdx, endIdx + 1),
             );
+
+            if (!mounted) return; // ✅ 추가
             state = state.copyWith(
               quizData: parsedQuiz,
               quizAnswers: {},
               isStudioLoading: false,
             );
           } else {
+            if (!mounted) return; // ✅ 추가
             state = state.copyWith(isStudioLoading: false);
           }
         }
       } else {
+        if (!mounted) return; // ✅ 추가
         state = state.copyWith(isStudioLoading: false);
       }
     } catch (e) {
+      if (!mounted) return; // ✅ 추가
       state = state.copyWith(isStudioLoading: false);
     }
   }
@@ -414,16 +431,21 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           "use_web_search": true,
         }),
       );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         // 출처(Source) 표시를 위해 답변 조립
         final finalAnswer =
             "### 💡 AI 답변 (출처: ${data['source']})\n\n${data['answer']}";
+
+        if (!mounted) return; // ✅ 추가
         state = state.copyWith(qaAnswer: finalAnswer, isQALoading: false);
       } else {
+        if (!mounted) return; // ✅ 추가
         state = state.copyWith(isQALoading: false, qaAnswer: "응답을 가져오지 못했습니다.");
       }
     } catch (e) {
+      if (!mounted) return; // ✅ 추가
       state = state.copyWith(isQALoading: false, qaAnswer: "오류가 발생했습니다.");
     }
   }
