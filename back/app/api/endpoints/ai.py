@@ -11,7 +11,6 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 router = APIRouter()
 
-# 🚨 [수정 완료] 요청하신 gemma3:27b-cloud 모델로 세팅했습니다.
 llm = ChatOllama(model="gemma3:27b-cloud", temperature=0.3)
 
 
