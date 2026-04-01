@@ -1,12 +1,3 @@
-// ============================================================
-// file_provider.dart v3
-// - 웹 파일 동기화 (API 연동)
-// - 글 교정 기능
-// - 요약 Export (Markdown/텍스트)
-// - 프롬프트 서버 단 처리
-// - RAG 실시간 인덱싱
-// ============================================================
-
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -18,17 +9,10 @@ import 'package:http/http.dart' as http;
 import '../../core/db_helper/files_db_helper.dart';
 import '../../models/block_model.dart';
 import '../../core/markdown_parser.dart';
-import '../../core/provider_config.dart';
 import 'file_model.dart';
 
-String get apiBaseUrl {
-  if (kIsWeb) return 'http://127.0.0.1:8000';
-  return 'http://127.0.0.1:8000';
-}
+const String _api = 'http://127.0.0.1:8000';
 
-// ─────────────────────────────────────────────────────────
-// SummaryBlock
-// ─────────────────────────────────────────────────────────
 class SummaryBlock {
   String content;
   bool isSaved;
@@ -41,140 +25,53 @@ class SummaryBlock {
 }
 
 // ─────────────────────────────────────────────────────────
-// FilesNotifier
-// ─────────────────────────────────────────────────────────
-final filesProvider = StateNotifierProvider<FilesNotifier, List<FileModel>>(
-  (ref) => FilesNotifier(),
-);
-
-class FilesNotifier extends StateNotifier<List<FileModel>> {
-  FilesNotifier() : super([]);
-
-  Future<void> loadFiles(String projectId) async {
-    if (!kIsWeb) {
-      state = await FilesDBHelper.selectProjectFiles(projectId);
-      return;
-    }
-    // 웹: 서버에서 로드
-    try {
-      final res = await http.get(
-        Uri.parse('$apiBaseUrl/api/files/project/$projectId'),
-      );
-      if (res.statusCode == 200) {
-        final List data = json.decode(res.body);
-        state = data.map((j) => FileModel.fromJson(j)).toList();
-      }
-    } catch (e) {
-      print('loadFiles error: $e');
-    }
-  }
-
-  Future<void> addFile(FileModel file) async {
-    if (!kIsWeb) {
-      await FilesDBHelper.insertFile(file);
-    } else {
-      // 웹: 서버에 저장
-      try {
-        await http.post(
-          Uri.parse('$apiBaseUrl/api/files/'),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode(file.toMap()),
-        );
-      } catch (e) {
-        print('addFile error: $e');
-      }
-    }
-    state = [file, ...state];
-  }
-
-  Future<void> deleteFile(String fileId) async {
-    if (!kIsWeb) {
-      await FilesDBHelper.deleteFile(fileId);
-    } else {
-      try {
-        await http.delete(Uri.parse('$apiBaseUrl/api/files/$fileId'));
-      } catch (e) {
-        print('deleteFile error: $e');
-      }
-    }
-    state = state.where((f) => f.id != fileId).toList();
-  }
-
-  Future<void> updateFileTitle(String fileId, String newTitle) async {
-    if (!kIsWeb) {
-      await FilesDBHelper.updateFile(fileId, title: newTitle);
-    } else {
-      try {
-        await http.put(
-          Uri.parse('$apiBaseUrl/api/files/$fileId'),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({'title': newTitle}),
-        );
-      } catch (e) {
-        print('updateFileTitle error: $e');
-      }
-    }
-    state = [
-      for (final f in state)
-        if (f.id == fileId) f.updateWith(title: newTitle) else f,
-    ];
-  }
-}
-
-// ─────────────────────────────────────────────────────────
-// FileEditorState
+// State
 // ─────────────────────────────────────────────────────────
 class FileEditorState {
   final List<Block> blocks;
   final bool isLoading;
   final bool isSummaryLoading;
   final bool isAnalysisLoading;
-  final bool isStudioLoading;
+  final bool isMemoLoading;
+  final bool isQuizLoading;
   final bool isQALoading;
   final bool isGraphLoading;
-  final bool isProofreadLoading; // 글 교정
 
   final String? icon;
-  final String? filePrompt; // 서버 단 프롬프트
+  final String? filePrompt;
   final List<SummaryBlock> summaryBlocks;
-  final String? currentBlockAnalysis;
+  final String? currentAnalysis;
   final String? currentMemo;
   final List<dynamic>? quizData;
   final Map<int, int> quizAnswers;
   final String? qaAnswer;
-  final Map<String, dynamic>? aiGraphData;
-  final String? proofreadResult; // 교정 결과
+  final Map<String, dynamic>? graphData;
 
   final String focusedText;
   final DateTime? lastSavedAt;
   final String lastSentContent;
-
-  // 선택된 블록 인덱스들 (멀티 선택)
-  final Set<int> selectedBlockIndices;
 
   FileEditorState({
     required this.blocks,
     this.isLoading = false,
     this.isSummaryLoading = false,
     this.isAnalysisLoading = false,
-    this.isStudioLoading = false,
+    this.isMemoLoading = false,
+    this.isQuizLoading = false,
     this.isQALoading = false,
     this.isGraphLoading = false,
-    this.isProofreadLoading = false,
     this.icon,
     this.filePrompt,
     this.summaryBlocks = const [],
-    this.currentBlockAnalysis,
+    this.currentAnalysis,
     this.currentMemo,
     this.quizData,
     this.quizAnswers = const {},
     this.qaAnswer,
-    this.aiGraphData,
-    this.proofreadResult,
+    this.graphData,
     this.focusedText = '',
     this.lastSavedAt,
     this.lastSentContent = '',
-    this.selectedBlockIndices = const {},
   });
 
   FileEditorState copyWith({
@@ -182,59 +79,55 @@ class FileEditorState {
     bool? isLoading,
     bool? isSummaryLoading,
     bool? isAnalysisLoading,
-    bool? isStudioLoading,
+    bool? isMemoLoading,
+    bool? isQuizLoading,
     bool? isQALoading,
     bool? isGraphLoading,
-    bool? isProofreadLoading,
     String? icon,
     String? filePrompt,
     List<SummaryBlock>? summaryBlocks,
-    String? currentBlockAnalysis,
+    String? currentAnalysis,
     String? currentMemo,
     List<dynamic>? quizData,
     Map<int, int>? quizAnswers,
     String? qaAnswer,
-    Map<String, dynamic>? aiGraphData,
-    String? proofreadResult,
+    Map<String, dynamic>? graphData,
     String? focusedText,
     DateTime? lastSavedAt,
     String? lastSentContent,
-    Set<int>? selectedBlockIndices,
-  }) {
-    return FileEditorState(
-      blocks: blocks ?? this.blocks,
-      isLoading: isLoading ?? this.isLoading,
-      isSummaryLoading: isSummaryLoading ?? this.isSummaryLoading,
-      isAnalysisLoading: isAnalysisLoading ?? this.isAnalysisLoading,
-      isStudioLoading: isStudioLoading ?? this.isStudioLoading,
-      isQALoading: isQALoading ?? this.isQALoading,
-      isGraphLoading: isGraphLoading ?? this.isGraphLoading,
-      isProofreadLoading: isProofreadLoading ?? this.isProofreadLoading,
-      icon: icon ?? this.icon,
-      filePrompt: filePrompt ?? this.filePrompt,
-      summaryBlocks: summaryBlocks ?? this.summaryBlocks,
-      currentBlockAnalysis: currentBlockAnalysis ?? this.currentBlockAnalysis,
-      currentMemo: currentMemo ?? this.currentMemo,
-      quizData: quizData ?? this.quizData,
-      quizAnswers: quizAnswers ?? this.quizAnswers,
-      qaAnswer: qaAnswer ?? this.qaAnswer,
-      aiGraphData: aiGraphData ?? this.aiGraphData,
-      proofreadResult: proofreadResult ?? this.proofreadResult,
-      focusedText: focusedText ?? this.focusedText,
-      lastSavedAt: lastSavedAt ?? this.lastSavedAt,
-      lastSentContent: lastSentContent ?? this.lastSentContent,
-      selectedBlockIndices: selectedBlockIndices ?? this.selectedBlockIndices,
-    );
-  }
+  }) => FileEditorState(
+    blocks: blocks ?? this.blocks,
+    isLoading: isLoading ?? this.isLoading,
+    isSummaryLoading: isSummaryLoading ?? this.isSummaryLoading,
+    isAnalysisLoading: isAnalysisLoading ?? this.isAnalysisLoading,
+    isMemoLoading: isMemoLoading ?? this.isMemoLoading,
+    isQuizLoading: isQuizLoading ?? this.isQuizLoading,
+    isQALoading: isQALoading ?? this.isQALoading,
+    isGraphLoading: isGraphLoading ?? this.isGraphLoading,
+    icon: icon ?? this.icon,
+    filePrompt: filePrompt ?? this.filePrompt,
+    summaryBlocks: summaryBlocks ?? this.summaryBlocks,
+    currentAnalysis: currentAnalysis ?? this.currentAnalysis,
+    currentMemo: currentMemo ?? this.currentMemo,
+    quizData: quizData ?? this.quizData,
+    quizAnswers: quizAnswers ?? this.quizAnswers,
+    qaAnswer: qaAnswer ?? this.qaAnswer,
+    graphData: graphData ?? this.graphData,
+    focusedText: focusedText ?? this.focusedText,
+    lastSavedAt: lastSavedAt ?? this.lastSavedAt,
+    lastSentContent: lastSentContent ?? this.lastSentContent,
+  );
 
   String get fullContent => blocks.map((b) => b.controller.text).join('\n');
-  int get wordCount => fullContent.split(RegExp(r'\s+')).length;
-  int get charCount =>
-      blocks.fold(0, (sum, b) => sum + b.controller.text.length);
+  int get charCount => blocks.fold(0, (s, b) => s + b.controller.text.length);
+  int get wordCount =>
+      fullContent.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+  int get meaningfulCharCount =>
+      fullContent.replaceAll(RegExp(r'\s'), '').length;
 }
 
 // ─────────────────────────────────────────────────────────
-// FileEditorNotifier
+// Provider
 // ─────────────────────────────────────────────────────────
 final fileEditorProvider =
     StateNotifierProvider.autoDispose<FileEditorNotifier, FileEditorState>(
@@ -245,43 +138,39 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   FileEditorNotifier() : super(FileEditorState(blocks: []));
 
   String _lastAnalyzedText = '';
-  String _currentFileId = '';
 
   // ─── 로드 ────────────────────────────────────────────
   Future<void> loadFileDetail(String fileId) async {
-    _currentFileId = fileId;
     state = state.copyWith(isLoading: true);
-
-    FileModel? fileModel;
+    FileModel? file;
 
     if (!kIsWeb) {
-      fileModel = await FilesDBHelper.getFile(fileId);
+      file = await FilesDBHelper.getFile(fileId);
     } else {
-      // 웹: 서버에서 로드
       try {
-        final res = await http.get(Uri.parse('$apiBaseUrl/api/files/$fileId'));
-        if (res.statusCode == 200) {
-          fileModel = FileModel.fromJson(json.decode(res.body));
-        }
+        final res = await http
+            .get(Uri.parse('$_api/api/files/$fileId'))
+            .timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200)
+          file = FileModel.fromJson(jsonDecode(res.body));
       } catch (e) {
-        print('loadFileDetail error: $e');
+        print('loadFile error: $e');
       }
     }
 
-    if (fileModel != null) {
-      final loadedBlocks = _parseBlocks(fileModel.content);
-      final loadedSummary = _parseSummary(fileModel.summary);
-
+    if (file != null) {
+      final blocks = _parseBlocks(file.content);
+      final summary = _parseSummary(file.summary);
       state = state.copyWith(
-        blocks: loadedBlocks.isEmpty ? [_createBlock(0)] : loadedBlocks,
+        blocks: blocks.isEmpty ? [_newBlock(0)] : blocks,
         isLoading: false,
-        icon: fileModel.icon,
-        filePrompt: fileModel.prompt,
-        summaryBlocks: loadedSummary,
-        lastSentContent: fileModel.content,
+        icon: file.icon,
+        filePrompt: file.prompt,
+        summaryBlocks: summary,
+        lastSentContent: file.content,
       );
     } else {
-      state = state.copyWith(blocks: [_createBlock(0)], isLoading: false);
+      state = state.copyWith(blocks: [_newBlock(0)], isLoading: false);
     }
   }
 
@@ -292,8 +181,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .map((e) => Block.fromJson(e))
           .toList();
     } catch (_) {
-      final parsed = MarkdownParser.parse(content);
-      return parsed
+      return MarkdownParser.parse(content)
           .asMap()
           .entries
           .map(
@@ -307,14 +195,14 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     }
   }
 
-  List<SummaryBlock> _parseSummary(String? summary) {
-    if (summary == null || summary.isEmpty) return [];
+  List<SummaryBlock> _parseSummary(String? s) {
+    if (s == null || s.isEmpty) return [];
     try {
-      return (jsonDecode(summary) as List)
+      return (jsonDecode(s) as List)
           .map((e) => SummaryBlock.fromJson(e))
           .toList();
     } catch (_) {
-      return [SummaryBlock(content: summary, isSaved: false)];
+      return [SummaryBlock(content: s, isSaved: false)];
     }
   }
 
@@ -326,13 +214,13 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     required String prompt,
     required DateTime updateAt,
   }) async {
-    final blocksData = state.blocks.map((b) {
-      final j = b.toJson();
-      j['content'] = b.controller.text;
-      return j;
-    }).toList();
-
-    final contentJson = jsonEncode(blocksData);
+    final blocksJson = jsonEncode(
+      state.blocks.map((b) {
+        final j = b.toJson();
+        j['content'] = b.controller.text;
+        return j;
+      }).toList(),
+    );
     final summaryJson = jsonEncode(
       state.summaryBlocks.map((b) => b.toJson()).toList(),
     );
@@ -345,119 +233,91 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         tags: tags,
         icon: state.icon,
         prompt: prompt,
-        content: contentJson,
+        content: blocksJson,
         summary: summaryJson,
       );
     } else {
-      // 웹: 서버에 저장 + RAG 업데이트
       try {
-        await http.put(
-          Uri.parse('$apiBaseUrl/api/files/$fileId'),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({
-            'title': title,
-            'tags': tags,
-            'prompt': prompt,
-            'content': contentJson,
-            'summary': summaryJson,
-            'icon': state.icon,
-          }),
-        );
+        await http
+            .put(
+              Uri.parse('$_api/api/files/$fileId'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'title': title,
+                'tags': tags,
+                'prompt': prompt,
+                'content': blocksJson,
+                'summary': summaryJson,
+                'icon': state.icon,
+              }),
+            )
+            .timeout(const Duration(seconds: 10));
       } catch (e) {
-        print('saveFile web error: $e');
+        print('saveFile error: $e');
       }
     }
-
     state = state.copyWith(lastSavedAt: DateTime.now());
   }
 
-  // ─── 요약 관련 ──────────────────────────────────────
-  void toggleSummarySave(int index) {
-    final list = List<SummaryBlock>.from(state.summaryBlocks);
-    list[index] = SummaryBlock(
-      content: list[index].content,
-      isSaved: !list[index].isSaved,
-    );
-    state = state.copyWith(summaryBlocks: list);
-  }
-
-  void removeSummaryBlock(int index) {
-    final list = List<SummaryBlock>.from(state.summaryBlocks);
-    list.removeAt(index);
-    state = state.copyWith(summaryBlocks: list);
-  }
-
-  // ─── [Track 1] 전체 요약 (서버 단 프롬프트 적용) ──────
-  Future<void> requestAutoAISummary({
+  // ─── 요약 (스마트 — 내용 없으면 건너뜀) ─────────────
+  Future<void> requestSummary({
     required String title,
     required String tags,
   }) async {
-    final fullContext = state.fullContent;
-    if (fullContext.trim().isEmpty) return;
+    // 의미있는 내용이 50자 미만이면 무시
+    if (state.meaningfulCharCount < 50) return;
+
     state = state.copyWith(isSummaryLoading: true);
-
     try {
-      final savedBlocks = state.summaryBlocks.where((b) => b.isSaved).toList();
-      final savedText = savedBlocks.map((b) => b.content).join('\n\n');
+      final saved = state.summaryBlocks.where((b) => b.isSaved).toList();
+      final savedText = saved.map((b) => b.content).join('\n\n');
 
-      // Delta 전략
-      final lastSent = state.lastSentContent;
-      String contentToSend = fullContext;
-      if (lastSent.isNotEmpty && fullContext.length > lastSent.length) {
-        final overlapStart = (lastSent.length - 200).clamp(0, lastSent.length);
-        contentToSend = fullContext.substring(overlapStart);
+      // Delta: 변경된 부분만 전송
+      final full = state.fullContent;
+      final last = state.lastSentContent;
+      String toSend = full;
+      if (last.isNotEmpty && full.length > last.length + 100) {
+        toSend = full.substring((last.length - 300).clamp(0, last.length));
       }
 
-      // 서버 단 커스텀 프롬프트 적용
-      String customPrompt;
-      final serverPrompt = state.filePrompt ?? '';
-
+      // 서버 단 프롬프트 우선 적용
+      String? customPrompt;
+      final fp = state.filePrompt ?? '';
       if (savedText.isNotEmpty) {
         customPrompt =
-            '''
-${serverPrompt.isNotEmpty ? '사용자 지시사항: $serverPrompt\n' : ''}
-문서 제목: $title
-[기존 확정 요약]
-$savedText
-
-[새로 추가된 내용]
-$contentToSend
-
-기존 요약에 없는 내용만 마크다운으로 추가 요약하세요. 새 내용이 없으면 "추가된 내용이 없습니다."만 응답.
-''';
-      } else {
-        customPrompt =
-            '''
-${serverPrompt.isNotEmpty ? '사용자 지시사항: $serverPrompt\n' : ''}
-문서 제목: $title
-위 내용을 구조화된 요약 노트(개조식, 마크다운 표 포함)로 정리해 주세요. 이모티콘 제외, 학술적으로.
-''';
+            '${fp.isNotEmpty ? "사용자 지시: $fp\n\n" : ""}'
+            '기존 요약:\n$savedText\n\n'
+            '위에 없는 새 내용만 추가로 요약하세요. 새 내용 없으면 빈 응답.';
+      } else if (fp.isNotEmpty) {
+        customPrompt = fp;
       }
 
-      final response = await http
+      final res = await http
           .post(
-            Uri.parse('$apiBaseUrl/api/ai/summarize'),
+            Uri.parse('$_api/api/ai/summarize'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'content': contentToSend,
+              'content': toSend,
               'tags': tags,
+              'title': title,
               'custom_prompt': customPrompt,
             }),
           )
           .timeout(const Duration(seconds: 90));
 
       if (!mounted) return;
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        final newText = (data['summary'] ?? '').toString().trim();
-        final newSummaries = List<SummaryBlock>.from(savedBlocks);
-        if (newText.isNotEmpty && !newText.contains('추가된 내용이 없습니다')) {
-          newSummaries.add(SummaryBlock(content: newText, isSaved: false));
-        }
+      if (res.statusCode == 200) {
+        final newText =
+            (jsonDecode(utf8.decode(res.bodyBytes))['summary'] ?? '')
+                .toString()
+                .trim();
+        final list = List<SummaryBlock>.from(saved);
+        if (newText.isNotEmpty)
+          list.add(SummaryBlock(content: newText, isSaved: false));
         state = state.copyWith(
-          summaryBlocks: newSummaries,
+          summaryBlocks: list,
           isSummaryLoading: false,
-          lastSentContent: fullContext,
+          lastSentContent: full,
         );
       } else {
         state = state.copyWith(isSummaryLoading: false);
@@ -468,35 +328,39 @@ ${serverPrompt.isNotEmpty ? '사용자 지시사항: $serverPrompt\n' : ''}
     }
   }
 
-  // ─── [Track 2] 포커스 분석 ────────────────────────────
-  Future<void> requestBlockAnalysis({
+  void toggleSummarySave(int i) {
+    final list = List<SummaryBlock>.from(state.summaryBlocks);
+    list[i] = SummaryBlock(content: list[i].content, isSaved: !list[i].isSaved);
+    state = state.copyWith(summaryBlocks: list);
+  }
+
+  void removeSummaryBlock(int i) {
+    final list = List<SummaryBlock>.from(state.summaryBlocks)..removeAt(i);
+    state = state.copyWith(summaryBlocks: list);
+  }
+
+  // ─── 블록 분석 ──────────────────────────────────────
+  Future<void> analyzeBlock({
     required String text,
-    required String contextTitle,
+    required String title,
   }) async {
-    if (text.trim().length < 5 || text == _lastAnalyzedText) return;
+    if (text.trim().length < 10 || text == _lastAnalyzedText) return;
     _lastAnalyzedText = text;
     state = state.copyWith(focusedText: text, isAnalysisLoading: true);
-
     try {
-      final prompt =
-          '문서($contextTitle)의 맥락에서 다음 문단의 핵심 의미를 3줄 내외로 분석해 주세요.\n내용: $text';
-      final response = await http
+      final res = await http
           .post(
-            Uri.parse('$apiBaseUrl/api/ai/summarize'),
+            Uri.parse('$_api/api/ai/analyze-block'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'content': text,
-              'tags': '',
-              'custom_prompt': prompt,
-            }),
+            body: jsonEncode({'text': text, 'context_title': title}),
           )
           .timeout(const Duration(seconds: 30));
-
       if (!mounted) return;
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
+      if (res.statusCode == 200) {
+        final analysis =
+            jsonDecode(utf8.decode(res.bodyBytes))['analysis'] ?? '';
         state = state.copyWith(
-          currentBlockAnalysis: data['summary'],
+          currentAnalysis: analysis.toString().trim(),
           isAnalysisLoading: false,
         );
       } else {
@@ -508,83 +372,89 @@ ${serverPrompt.isNotEmpty ? '사용자 지시사항: $serverPrompt\n' : ''}
     }
   }
 
-  // ─── 암기/퀴즈 ────────────────────────────────────────
-  Future<void> generateStudioContent(String type) async {
-    final truncated = state.fullContent.length > 3000
-        ? state.fullContent.substring(0, 3000)
-        : state.fullContent;
-    if (truncated.trim().isEmpty) return;
-
-    state = state.copyWith(isStudioLoading: true);
-
-    final customPrompt = type == 'memo'
-        ? '본문 내용 중 시험에 나올 핵심 암기 사항 5가지를 이모티콘 없이 명확한 리스트와 표로 추출해 주세요.'
-        : '본문을 바탕으로 객관식 퀴즈 3문제를 출제하세요. 반드시 순수 JSON 배열만 응답: [{"question":"문제","options":["1","2","3","4"],"answer":0,"explanation":"해설"}]';
-
+  // ─── 암기 노트 ──────────────────────────────────────
+  Future<void> generateMemo(String title) async {
+    if (state.meaningfulCharCount < 50) return;
+    state = state.copyWith(isMemoLoading: true);
     try {
-      final response = await http
+      final res = await http
           .post(
-            Uri.parse('$apiBaseUrl/api/ai/summarize'),
+            Uri.parse('$_api/api/ai/memo'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'content': truncated,
-              'tags': '',
-              'custom_prompt': customPrompt,
+              'content': state.fullContent.substring(
+                0,
+                state.fullContent.length.clamp(0, 3000),
+              ),
+              'title': title,
             }),
           )
-          .timeout(const Duration(seconds: 90));
-
+          .timeout(const Duration(seconds: 60));
       if (!mounted) return;
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (type == 'memo') {
-          state = state.copyWith(
-            currentMemo: data['summary'],
-            isStudioLoading: false,
-          );
-        } else {
-          final resText = data['summary']
-              .toString()
-              .replaceAll(RegExp(r'```json|```'), '')
-              .trim();
-          final startIdx = resText.indexOf('[');
-          final endIdx = resText.lastIndexOf(']');
-          if (startIdx != -1 && endIdx != -1) {
-            final parsed =
-                jsonDecode(resText.substring(startIdx, endIdx + 1)) as List;
-            state = state.copyWith(
-              quizData: parsed,
-              quizAnswers: {},
-              isStudioLoading: false,
-            );
-          } else {
-            state = state.copyWith(isStudioLoading: false);
-          }
-        }
+      if (res.statusCode == 200) {
+        final memo = jsonDecode(utf8.decode(res.bodyBytes))['memo'] ?? '';
+        state = state.copyWith(
+          currentMemo: memo.toString().trim(),
+          isMemoLoading: false,
+        );
       } else {
-        state = state.copyWith(isStudioLoading: false);
+        state = state.copyWith(isMemoLoading: false);
       }
     } catch (_) {
       if (!mounted) return;
-      state = state.copyWith(isStudioLoading: false);
+      state = state.copyWith(isMemoLoading: false);
     }
   }
 
-  void answerQuiz(int questionIndex, int optionIndex) {
-    if (state.quizAnswers.containsKey(questionIndex)) return;
-    final answers = Map<int, int>.from(state.quizAnswers);
-    answers[questionIndex] = optionIndex;
-    state = state.copyWith(quizAnswers: answers);
+  // ─── 퀴즈 ───────────────────────────────────────────
+  Future<void> generateQuiz() async {
+    if (state.meaningfulCharCount < 100) return;
+    state = state.copyWith(isQuizLoading: true);
+    try {
+      final content = state.fullContent.substring(
+        0,
+        state.fullContent.length.clamp(0, 3000),
+      );
+      final res = await http
+          .post(
+            Uri.parse('$_api/api/ai/quiz'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'content': content, 'count': 3}),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final quiz =
+            jsonDecode(utf8.decode(res.bodyBytes))['quiz'] as List? ?? [];
+        state = state.copyWith(
+          quizData: quiz,
+          quizAnswers: {},
+          isQuizLoading: false,
+        );
+      } else {
+        state = state.copyWith(isQuizLoading: false);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      state = state.copyWith(isQuizLoading: false);
+    }
   }
 
-  // ─── Quick Ask ────────────────────────────────────────
+  void answerQuiz(int qi, int oi) {
+    if (state.quizAnswers.containsKey(qi)) return;
+    final a = Map<int, int>.from(state.quizAnswers);
+    a[qi] = oi;
+    state = state.copyWith(quizAnswers: a);
+  }
+
+  // ─── Ask AI ─────────────────────────────────────────
   Future<void> askAI(String query, String projectId) async {
     if (query.trim().isEmpty) return;
     state = state.copyWith(isQALoading: true);
     try {
-      final response = await http
+      final res = await http
           .post(
-            Uri.parse('$apiBaseUrl/api/ai/ask'),
+            Uri.parse('$_api/api/ai/ask'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'query': query,
@@ -593,44 +463,42 @@ ${serverPrompt.isNotEmpty ? '사용자 지시사항: $serverPrompt\n' : ''}
             }),
           )
           .timeout(const Duration(seconds: 60));
-
       if (!mounted) return;
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
+      if (res.statusCode == 200) {
+        final d = jsonDecode(utf8.decode(res.bodyBytes));
         state = state.copyWith(
-          qaAnswer: '### 💡 AI 답변 (출처: ${data['source']})\n\n${data['answer']}',
+          qaAnswer: '**출처: ${d['source']}**\n\n${d['answer']}',
           isQALoading: false,
         );
       } else {
-        state = state.copyWith(isQALoading: false, qaAnswer: '응답을 가져오지 못했습니다.');
+        state = state.copyWith(isQALoading: false, qaAnswer: '응답 실패');
       }
     } catch (_) {
       if (!mounted) return;
-      state = state.copyWith(isQALoading: false, qaAnswer: '오류가 발생했습니다.');
+      state = state.copyWith(isQALoading: false, qaAnswer: '연결 오류');
     }
   }
 
-  // ─── AI 지식 그래프 ───────────────────────────────────
-  Future<void> requestAIGraph() async {
-    final truncated = state.fullContent.length > 2000
-        ? state.fullContent.substring(0, 2000)
-        : state.fullContent;
-    if (truncated.trim().length < 20) return;
-
+  // ─── 지식 그래프 ────────────────────────────────────
+  Future<void> requestGraph() async {
+    if (state.meaningfulCharCount < 30) return;
     state = state.copyWith(isGraphLoading: true);
     try {
-      final response = await http
+      final content = state.fullContent.substring(
+        0,
+        state.fullContent.length.clamp(0, 2000),
+      );
+      final res = await http
           .post(
-            Uri.parse('$apiBaseUrl/api/ai/graph'),
+            Uri.parse('$_api/api/ai/graph'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'content': truncated}),
+            body: jsonEncode({'content': content}),
           )
           .timeout(const Duration(seconds: 45));
-
       if (!mounted) return;
-      if (response.statusCode == 200) {
+      if (res.statusCode == 200) {
         state = state.copyWith(
-          aiGraphData: jsonDecode(utf8.decode(response.bodyBytes)),
+          graphData: jsonDecode(utf8.decode(res.bodyBytes)),
           isGraphLoading: false,
         );
       } else {
@@ -642,107 +510,50 @@ ${serverPrompt.isNotEmpty ? '사용자 지시사항: $serverPrompt\n' : ''}
     }
   }
 
-  // ─── 글 교정 기능 ─────────────────────────────────────
-  Future<void> proofreadContent({String style = 'academic'}) async {
-    final content = state.fullContent;
-    if (content.trim().isEmpty) return;
-
-    state = state.copyWith(isProofreadLoading: true, proofreadResult: null);
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$apiBaseUrl/api/files/proofread'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'content': content, 'style': style}),
-          )
-          .timeout(const Duration(seconds: 60));
-
-      if (!mounted) return;
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        state = state.copyWith(
-          proofreadResult: data['corrected'],
-          isProofreadLoading: false,
-        );
-      } else {
-        state = state.copyWith(isProofreadLoading: false);
-      }
-    } catch (_) {
-      if (!mounted) return;
-      state = state.copyWith(isProofreadLoading: false);
-    }
-  }
-
-  // 교정 결과 에디터에 적용
-  void applyProofread() {
-    if (state.proofreadResult == null) return;
-    final parsed = _parseBlocks(state.proofreadResult!);
-    if (parsed.isEmpty) return;
-    for (var b in state.blocks) b.dispose();
-    state = state.copyWith(
-      blocks: parsed.isEmpty ? [_createBlock(0)] : parsed,
-      proofreadResult: null,
-    );
-  }
-
-  // ─── Export ───────────────────────────────────────────
-
-  /// Markdown 형식으로 Export (클립보드)
-  Future<String> exportAsMarkdown(String title, String tags) async {
+  // ─── Export Markdown ────────────────────────────────
+  Future<void> copyMarkdown(String title, String tags) async {
     final sb = StringBuffer();
-    sb.writeln('# $title');
-    if (tags.isNotEmpty) sb.writeln('> Tags: $tags\n');
-    sb.writeln();
-
-    for (final block in state.blocks) {
-      final text = block.controller.text;
-      switch (block.type) {
+    if (title.isNotEmpty) sb.writeln('# $title\n');
+    if (tags.isNotEmpty) sb.writeln('> $tags\n');
+    for (final b in state.blocks) {
+      final t = b.controller.text;
+      switch (b.type) {
         case BlockType.h1:
-          sb.writeln('# $text');
+          sb.writeln('# $t');
           break;
         case BlockType.h2:
-          sb.writeln('## $text');
+          sb.writeln('## $t');
           break;
         case BlockType.h3:
-          sb.writeln('### $text');
+          sb.writeln('### $t');
           break;
         case BlockType.bullet:
-          sb.writeln('- $text');
+          sb.writeln('- $t');
           break;
         case BlockType.checkbox:
-          sb.writeln('- [${block.isChecked ? 'x' : ' '}] $text');
+          sb.writeln('- [${b.isChecked ? 'x' : ' '}] $t');
           break;
         case BlockType.code:
-          sb.writeln('```\n$text\n```');
+          sb.writeln('```\n$t\n```');
           break;
         default:
-          sb.writeln(text);
+          sb.writeln(t);
       }
       sb.writeln();
     }
-
-    // 저장된 요약 추가
-    final savedSummaries = state.summaryBlocks.where((b) => b.isSaved).toList();
-    if (savedSummaries.isNotEmpty) {
-      sb.writeln('\n---\n## 📝 AI 요약\n');
-      for (final s in savedSummaries) {
+    final saved = state.summaryBlocks.where((b) => b.isSaved);
+    if (saved.isNotEmpty) {
+      sb.writeln('\n---\n## AI 요약\n');
+      for (final s in saved) {
         sb.writeln(s.content);
         sb.writeln();
       }
     }
-
-    return sb.toString();
+    await Clipboard.setData(ClipboardData(text: sb.toString()));
   }
 
-  /// 클립보드에 Markdown 복사
-  Future<void> copyMarkdownToClipboard(String title, String tags) async {
-    final md = await exportAsMarkdown(title, tags);
-    await Clipboard.setData(ClipboardData(text: md));
-  }
-
-  // ─── 블록 편집 로직 ──────────────────────────────────
-
-  void mergeWithPreviousBlock(int index) {
+  // ─── 블록 편집 ──────────────────────────────────────
+  void mergeWithPrev(int index) {
     if (index <= 0 || state.blocks.length <= 1) return;
     final blocks = [...state.blocks];
     final prev = blocks[index - 1];
@@ -758,41 +569,32 @@ ${serverPrompt.isNotEmpty ? '사용자 지시사항: $serverPrompt\n' : ''}
     });
   }
 
-  void insertBlocks(int index, List<String> contents) {
+  void insertAfter(
+    int index, {
+    String content = '',
+    BlockType type = BlockType.text,
+  }) {
     final blocks = [...state.blocks];
-    for (int i = 0; i < contents.length; i++) {
-      String text = contents[i];
-      BlockType type = BlockType.text;
-      if (i == 0 && index > 0 && blocks[index - 1].type == BlockType.bullet) {
-        type = BlockType.bullet;
-      } else if (i == 0 &&
-          index > 0 &&
-          blocks[index - 1].type == BlockType.checkbox) {
-        type = BlockType.checkbox;
-      } else if (text.startsWith('# ')) {
-        type = BlockType.h1;
-        text = text.substring(2);
-      } else if (text.startsWith('## ')) {
-        type = BlockType.h2;
-        text = text.substring(3);
-      } else if (text.startsWith('- ')) {
-        type = BlockType.bullet;
-        text = text.substring(2);
-      } else if (text.startsWith('[] ')) {
-        type = BlockType.checkbox;
-        text = text.replaceFirst(RegExp(r'^\[\]\s?'), '');
-      }
-      blocks.insert(
-        index + i,
-        _createBlock(index + i, type: type, content: text),
-      );
-    }
+    blocks.insert(
+      index + 1,
+      _newBlock(index + 1, type: type, content: content),
+    );
     state = state.copyWith(blocks: blocks);
   }
 
-  void exitListMode(int index) {
+  void insertBlocks(int index, List<String> lines) {
     final blocks = [...state.blocks];
-    blocks[index].type = BlockType.text;
+    for (int i = 0; i < lines.length; i++) {
+      String text = lines[i];
+      BlockType type = BlockType.text;
+      if (i == 0 && index > 0) {
+        final prevType = blocks[index - 1].type;
+        if (prevType == BlockType.bullet || prevType == BlockType.checkbox) {
+          type = prevType;
+        }
+      }
+      blocks.insert(index + i, _newBlock(index + i, type: type, content: text));
+    }
     state = state.copyWith(blocks: blocks);
   }
 
@@ -804,62 +606,134 @@ ${serverPrompt.isNotEmpty ? '사용자 지시사항: $serverPrompt\n' : ''}
     state = state.copyWith(blocks: blocks);
   }
 
-  void reorderBlock(int oldIndex, int newIndex) {
-    if (oldIndex < newIndex) newIndex -= 1;
+  void exitListMode(int index) {
     final blocks = [...state.blocks];
-    final item = blocks.removeAt(oldIndex);
-    blocks.insert(newIndex, item);
+    blocks[index].type = BlockType.text;
     state = state.copyWith(blocks: blocks);
   }
 
-  void duplicateBlock(int index) {
+  void reorder(int from, int to) {
+    if (from < to) to -= 1;
+    final blocks = [...state.blocks];
+    final item = blocks.removeAt(from);
+    blocks.insert(to, item);
+    state = state.copyWith(blocks: blocks);
+  }
+
+  void duplicate(int index) {
     final orig = state.blocks[index];
-    final newBlock = _createBlock(
+    final copy = _newBlock(
       index + 1,
       type: orig.type,
       content: orig.controller.text,
     )..isChecked = orig.isChecked;
     final blocks = [...state.blocks];
-    blocks.insert(index + 1, newBlock);
+    blocks.insert(index + 1, copy);
     state = state.copyWith(blocks: blocks);
   }
 
-  void updateBlockType(int index, BlockType newType) {
+  void setType(int index, BlockType type) {
     final blocks = [...state.blocks];
-    blocks[index].type = newType;
-    if (newType == BlockType.checkbox) blocks[index].isChecked = false;
+    blocks[index].type = type;
+    if (type == BlockType.checkbox) blocks[index].isChecked = false;
     state = state.copyWith(blocks: blocks);
   }
 
-  void toggleCheckbox(int index, bool value) {
+  void toggleCheck(int index, bool v) {
     final blocks = [...state.blocks];
-    blocks[index].isChecked = value;
+    blocks[index].isChecked = v;
     state = state.copyWith(blocks: blocks);
   }
 
-  void indentBlock(int index) {
-    final ctrl = state.blocks[index].controller;
-    final pos = ctrl.selection.baseOffset.clamp(0, ctrl.text.length);
-    final newText =
-        ctrl.text.substring(0, pos) + '    ' + ctrl.text.substring(pos);
-    ctrl.text = newText;
-    ctrl.selection = TextSelection.collapsed(offset: pos + 4);
+  void indent(int index) {
+    final c = state.blocks[index].controller;
+    final pos = c.selection.baseOffset.clamp(0, c.text.length);
+    c.text = '${c.text.substring(0, pos)}    ${c.text.substring(pos)}';
+    c.selection = TextSelection.collapsed(offset: pos + 4);
   }
 
-  void updateIcon(String? newIcon) => state = state.copyWith(icon: newIcon);
+  void dedent(int index) {
+    final c = state.blocks[index].controller;
+    if (c.text.startsWith('    ')) {
+      c.text = c.text.substring(4);
+      c.selection = TextSelection.collapsed(
+        offset: (c.selection.baseOffset - 4).clamp(0, c.text.length),
+      );
+    }
+  }
 
-  void updateFilePrompt(String prompt) =>
-      state = state.copyWith(filePrompt: prompt);
+  void setIcon(String? icon) => state = state.copyWith(icon: icon);
+  void setPrompt(String prompt) => state = state.copyWith(filePrompt: prompt);
 
-  Block _createBlock(
-    int index, {
+  Block _newBlock(
+    int i, {
     BlockType type = BlockType.text,
     String content = '',
-  }) {
-    return Block(
-      id: '${DateTime.now().microsecondsSinceEpoch}_$index',
-      type: type,
-      content: content,
-    );
+  }) => Block(
+    id: '${DateTime.now().microsecondsSinceEpoch}_$i',
+    type: type,
+    content: content,
+  );
+}
+
+// ─── FilesNotifier (파일 목록) ───────────────────────────
+final filesProvider = StateNotifierProvider<FilesNotifier, List<FileModel>>(
+  (ref) => FilesNotifier(),
+);
+
+class FilesNotifier extends StateNotifier<List<FileModel>> {
+  FilesNotifier() : super([]);
+
+  Future<void> load(String projectId) async {
+    if (!kIsWeb) {
+      state = await FilesDBHelper.selectProjectFiles(projectId);
+      return;
+    }
+    try {
+      final res = await http
+          .get(Uri.parse('$_api/api/files/project/$projectId'))
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        state = (jsonDecode(res.body) as List)
+            .map((j) => FileModel.fromJson(j))
+            .toList();
+      }
+    } catch (e) {
+      print('loadFiles: $e');
+    }
+  }
+
+  Future<void> add(FileModel f) async {
+    if (!kIsWeb)
+      await FilesDBHelper.insertFile(f);
+    else {
+      try {
+        await http
+            .post(
+              Uri.parse('$_api/api/files/'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(f.toMap()),
+            )
+            .timeout(const Duration(seconds: 10));
+      } catch (e) {
+        print('addFile: $e');
+      }
+    }
+    state = [f, ...state];
+  }
+
+  Future<void> remove(String id) async {
+    if (!kIsWeb)
+      await FilesDBHelper.deleteFile(id);
+    else {
+      try {
+        await http
+            .delete(Uri.parse('$_api/api/files/$id'))
+            .timeout(const Duration(seconds: 10));
+      } catch (e) {
+        print('deleteFile: $e');
+      }
+    }
+    state = state.where((f) => f.id != id).toList();
   }
 }
