@@ -1,14 +1,16 @@
+import 'package:flutter/foundation.dart';
 import 'package:study_flow/features/file/file_model.dart';
 import 'all_db_helper.dart';
 
 class FilesDBHelper {
   static Future<int> insertFile(FileModel file) async {
+    if (kIsWeb) return 0;
     final db = await LocalDatabase.instance.database;
     return await db.insert('files', file.toMap());
   }
 
-  // 특정 프로젝트의 파일들만 가져오기
   static Future<List<FileModel>> selectProjectFiles(String projectId) async {
+    if (kIsWeb) return [];
     final db = await LocalDatabase.instance.database;
     final result = await db.query(
       'files',
@@ -19,8 +21,8 @@ class FilesDBHelper {
     return result.map((json) => FileModel.fromJson(json)).toList();
   }
 
-  // 파일 1개 상세 조회
   static Future<FileModel?> getFile(String fileId) async {
+    if (kIsWeb) return null;
     final db = await LocalDatabase.instance.database;
     final result = await db.query(
       'files',
@@ -41,28 +43,22 @@ class FilesDBHelper {
     String? content,
     String? summary,
   }) async {
+    if (kIsWeb) return 0;
     final db = await LocalDatabase.instance.database;
     final Map<String, dynamic> updates = {};
-
-    // 🔴 [수정 포인트 1] DateTime을 String으로 변환 (.toIso8601String())
-    // 🔴 [수정 포인트 2] DB 컬럼명에 맞춰 키값 수정 ('updateAt' -> 'update_at')
-    if (updateAt != null) {
-      updates['update_at'] = updateAt.toIso8601String();
-    }
-
+    if (updateAt != null) updates['update_at'] = updateAt.toIso8601String();
     if (title != null) updates['title'] = title;
     if (tags != null) updates['tags'] = tags;
     if (icon != null) updates['icon'] = icon;
     if (prompt != null) updates['prompt'] = prompt;
     if (content != null) updates['content'] = content;
     if (summary != null) updates['summary'] = summary;
-
     if (updates.isEmpty) return 0;
-
     return await db.update('files', updates, where: 'id = ?', whereArgs: [id]);
   }
 
   static Future<int> deleteFile(String id) async {
+    if (kIsWeb) return 0;
     final db = await LocalDatabase.instance.database;
     return await db.delete('files', where: 'id = ?', whereArgs: [id]);
   }

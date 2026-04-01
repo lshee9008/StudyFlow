@@ -1,36 +1,43 @@
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+// ============================================================
+// all_db_helper.dart  (Web-Compatible Version)
+// 웹: 로컬 DB 없이 서버 API만 사용 (no-op stub)
+// 모바일/데스크톱: 기존 sqflite 그대로 사용
+// ============================================================
+import 'package:flutter/foundation.dart';
+
+// ⚠️ sqflite는 웹을 지원하지 않으므로 조건부 import 사용
+import 'package:sqflite/sqflite.dart' if (dart.library.html) 'web_stub.dart';
+// path 패키지 제거 → 문자열 직접 조합으로 대체 (join 함수 웹 호환 문제 해결)
 
 class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._init();
-  static Database? _database;
+  static dynamic _database; // web에서는 null
 
   LocalDatabase._init();
 
-  // DB 객체 가져오기 (없으면 초기화)
-  Future<Database> get database async {
+  /// 웹이면 null 반환 (no-op), 모바일이면 sqflite Database 반환
+  Future<dynamic> get database async {
+    if (kIsWeb) return null;
     if (_database != null) return _database!;
     _database = await _initDB('app_notes.db');
     return _database!;
   }
 
-  // DB 파일 경로 설정 및 오픈
-  Future<Database> _initDB(String filePath) async {
+  Future<dynamic> _initDB(String filePath) async {
+    if (kIsWeb) return null;
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
-
+    final path = '$dbPath/$filePath'; // path 패키지 join() 대신 문자열 조합
     print("🍎 [DB Path] 파일 위치: $path");
-
     return await openDatabase(
       path,
-      version: 1,
-      onCreate: _createDB, // 앱 처음 깔았을 때 실행
+      version: 2,
+      onCreate: _createDB,
+      onUpgrade: _onUpgrade,
     );
   }
 
-  // 테이블 생성 (유저, 프로젝트, 파일 3개)
-  Future _createDB(Database db, int version) async {
-    // 1. users 테이블
+  Future _createDB(dynamic db, int version) async {
+    if (kIsWeb) return;
     await db.execute('''
       CREATE TABLE users (
         id TEXT NOT NULL PRIMARY KEY,
@@ -41,8 +48,6 @@ class LocalDatabase {
         is_login INTEGER NOT NULL DEFAULT 0
       )
     ''');
-
-    // 2. projects 테이블
     await db.execute('''
       CREATE TABLE projects (
         id TEXT NOT NULL PRIMARY KEY,
@@ -55,8 +60,6 @@ class LocalDatabase {
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       )
     ''');
-
-    // 3. files 테이블
     await db.execute('''
       CREATE TABLE files (
         id TEXT NOT NULL PRIMARY KEY, 
@@ -74,25 +77,25 @@ class LocalDatabase {
     ''');
   }
 
-  // [유틸] DB 데이터 확인용 (디버깅)
-  Future<void> debugPrintDatabase() async {
-    final db = await instance.database;
-    print("\n🔥 [DEBUG] DB 데이터 확인 시작");
+  Future _onUpgrade(dynamic db, int oldVersion, int newVersion) async {}
 
+  Future<void> debugPrintDatabase() async {
+    if (kIsWeb) {
+      print("🌐 [Web] 로컬 DB 없음 - 서버 API 모드");
+      return;
+    }
+    final db = await instance.database;
     final tables = ['users', 'projects', 'files'];
     for (var tbl in tables) {
       final rows = await db.query(tbl);
       print("📂 테이블($tbl): ${rows.length}개 데이터");
-      for (var row in rows) print("  - $row");
     }
-    print("🔥 [DEBUG] 확인 종료\n");
   }
 
-  // [유틸] DB 초기화 (삭제)
   Future<void> deleteAppDatabase() async {
+    if (kIsWeb) return;
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'app_notes.db');
-
+    final path = '$dbPath/app_notes.db'; // path 패키지 join() 대신 문자열 조합
     if (_database != null) {
       await _database!.close();
       _database = null;

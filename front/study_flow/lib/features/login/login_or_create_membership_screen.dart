@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-
-import 'create_membership_screen.dart';
+import '../../core/theme.dart';
 import 'login_screen.dart';
+import 'create_membership_screen.dart';
 import 'registered_users_screen.dart';
 
 class LoginOrCreateMembershipScreen extends StatelessWidget {
@@ -9,110 +9,125 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width;
     return Scaffold(
+      backgroundColor: AppTheme.bgDeep,
       body: Center(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(height: MediaQuery.sizeOf(context).height * 0.05),
-            Text(
-              "로그인 및 회원가입하기",
-              style: TextStyle(
-                fontSize: screenWidth * 0.04,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: MediaQuery.sizeOf(context).height * 0.1),
-            Text(
-              '''
-            로그인 하여 다른 기기에도
-            데이터를 공유할 수 있습니다.
-      
-            또한 Study Flow 를 삭제할 경우 사용하던 기기의 데이터는
-            모두 남아있으며 탈퇴할 경우에 모두 사라집니다.
-            ''',
-              style: TextStyle(
-                fontSize: screenWidth * 0.02,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: MediaQuery.sizeOf(context).height * 0.04),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                fixedSize: Size(screenWidth * 0.2, screenWidth * 0.05),
-                backgroundColor: Color(0xFF3C3C3C),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              child: Text(
-                "로그인 하기",
-                style: TextStyle(
-                  fontSize: screenWidth * 0.02,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            SizedBox(height: MediaQuery.sizeOf(context).height * 0.02),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CreateMembershipScreen(),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SFLogo(size: 32),
+                const SizedBox(height: 48),
+
+                // 카드
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgSecondary,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.borderSubtle),
                   ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                fixedSize: Size(screenWidth * 0.2, screenWidth * 0.05),
-                backgroundColor: Color(0xFF3C3C3C),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              child: Text(
-                "회원 가입하기",
-                style: TextStyle(
-                  fontSize: screenWidth * 0.02,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            SizedBox(height: MediaQuery.sizeOf(context).height * 0.02),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => RegisteredUsersScreen(),
+                  child: Column(
+                    children: [
+                      Text('계정이 있으신가요?', style: AppTheme.headingLarge),
+                      const SizedBox(height: 8),
+                      Text(
+                        '로그인하거나 새 계정을 만들어 시작하세요.',
+                        style: AppTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 32),
+
+                      // 로그인 버튼
+                      SFButton(
+                        label: '로그인',
+                        width: double.infinity,
+                        onPressed: () => Navigator.push(
+                          context,
+                          _route(const LoginScreen()),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // 회원가입 버튼
+                      SFButton(
+                        label: '새 계정 만들기',
+                        width: double.infinity,
+                        outlined: true,
+                        onPressed: () => Navigator.push(
+                          context,
+                          _route(const CreateMembershipScreen()),
+                        ),
+                      ),
+
+                      const SizedBox(height: 28),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Divider(color: AppTheme.borderSubtle),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text('또는', style: AppTheme.bodySmall),
+                          ),
+                          const Expanded(
+                            child: Divider(color: AppTheme.borderSubtle),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // 기존 유저 선택
+                      InkWell(
+                        onTap: () => Navigator.push(
+                          context,
+                          _route(const RegisteredUsersScreen()),
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppTheme.borderSubtle),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.person_outline_rounded,
+                                size: 16,
+                                color: AppTheme.textSecondary,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '이 기기의 계정으로 계속하기',
+                                style: AppTheme.labelMedium,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                fixedSize: Size(screenWidth * 0.2, screenWidth * 0.05),
-                backgroundColor: Color(0xFF3C3C3C),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
                 ),
-              ),
-              child: Text(
-                "등록된 유저 사용하기",
-                style: TextStyle(
-                  fontSize: screenWidth * 0.018,
-                  fontWeight: FontWeight.bold,
+
+                const SizedBox(height: 28),
+                Text(
+                  '계정을 만들면 서비스 이용약관에 동의하는 것입니다.',
+                  style: AppTheme.bodySmall,
+                  textAlign: TextAlign.center,
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
+
+  PageRoute _route(Widget page) => MaterialPageRoute(builder: (_) => page);
 }
