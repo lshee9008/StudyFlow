@@ -1,8 +1,9 @@
 import uuid
-
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select          # ← select 추가
-from pydantic import BaseModel                # ← 추가
+from sqlmodel import Session, select
+from pydantic import BaseModel
+from typing import Optional
+
 from app.core.database import get_session
 from app.models.users import UserCreate, UserRead, Users
 from app.crud import crud_user
@@ -10,49 +11,73 @@ from app.crud import crud_user
 router = APIRouter()
 
 
-@router.post("/", response_model=UserCreate)
-def create_user(
-        *,
-        session: Session = Depends(get_session),
-        user_in: UserCreate
-):
-    print(f"📥 Received Data: {user_in}")
+# ── 회원가입 ──────────────────────────────────────────────
+@router.post("/", response_model=UserRead)
+def create_user(*, session: Session = Depends(get_session), user_in: UserCreate):
+    existing = session.exec(select(Users).where(Users.name == user_in.name)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="이미 사용 중인 아이디입니다.")
     return crud_user.create_user(session, user_in)
 
 
-# 💡 [추가 완료] 프론트엔드에서 유저 정보를 조회할 수 있도록 GET 엔드포인트 추가
+# ── 유저 조회 ──────────────────────────────────────────────
 @router.get("/{user_id}", response_model=UserRead)
-def read_user(
-    *,
-    session: Session = Depends(get_session),
-    user_id: uuid.UUID
-):
+def read_user(*, session: Session = Depends(get_session), user_id: uuid.UUID):
     user = session.get(Users, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
 
-from sqlmodel import select
-
-
+# ── 로그인 ────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     name: str
     password: str
 
-
-@router.post("/login")
-def login_user(
-        *,
-        session: Session = Depends(get_session),
-        login_in: LoginRequest
-):
-    statement = select(Users).where(Users.name == login_in.name)
-    user = session.exec(statement).first()
-
+@router.post("/login", response_model=UserRead)
+def login_user(*, session: Session = Depends(get_session), login_in: LoginRequest):
+    user = session.exec(select(Users).where(Users.name == login_in.name)).first()
     if not user:
         raise HTTPException(status_code=400, detail="존재하지 않는 아이디입니다.")
     if user.password != login_in.password:
-        raise HTTPException(status_code=400, detail="비밀번호가 틀렸습니다.")
-
+        raise HTTPException(status_code=400, detail="비밀번호가 올바르지 않습니다.")
     return user
+
+
+# ── 정보 수정 ──────────────────────────────────────────────
+class UserUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    password: Optional[str] = None
+
+@router.put("/{user_id}", response_model=UserRead)
+def update_user(
+    user_id: uuid.UUID,
+    user_in: UserUpdateRequest,
+    session: Session = Depends(get_session)
+):
+    user = session.get(Users, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user_in.name:
+        # 이름 중복 확인
+        dup = session.exec(select(Users).where(Users.name == user_in.name)).first()
+        if dup and str(dup.id) != str(user_id):
+            raise HTTPException(status_code=400, detail="이미 사용 중인 아이디입니다.")
+        user.name = user_in.name
+    if user_in.password:
+        user.password = user_in.password
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+# ── 탈퇴 ─────────────────────────────────────────────────
+@router.delete("/{user_id}")
+def delete_user(*, session: Session = Depends(get_session), user_id: uuid.UUID):
+    user = session.get(Users, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    session.delete(user)
+    session.commit()
+    return {"message": "User deleted successfully"}

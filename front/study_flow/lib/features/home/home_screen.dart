@@ -11,6 +11,8 @@ import '../login/initial_screen.dart';
 import '../project/project_model.dart';
 import '../project/project_provider.dart';
 import '../project/project_screen.dart';
+import '../search/search_screen.dart';
+import '../settings/profile_settings_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -18,24 +20,25 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProvider);
-
     if (user == null) return const InitialScreen();
     if (user.id == '') {
       return const Scaffold(
         backgroundColor: AppTheme.bgDeep,
-        body: Center(child: CircularProgressIndicator(color: AppTheme.accent)),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: AppTheme.accent,
+            strokeWidth: 2,
+          ),
+        ),
       );
     }
-
     final projects = ref.watch(projectProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
       body: Row(
         children: [
-          // ── 사이드바 ──────────────────────────────
           _Sidebar(user: user),
-          // ── 메인 콘텐츠 ───────────────────────────
           Expanded(
             child: _MainContent(user: user, projects: projects),
           ),
@@ -55,7 +58,7 @@ class _Sidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      width: 240,
+      width: 248,
       decoration: const BoxDecoration(
         color: AppTheme.bgSecondary,
         border: Border(right: BorderSide(color: AppTheme.borderSubtle)),
@@ -65,19 +68,19 @@ class _Sidebar extends ConsumerWidget {
           const SizedBox(height: 20),
           // 로고
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
             child: Row(
               children: [
                 const SFLogo(size: 24),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                    horizontal: 7,
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
                     color: AppTheme.accentDim,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(5),
                   ),
                   child: const Text(
                     'Beta',
@@ -91,38 +94,72 @@ class _Sidebar extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // 유저 프로필 영역
+          // 유저 프로필
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: _UserTile(user: user),
           ),
-          const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Divider(color: AppTheme.borderSubtle),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Divider(color: AppTheme.borderSubtle, height: 16),
           ),
-          const SizedBox(height: 8),
 
           // 네비게이션
           _NavItem(icon: Icons.home_rounded, label: '홈', selected: true),
-          _NavItem(icon: Icons.search_rounded, label: '검색'),
-          _NavItem(icon: Icons.settings_outlined, label: '설정'),
+          _NavItem(
+            icon: Icons.search_rounded,
+            label: '검색',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SearchScreen()),
+            ),
+          ),
+          _NavItem(
+            icon: Icons.settings_outlined,
+            label: '설정',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProfileSettingsScreen(user: user),
+              ),
+            ),
+          ),
 
           const Spacer(),
 
-          // 하단 디버그 버튼 (개발 중에만)
+          // 하단
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             child: Column(
               children: [
                 const Divider(color: AppTheme.borderSubtle),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
+                // 앱 버전
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        size: 14,
+                        color: AppTheme.textMuted,
+                      ),
+                      const SizedBox(width: 8),
+                      Text('StudyFlow v2.0', style: AppTheme.bodySmall),
+                    ],
+                  ),
+                ),
+                // DB 초기화 (개발용)
                 _SmallButton(
                   icon: Icons.delete_sweep_outlined,
                   label: 'DB 초기화',
-                  color: AppTheme.red,
+                  color: AppTheme.red.withOpacity(0.7),
                   onTap: () async {
                     await LocalDatabase.instance.deleteAppDatabase();
                     ref.invalidate(projectProvider);
@@ -131,7 +168,7 @@ class _Sidebar extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
         ],
       ),
     );
@@ -150,9 +187,17 @@ class _UserTile extends ConsumerWidget {
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: AppTheme.borderDefault),
       ),
-      offset: const Offset(0, 50),
+      offset: const Offset(0, 52),
+      elevation: 8,
       onSelected: (val) async {
-        if (val == 'logout') {
+        if (val == 'settings') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProfileSettingsScreen(user: user),
+            ),
+          );
+        } else if (val == 'logout') {
           await ref.read(userProvider.notifier).logoutExistingUser(user.id!);
           if (context.mounted) {
             Navigator.pushAndRemoveUntil(
@@ -165,12 +210,30 @@ class _UserTile extends ConsumerWidget {
       },
       itemBuilder: (_) => [
         PopupMenuItem(
+          value: 'settings',
+          child: Row(
+            children: const [
+              Icon(
+                Icons.settings_outlined,
+                size: 15,
+                color: AppTheme.textSecondary,
+              ),
+              SizedBox(width: 10),
+              Text(
+                '설정',
+                style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        PopupMenuItem(
           value: 'logout',
           child: Row(
             children: const [
               Icon(
                 Icons.logout_rounded,
-                size: 16,
+                size: 15,
                 color: AppTheme.textSecondary,
               ),
               SizedBox(width: 10),
@@ -202,7 +265,7 @@ class _UserTile extends ConsumerWidget {
                   user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
                   style: const TextStyle(
                     color: Colors.black,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
                     fontSize: 14,
                   ),
                 ),
@@ -224,14 +287,14 @@ class _UserTile extends ConsumerWidget {
                   ),
                   const Text(
                     '개인 워크스페이스',
-                    style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10),
                   ),
                 ],
               ),
             ),
             const Icon(
               Icons.unfold_more_rounded,
-              size: 16,
+              size: 14,
               color: AppTheme.textMuted,
             ),
           ],
@@ -252,7 +315,6 @@ class _NavItem extends StatefulWidget {
     this.selected = false,
     this.onTap,
   });
-
   @override
   State<_NavItem> createState() => _NavItemState();
 }
@@ -267,22 +329,22 @@ class _NavItemState extends State<_NavItem> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          duration: const Duration(milliseconds: 130),
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: widget.selected
                 ? AppTheme.bgTertiary
-                : (_hover
-                      ? AppTheme.bgTertiary.withOpacity(0.5)
-                      : Colors.transparent),
+                : _hover
+                ? AppTheme.bgTertiary.withOpacity(0.6)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             children: [
               Icon(
                 widget.icon,
-                size: 17,
+                size: 16,
                 color: widget.selected
                     ? AppTheme.textPrimary
                     : AppTheme.textSecondary,
@@ -320,19 +382,15 @@ class _SmallButton extends StatelessWidget {
     required this.onTap,
   });
   @override
-  Widget build(BuildContext context) => InkWell(
+  Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(8),
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       child: Row(
         children: [
-          Icon(icon, size: 15, color: color.withOpacity(0.7)),
+          Icon(icon, size: 14, color: color),
           const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(color: color.withOpacity(0.7), fontSize: 12),
-          ),
+          Text(label, style: TextStyle(color: color, fontSize: 12)),
         ],
       ),
     ),
@@ -350,79 +408,167 @@ class _MainContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
-    final greeting = now.hour < 12
-        ? '좋은 아침이에요'
-        : now.hour < 18
-        ? '안녕하세요'
-        : '좋은 저녁이에요';
+    final hour = now.hour;
+    final greeting = hour < 12
+        ? '좋은 아침이에요 ☀️'
+        : hour < 18
+        ? '안녕하세요 👋'
+        : '좋은 저녁이에요 🌙';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 상단 헤더
+        // 헤더
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+          padding: const EdgeInsets.fromLTRB(32, 24, 32, 20),
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
           ),
           child: Row(
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$greeting, ${user.name} 👋',
-                    style: AppTheme.headingMedium,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    DateFormat('yyyy.MM.dd').format(now),
-                    style: AppTheme.bodySmall,
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$greeting, ${user.name}',
+                      style: AppTheme.headingMedium,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      DateFormat('yyyy.MM.dd').format(now),
+                      style: AppTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
-              // 새 프로젝트 버튼
+              // 검색 버튼
+              _HeaderButton(
+                icon: Icons.search_rounded,
+                label: '검색',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SearchScreen()),
+                ),
+              ),
+              const SizedBox(width: 10),
               SFButton(
                 label: '새 프로젝트',
                 icon: Icons.add_rounded,
-                onPressed: () => _showAddProjectDialog(context, ref, user),
+                onPressed: () => _showAddDialog(context, ref, user),
               ),
             ],
           ),
         ),
 
-        // 콘텐츠 영역
+        // 통계 배너 (프로젝트 있을 때만)
+        if (projects.isNotEmpty) _StatsBanner(projectCount: projects.length),
+
+        // 프로젝트 그리드
         Expanded(
           child: projects.isEmpty
-              ? _EmptyState(
-                  onAdd: () => _showAddProjectDialog(context, ref, user),
-                )
+              ? _EmptyState(onAdd: () => _showAddDialog(context, ref, user))
               : _ProjectGrid(projects: projects, user: user),
         ),
       ],
     );
   }
 
-  void _showAddProjectDialog(
-    BuildContext context,
-    WidgetRef ref,
-    UserModel user,
-  ) {
+  void _showAddDialog(BuildContext context, WidgetRef ref, UserModel user) {
     showDialog(
       context: context,
       builder: (_) => _AddProjectDialog(userId: user.id!),
-    ).then((project) {
-      if (project != null) {
-        ref.read(projectProvider.notifier).addProject(project);
-      }
+    ).then((p) {
+      if (p != null) ref.read(projectProvider.notifier).addProject(p);
     });
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// 빈 상태
-// ─────────────────────────────────────────────────────────
+class _HeaderButton extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _HeaderButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+  @override
+  State<_HeaderButton> createState() => _HeaderButtonState();
+}
+
+class _HeaderButtonState extends State<_HeaderButton> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 130),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: _hover ? AppTheme.bgTertiary : AppTheme.bgSecondary,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: _hover ? AppTheme.borderStrong : AppTheme.borderSubtle,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(widget.icon, size: 16, color: AppTheme.textSecondary),
+            const SizedBox(width: 6),
+            Text(widget.label, style: AppTheme.labelMedium),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+// ─── 통계 배너 ────────────────────────────────────────────
+class _StatsBanner extends StatelessWidget {
+  final int projectCount;
+  const _StatsBanner({required this.projectCount});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(32, 20, 32, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.accentDim,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accent.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.folder_rounded, size: 16, color: AppTheme.accent),
+          const SizedBox(width: 10),
+          Text(
+            '프로젝트 $projectCount개',
+            style: const TextStyle(
+              color: AppTheme.accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '계속 공부하고 있어요! 🎯',
+            style: AppTheme.bodySmall.copyWith(
+              color: AppTheme.accent.withOpacity(0.7),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── 빈 상태 ────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
   const _EmptyState({required this.onAdd});
@@ -434,35 +580,36 @@ class _EmptyState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
               color: AppTheme.bgSecondary,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(color: AppTheme.borderSubtle),
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
                     color: AppTheme.accentDim,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(18),
                   ),
                   child: const Icon(
                     Icons.folder_open_rounded,
-                    size: 40,
+                    size: 44,
                     color: AppTheme.accent,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
                 Text('첫 프로젝트를 만들어보세요', style: AppTheme.headingMedium),
                 const SizedBox(height: 8),
                 Text(
-                  '프로젝트는 관련 노트를 모아두는 공간이에요.',
+                  '프로젝트는 관련 노트를 묶어두는 공간이에요.\n강의명, 과목명으로 만들어보세요.',
                   style: AppTheme.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
                 SFButton(
                   label: '프로젝트 만들기',
                   icon: Icons.add_rounded,
@@ -477,9 +624,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// 프로젝트 그리드
-// ─────────────────────────────────────────────────────────
+// ─── 프로젝트 그리드 ────────────────────────────────────
 class _ProjectGrid extends ConsumerWidget {
   final List<ProjectModel> projects;
   final UserModel user;
@@ -490,10 +635,10 @@ class _ProjectGrid extends ConsumerWidget {
     return CustomScrollView(
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.fromLTRB(32, 24, 32, 32),
           sliver: SliverGrid(
             delegate: SliverChildBuilderDelegate((ctx, i) {
-              if (i == 0) {
+              if (i == 0)
                 return _AddCard(
                   onTap: () =>
                       showDialog(
@@ -504,7 +649,6 @@ class _ProjectGrid extends ConsumerWidget {
                           ref.read(projectProvider.notifier).addProject(p);
                       }),
                 );
-              }
               return _ProjectCard(
                 project: projects[i - 1],
                 onTap: () => Navigator.push(
@@ -519,10 +663,10 @@ class _ProjectGrid extends ConsumerWidget {
               );
             }, childCount: projects.length + 1),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 320,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.35,
+              maxCrossAxisExtent: 300,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 14,
+              childAspectRatio: 1.3,
             ),
           ),
         ),
@@ -531,9 +675,7 @@ class _ProjectGrid extends ConsumerWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// 카드들
-// ─────────────────────────────────────────────────────────
+// ─── 카드들 ────────────────────────────────────────────
 class _AddCard extends StatefulWidget {
   final VoidCallback onTap;
   const _AddCard({required this.onTap});
@@ -544,59 +686,68 @@ class _AddCard extends StatefulWidget {
 class _AddCardState extends State<_AddCard> {
   bool _hover = false;
   @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-            color: _hover ? AppTheme.accentDim : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: _hover
-                  ? AppTheme.accent.withOpacity(0.4)
-                  : AppTheme.borderDefault,
-              width: _hover ? 1.5 : 1,
-              style: BorderStyle.solid,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _hover
-                      ? AppTheme.accent.withOpacity(0.2)
-                      : AppTheme.bgTertiary,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.add_rounded,
-                  size: 24,
-                  color: _hover ? AppTheme.accent : AppTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '새 프로젝트',
-                style: TextStyle(
-                  color: _hover ? AppTheme.accent : AppTheme.textSecondary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          color: _hover ? AppTheme.accentDim : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _hover
+                ? AppTheme.accent.withOpacity(0.5)
+                : AppTheme.borderDefault,
+            width: _hover ? 1.5 : 1,
           ),
         ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _hover
+                    ? AppTheme.accent.withOpacity(0.2)
+                    : AppTheme.bgTertiary,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.add_rounded,
+                size: 26,
+                color: _hover ? AppTheme.accent : AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '새 프로젝트',
+              style: TextStyle(
+                color: _hover ? AppTheme.accent : AppTheme.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
-    );
-  }
+    ),
+  );
 }
+
+// 프로젝트 컬러 팔레트
+const _projectColors = [
+  Color(0xFFCCFF66),
+  Color(0xFF4F8EFF),
+  Color(0xFF8B5CF6),
+  Color(0xFF34D399),
+  Color(0xFFFBBF24),
+  Color(0xFFF87171),
+  Color(0xFF60A5FA),
+  Color(0xFFA78BFA),
+];
 
 class _ProjectCard extends StatefulWidget {
   final ProjectModel project;
@@ -613,28 +764,18 @@ class _ProjectCard extends StatefulWidget {
 
 class _ProjectCardState extends State<_ProjectCard> {
   bool _hover = false;
-
-  // 프로젝트 이름 기반으로 색상 생성
-  Color get _accentColor {
-    final colors = [
-      const Color(0xFFCCFF66), // 라임
-      const Color(0xFF4F8EFF), // 블루
-      const Color(0xFF8B5CF6), // 퍼플
-      const Color(0xFF34D399), // 그린
-      const Color(0xFFFBBF24), // 옐로우
-      const Color(0xFFF87171), // 레드
-    ];
-    return colors[widget.project.name.hashCode.abs() % colors.length];
-  }
+  Color get _color =>
+      _projectColors[widget.project.name.hashCode.abs() %
+          _projectColors.length];
 
   @override
   Widget build(BuildContext context) {
-    final tags = widget.project.tags.isNotEmpty
-        ? widget.project.tags
+    final tags = widget.project.tags.isEmpty
+        ? <String>[]
+        : widget.project.tags
               .split(',')
               .where((t) => t.trim().isNotEmpty)
-              .toList()
-        : <String>[];
+              .toList();
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
@@ -642,8 +783,8 @@ class _ProjectCardState extends State<_ProjectCard> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.all(20),
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: _hover ? AppTheme.bgTertiary : AppTheme.bgSecondary,
             borderRadius: BorderRadius.circular(16),
@@ -653,9 +794,9 @@ class _ProjectCardState extends State<_ProjectCard> {
             boxShadow: _hover
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
                     ),
                   ]
                 : [],
@@ -665,43 +806,49 @@ class _ProjectCardState extends State<_ProjectCard> {
             children: [
               Row(
                 children: [
-                  // 컬러 도트
+                  // 컬러 인디케이터
                   Container(
-                    width: 8,
-                    height: 8,
+                    width: 10,
+                    height: 10,
                     decoration: BoxDecoration(
-                      color: _accentColor,
+                      color: _color,
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: _color.withOpacity(0.4),
+                          blurRadius: 6,
+                          spreadRadius: 1,
+                        ),
+                      ],
                     ),
                   ),
                   const Spacer(),
-                  // 더보기 메뉴
                   _MoreMenu(onDelete: widget.onDelete),
                 ],
               ),
               const Spacer(),
               Text(
                 widget.project.name,
-                style: AppTheme.headingSmall.copyWith(fontSize: 16),
+                style: AppTheme.headingSmall.copyWith(fontSize: 15),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Text(
                 DateFormat('MM.dd').format(widget.project.create_at),
                 style: AppTheme.bodySmall,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               if (tags.isNotEmpty)
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: 5,
+                  runSpacing: 5,
                   children: tags
-                      .take(3)
+                      .take(2)
                       .map(
                         (t) => Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
+                            horizontal: 7,
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
@@ -713,7 +860,7 @@ class _ProjectCardState extends State<_ProjectCard> {
                             '#${t.trim()}',
                             style: const TextStyle(
                               color: AppTheme.textMuted,
-                              fontSize: 11,
+                              fontSize: 10,
                             ),
                           ),
                         ),
@@ -733,43 +880,39 @@ class _ProjectCardState extends State<_ProjectCard> {
 class _MoreMenu extends StatelessWidget {
   final VoidCallback onDelete;
   const _MoreMenu({required this.onDelete});
-
   @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      color: AppTheme.bgSecondary,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: AppTheme.borderDefault),
-      ),
-      padding: EdgeInsets.zero,
-      icon: const Icon(
-        Icons.more_horiz_rounded,
-        size: 18,
-        color: AppTheme.textMuted,
-      ),
-      onSelected: (val) {
-        if (val == 'delete') onDelete();
-      },
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          value: 'delete',
-          child: Row(
-            children: const [
-              Icon(Icons.delete_outline_rounded, size: 15, color: AppTheme.red),
-              SizedBox(width: 8),
-              Text('삭제', style: TextStyle(color: AppTheme.red, fontSize: 13)),
-            ],
-          ),
+  Widget build(BuildContext context) => PopupMenuButton<String>(
+    color: AppTheme.bgSecondary,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(10),
+      side: const BorderSide(color: AppTheme.borderDefault),
+    ),
+    padding: EdgeInsets.zero,
+    icon: const Icon(
+      Icons.more_horiz_rounded,
+      size: 16,
+      color: AppTheme.textMuted,
+    ),
+    iconSize: 16,
+    onSelected: (val) {
+      if (val == 'delete') onDelete();
+    },
+    itemBuilder: (_) => [
+      PopupMenuItem(
+        value: 'delete',
+        child: Row(
+          children: const [
+            Icon(Icons.delete_outline_rounded, size: 14, color: AppTheme.red),
+            SizedBox(width: 8),
+            Text('삭제', style: TextStyle(color: AppTheme.red, fontSize: 13)),
+          ],
         ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
 }
 
-// ─────────────────────────────────────────────────────────
-// 프로젝트 추가 다이얼로그
-// ─────────────────────────────────────────────────────────
+// ─── 프로젝트 추가 다이얼로그 ──────────────────────────
 class _AddProjectDialog extends StatefulWidget {
   final String userId;
   const _AddProjectDialog({required this.userId});
@@ -803,20 +946,18 @@ class _AddProjectDialogState extends State<_AddProjectDialog> {
             const SizedBox(height: 4),
             Text('관련 노트를 묶을 프로젝트를 만드세요.', style: AppTheme.bodySmall),
             const SizedBox(height: 24),
-
             SFTextField(
-              label: '프로젝트 이름',
+              label: '프로젝트 이름 *',
               hint: '예: 운영체제 수업',
               controller: _nameCtrl,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             SFTextField(
               label: '태그 (선택)',
-              hint: '예: CS, 2024, 과제',
+              hint: '예: CS, 2024, 중간고사',
               controller: _tagCtrl,
             ),
             const SizedBox(height: 28),
-
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -830,16 +971,18 @@ class _AddProjectDialogState extends State<_AddProjectDialog> {
                   label: '만들기',
                   onPressed: () {
                     if (_nameCtrl.text.trim().isEmpty) return;
-                    final project = ProjectModel(
-                      id: const Uuid().v4(),
-                      user_id: widget.userId,
-                      create_at: DateTime.now(),
-                      update_at: DateTime.now(),
-                      name: _nameCtrl.text.trim(),
-                      tags: _tagCtrl.text.trim(),
-                      is_sync: 0,
+                    Navigator.pop(
+                      context,
+                      ProjectModel(
+                        id: const Uuid().v4(),
+                        user_id: widget.userId,
+                        create_at: DateTime.now(),
+                        update_at: DateTime.now(),
+                        name: _nameCtrl.text.trim(),
+                        tags: _tagCtrl.text.trim(),
+                        is_sync: 0,
+                      ),
                     );
-                    Navigator.pop(context, project);
                   },
                 ),
               ],
