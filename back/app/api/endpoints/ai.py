@@ -46,24 +46,46 @@ async def summarize(req: SumReq):
     text = text[:4500]
 
     cp = req.custom_prompt or ""
-    base = f"""당신은 학습 내용을 분석하는 AI입니다.
 
-⚠️ 절대 규칙:
-1. 반드시 아래 [본문]에 실제로 있는 내용만 요약하세요
-2. 본문에 없는 내용을 추측하거나 창작하면 안 됩니다
-3. 본문 내용이 부족하면 "더 많은 내용을 작성해 주세요"라고만 응답하세요
-4. 이모티콘 사용 금지
-5. 빈 템플릿/표 형식 절대 사용 금지
+    # 내용 길이에 따라 요약 깊이 조정
+    is_long = len(text) > 800
 
-{f'사용자 지시: {cp}' if cp else '구조화된 마크다운으로 핵심 내용만 요약하세요.'}
+    if cp:
+        system = f"""사용자 지시사항: {cp}
+
+아래 본문을 위 지시에 따라 분석하고, 반드시 마크다운 형식(##, -, **굵게**, 표 등)으로 구조화하여 작성하세요.
+본문에 없는 내용 창작 금지."""
+    else:
+        system = f"""당신은 최고의 학습 노트 작성 AI입니다.
+아래 본문을 읽고 **풍부하고 구조화된 학습 요약 노트**를 작성하세요.
+
+출력 형식 (반드시 준수):
+## 핵심 개념
+- 본문의 주요 개념과 정의를 명확하게
+
+## 상세 내용
+- 각 개념의 세부 설명, 특징, 원리
+- 중요 키워드는 **굵게** 표시
+{"- 관계나 비교는 표(| 항목 | 설명 |) 활용" if is_long else ""}
+
+## 핵심 정리
+- 가장 중요한 3-5가지 포인트를 간결하게
+
+규칙:
+- 본문에 있는 내용만 작성 (창작 금지)
+- 이모티콘 사용 금지
+- 빈 템플릿 사용 금지
+- 내용이 충분할수록 더 상세하게 작성"""
+
+    base = f"""{system}
 
 [본문]:
 {text}
 
-[요약]:"""
+[요약 노트]:"""
 
     try:
-        res = await _llm(base, temp=0.2, tokens=1200)
+        res = await _llm(base, temp=0.25, tokens=2000)
         if not res or len(res) < 20:
             return {"summary": ""}
         return {"summary": res}
@@ -86,7 +108,7 @@ async def analyze_block(req: BlockReq):
 
 분석 (마크다운):"""
     try:
-        return {"analysis": await _llm(p, temp=0.2, tokens=250)}
+        return {"analysis": await _llm(p, temp=0.2, tokens=400)}
     except:
         return {"analysis": ""}
 
