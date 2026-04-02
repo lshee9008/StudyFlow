@@ -52,12 +52,15 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   // Timers
   Timer? _saveT, _focT, _sumT;
-  bool _saving = false;
   int _lastSumLen = 0;
 
   // View
   int _view = 0; // 0:split 1:full 2:graph
   bool _panelCollapsed = false;
+
+  // ✅ setState 없이 저장 상태 관리
+  final _savingNotifier = ValueNotifier<bool>(false);
+  Timer? _focTextTimer;
 
   // Slash
   OverlayEntry? _slash;
@@ -91,7 +94,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
     _bgAc = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 8),
+      duration: const Duration(seconds: 30),
     )..repeat(reverse: true);
     _saveAc = AnimationController(
       vsync: this,
@@ -157,19 +160,29 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     _saveAc.dispose();
     _sumAc.dispose();
     _panelAc.dispose();
+    _savingNotifier.dispose();
+    _focTextTimer?.cancel();
     _removeSlash();
     super.dispose();
   }
 
   // ── Save ──────────────────────────────────────────────
   void _chg({String? ft}) {
-    if (ft != null)
-      ref.read(fileEditorProvider.notifier).state = ref
-          .read(fileEditorProvider)
-          .copyWith(focusedText: ft);
-    setState(() => _saving = true);
+    // ✅ focusedText는 500ms debounce로만 업데이트 (매 키 입력마다 X)
+    if (ft != null) {
+      _focTextTimer?.cancel();
+      _focTextTimer = Timer(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          ref.read(fileEditorProvider.notifier).state = ref
+              .read(fileEditorProvider)
+              .copyWith(focusedText: ft);
+        }
+      });
+    }
+    // ✅ _savingNotifier로 setState 없이 처리
+    _savingNotifier.value = true;
     _saveT?.cancel();
-    _saveT = Timer(const Duration(milliseconds: 900), () async {
+    _saveT = Timer(const Duration(milliseconds: 1500), () async {
       await ref
           .read(fileEditorProvider.notifier)
           .saveFile(
@@ -180,14 +193,14 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
             updateAt: DateTime.now(),
           );
       if (mounted) {
-        setState(() => _saving = false);
+        _savingNotifier.value = false;
         _saveAc.forward(from: 0);
       }
     });
     final mc = ref.read(fileEditorProvider).meaningfulCharCount;
     if ((mc - _lastSumLen).abs() > 120) {
       _sumT?.cancel();
-      _sumT = Timer(const Duration(seconds: 9), _doSum);
+      _sumT = Timer(const Duration(seconds: 12), _doSum);
     }
   }
 
@@ -202,7 +215,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   void _focusEvent(String text) {
     _focT?.cancel();
-    _focT = Timer(const Duration(milliseconds: 1800), () {
+    _focT = Timer(const Duration(milliseconds: 2500), () {
       if (text.trim().length > 20) {
         ref
             .read(fileEditorProvider.notifier)
@@ -462,56 +475,68 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   // ════════════════════ BUILD ════════════════════════════
   @override
   Widget build(BuildContext context) {
-    final st = ref.watch(fileEditorProvider);
+    // ✅ select으로 필요한 것만 구독 — 전체 rebuild 방지
+    final charCount = ref.watch(fileEditorProvider.select((s) => s.charCount));
+    final savedAt = ref.watch(fileEditorProvider.select((s) => s.lastSavedAt));
+
     return Scaffold(
       backgroundColor: _bg0,
       body: Stack(
         children: [
-          // ── 오로라 배경 ──────────────────────────────
-          _AuroraBG(anim: _bgAnim),
-
-          // ── 메인 레이아웃 ────────────────────────────
+          RepaintBoundary(child: _AuroraBG(anim: _bgAnim)),
           Column(
             children: [
-              _AppBar(
-                saving: _saving,
-                savedAt: st.lastSavedAt,
-                saveAnim: _saveAnim,
-                charCount: st.charCount,
-                view: _view,
-                onBack: () => Navigator.pop(context),
-                onCopy: () {
-                  Clipboard.setData(
-                    ClipboardData(
-                      text: st.blocks.map((b) => b.controller.text).join('\n'),
-                    ),
-                  );
-                  _snack('복사됨');
-                },
-                onMdCopy: () async {
-                  await ref
-                      .read(fileEditorProvider.notifier)
-                      .copyMarkdown(_tCtrl.text, _gCtrl.text);
-                  _snack('Markdown 복사됨');
-                },
-                onView: () {
-                  _panelAc.reverse().then((_) {
+              ValueListenableBuilder<bool>(
+                valueListenable: _savingNotifier,
+                builder: (_, saving, __) => _AppBar(
+                  saving: saving,
+                  savedAt: savedAt,
+                  saveAnim: _saveAnim,
+                  charCount: charCount,
+                  view: _view,
+                  onBack: () => Navigator.pop(context),
+                  onCopy: () {
+                    final blocks = ref.read(fileEditorProvider).blocks;
+                    Clipboard.setData(
+                      ClipboardData(
+                        text: blocks.map((b) => b.controller.text).join('\n'),
+                      ),
+                    );
+                    _snack('복사됨');
+                  },
+                  onMdCopy: () async {
+                    await ref
+                        .read(fileEditorProvider.notifier)
+                        .copyMarkdown(_tCtrl.text, _gCtrl.text);
+                    _snack('Markdown 복사됨');
+                  },
+                  onView: () {
                     setState(() => _view = _view == 0 ? 1 : 0);
-                    _panelAc.forward();
-                  });
-                },
-                onGraph: () {
-                  setState(() => _view = _view == 2 ? 0 : 2);
-                  if (_view == 2)
-                    ref.read(fileEditorProvider.notifier).requestGraph();
-                },
+                  },
+                  onGraph: () {
+                    setState(() => _view = _view == 2 ? 0 : 2);
+                    if (_view == 2)
+                      ref.read(fileEditorProvider.notifier).requestGraph();
+                  },
+                ),
               ),
               Expanded(
                 child: _view == 2
-                    ? _GraphView(st: st, ref: ref)
+                    ? Consumer(
+                        builder: (_, r, __) =>
+                            _GraphView(st: r.watch(fileEditorProvider), ref: r),
+                      )
                     : _view == 1
-                    ? _buildEditor(st)
-                    : _Split(left: _buildEditor(st), right: _buildPanel(st)),
+                    ? _buildEditorOnly()
+                    : _Split(
+                        left: _buildEditorOnly(),
+                        right: Consumer(
+                          builder: (_, r, __) {
+                            final st = r.watch(fileEditorProvider);
+                            return _buildPanel(st);
+                          },
+                        ),
+                      ),
               ),
             ],
           ),
@@ -521,26 +546,26 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   }
 
   // ── Editor ────────────────────────────────────────────
-  Widget _buildEditor(FileEditorState st) {
-    final blocks = st.blocks;
+  Widget _buildEditorOnly() {
+    final blocks = ref.watch(fileEditorProvider.select((s) => s.blocks));
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(88, 64, 88, 0),
+            padding: const EdgeInsets.fromLTRB(96, 80, 96, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 이모지 아이콘
                 _IconRow(
-                  current: st.icon ?? '',
+                  current: ref.read(fileEditorProvider).icon ?? '',
                   onChange: (e) {
                     ref.read(fileEditorProvider.notifier).setIcon(e);
                     _chg();
                   },
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 28),
                 // 타이틀
                 _GlowTitle(ctrl: _tCtrl, onChange: () => _chg()),
                 const SizedBox(height: 32),
@@ -570,7 +595,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           ),
         ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(88, 0, 88, 280),
+          padding: const EdgeInsets.fromLTRB(100, 0, 100, 280),
           sliver: SliverReorderableList(
             itemCount: blocks.length,
             onReorder: (o, n) =>
@@ -707,7 +732,7 @@ class _AuroraPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_AuroraPainter o) => o.t != t;
+  bool shouldRepaint(_AuroraPainter o) => (o.t - t).abs() > 0.005;
 }
 
 // ══════════════════ APP BAR ════════════════════════════
@@ -883,12 +908,14 @@ class _GlowTitle extends StatefulWidget {
 }
 
 class _GlowTitleState extends State<_GlowTitle> {
-  bool _foc = false;
   late FocusNode _fn;
   @override
   void initState() {
     super.initState();
-    _fn = FocusNode()..addListener(() => setState(() => _foc = _fn.hasFocus));
+    _fn = FocusNode()
+      ..addListener(() {
+        if (mounted) setState(() {});
+      });
   }
 
   @override
@@ -897,6 +924,7 @@ class _GlowTitleState extends State<_GlowTitle> {
     super.dispose();
   }
 
+  bool get _foc => _fn.hasFocus;
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
@@ -917,25 +945,31 @@ class _GlowTitleState extends State<_GlowTitle> {
         controller: widget.ctrl,
         focusNode: _fn,
         style: const TextStyle(
-          fontSize: 40,
-          fontWeight: FontWeight.w800,
+          fontSize: 44,
+          fontWeight: FontWeight.w900,
           color: _txt0,
-          height: 1.18,
-          letterSpacing: -1.2,
-          shadows: [Shadow(color: Color(0x22CCFF66), blurRadius: 30)],
+          height: 1.13,
+          letterSpacing: -2.0,
+          shadows: [
+            Shadow(color: Color(0x14CCFF66), blurRadius: 50),
+            Shadow(color: Color(0x08FFFFFF), blurRadius: 20),
+          ],
         ),
         decoration: const InputDecoration(
           border: InputBorder.none,
-          filled: false,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          filled: true,
+          fillColor: Colors.transparent,
           isDense: true,
           contentPadding: EdgeInsets.zero,
           hintText: '제목 없음',
           hintStyle: TextStyle(
-            fontSize: 40,
-            fontWeight: FontWeight.w800,
-            color: _txt2,
-            height: 1.18,
-            letterSpacing: -1.2,
+            fontSize: 44,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF1E1E38),
+            height: 1.13,
+            letterSpacing: -2.0,
           ),
         ),
         onChanged: (_) => widget.onChange(),
@@ -989,7 +1023,7 @@ class _IconRowState extends State<_IconRow>
     super.initState();
     _ac = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 150),
     );
     _anim = CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic);
   }
@@ -1100,12 +1134,15 @@ class _PropRow extends StatefulWidget {
 }
 
 class _PropRowState extends State<_PropRow> {
-  bool _foc = false;
   late FocusNode _fn;
+  // ✅ foc 상태 제거 — FocusNode 변경만 구독
   @override
   void initState() {
     super.initState();
-    _fn = FocusNode()..addListener(() => setState(() => _foc = _fn.hasFocus));
+    _fn = FocusNode()
+      ..addListener(() {
+        if (mounted) setState(() {});
+      });
   }
 
   @override
@@ -1114,48 +1151,51 @@ class _PropRowState extends State<_PropRow> {
     super.dispose();
   }
 
+  bool get _foc => _fn.hasFocus;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
+    padding: const EdgeInsets.symmetric(vertical: 1),
     child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          child: Icon(widget.icon, size: 14, color: _foc ? _acc : _txt2),
+        Icon(
+          widget.icon,
+          size: 13,
+          color: _foc ? _acc.withOpacity(0.8) : _txt2.withOpacity(0.4),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         SizedBox(
-          width: 62,
+          width: 56,
           child: Text(
             widget.label,
-            style: const TextStyle(color: _txt2, fontSize: 12),
+            style: TextStyle(
+              color: _foc ? _txt2 : _txt2.withOpacity(0.5),
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.2,
+            ),
           ),
         ),
         Expanded(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              color: _foc ? _bg4 : Colors.transparent,
-              borderRadius: BorderRadius.circular(7),
-              border: Border.all(color: _foc ? _bdr2 : Colors.transparent),
-            ),
-            child: TextField(
-              controller: widget.ctrl,
-              focusNode: _fn,
-              style: const TextStyle(color: _txt1, fontSize: 13),
-              decoration: InputDecoration(
-                border: InputBorder.none,
-                filled: false,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 7,
-                ),
-                hintText: widget.hint,
-                hintStyle: const TextStyle(color: _txt2, fontSize: 13),
+          child: TextField(
+            controller: widget.ctrl,
+            focusNode: _fn,
+            style: TextStyle(color: _foc ? _txt0 : _txt1, fontSize: 13),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: true,
+              fillColor: Colors.transparent,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 4,
               ),
-              onChanged: widget.onChange,
+              hintText: widget.hint,
+              hintStyle: TextStyle(color: _txt2.withOpacity(0.3), fontSize: 13),
             ),
+            onChanged: widget.onChange,
           ),
         ),
       ],
@@ -1203,38 +1243,28 @@ class _NBlock extends StatefulWidget {
   State<_NBlock> createState() => _NBlockState();
 }
 
-class _NBlockState extends State<_NBlock> with SingleTickerProviderStateMixin {
-  bool _hov = false, _foc = false;
-  late AnimationController _ac;
-  late Animation<double> _fade;
-  late Animation<Offset> _slide;
+class _NBlockState extends State<_NBlock> {
+  // ✅ hover 제거 — 마우스 이동마다 rebuild 차단
+  bool _foc = false;
   @override
   void initState() {
     super.initState();
     widget.block.focusNode.addListener(_onFoc);
-    _ac = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
-    _slide = Tween(
-      begin: const Offset(0, -.03),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
-    _ac.forward();
   }
 
   @override
   void dispose() {
     widget.block.focusNode.removeListener(_onFoc);
-    _ac.dispose();
     super.dispose();
   }
 
   void _onFoc() {
     if (mounted) {
-      setState(() => _foc = widget.block.focusNode.hasFocus);
-      if (_foc) widget.onFocus();
+      final focused = widget.block.focusNode.hasFocus;
+      if (_foc != focused) {
+        setState(() => _foc = focused);
+        if (_foc) widget.onFocus();
+      }
     }
   }
 
@@ -1242,42 +1272,50 @@ class _NBlockState extends State<_NBlock> with SingleTickerProviderStateMixin {
     switch (widget.block.type) {
       case BlockType.h1:
         return const TextStyle(
-          fontSize: 32,
-          fontWeight: FontWeight.w800,
+          fontSize: 34,
+          fontWeight: FontWeight.w900,
           color: _txt0,
-          height: 1.3,
-          letterSpacing: -0.7,
-          shadows: [Shadow(color: Color(0x15FFFFFF), blurRadius: 20)],
+          height: 1.25,
+          letterSpacing: -1.2,
+          shadows: [Shadow(color: Color(0x12CCFF66), blurRadius: 30)],
         );
       case BlockType.h2:
         return const TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.w700,
+          fontSize: 26,
+          fontWeight: FontWeight.w800,
           color: _txt0,
-          height: 1.35,
-          letterSpacing: -0.3,
+          height: 1.3,
+          letterSpacing: -0.6,
         );
       case BlockType.h3:
         return const TextStyle(
-          fontSize: 19,
-          fontWeight: FontWeight.w600,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
           color: _txt0,
           height: 1.4,
+          letterSpacing: -0.2,
         );
       case BlockType.code:
         return const TextStyle(
-          fontSize: 14,
+          fontSize: 13,
           fontFamily: 'Courier',
-          color: Color(0xFFBBAFF8),
-          height: 1.6,
-          letterSpacing: 0.2,
+          color: Color(0xFFCCBBFF),
+          height: 1.7,
+          letterSpacing: 0.3,
+        );
+      case BlockType.bullet:
+        return const TextStyle(
+          fontSize: 16,
+          color: _txt0,
+          height: 1.75,
+          letterSpacing: 0.1,
         );
       default:
         return const TextStyle(
           fontSize: 16,
           color: _txt0,
-          height: 1.8,
-          letterSpacing: 0.15,
+          height: 1.85,
+          letterSpacing: 0.1,
         );
     }
   }
@@ -1288,183 +1326,185 @@ class _NBlockState extends State<_NBlock> with SingleTickerProviderStateMixin {
         widget.onKey(n, e, widget.idx);
     final isBul = widget.block.type == BlockType.bullet;
     final isPrevBul = widget.prevType == BlockType.bullet;
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(
-        position: _slide,
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _hov = true),
-          onExit: (_) => setState(() => _hov = false),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            padding: EdgeInsets.only(
-              top: (isBul && isPrevBul) ? 1 : (isBul ? 3 : 2),
-              bottom: isBul ? 1 : 2,
-              left: 8,
-              right: 8,
-            ),
-            decoration: BoxDecoration(
-              color: _foc
-                  ? Colors.white.withOpacity(0.018)
-                  : widget.block.type == BlockType.code
-                  ? const Color(0xFF0D1117)
-                  : null,
-              borderRadius: BorderRadius.circular(6),
-              border: widget.block.type == BlockType.code
-                  ? Border.all(color: _bdr)
-                  : null,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 드래그 핸들
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: AnimatedOpacity(
-                    opacity: _hov ? 1 : 0,
-                    duration: const Duration(milliseconds: 120),
-                    child: ReorderableDragStartListener(
-                      index: widget.idx,
-                      child: PopupMenuButton<String>(
-                        padding: EdgeInsets.zero,
-                        color: _bg3,
-                        offset: const Offset(0, 28),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: const BorderSide(color: _bdr2),
-                        ),
-                        icon: Icon(
-                          Icons.drag_indicator_rounded,
-                          size: 15,
-                          color: _txt2,
-                        ),
-                        iconSize: 15,
-                        onSelected: (v) {
-                          if (v == 'd')
-                            widget.onDel();
-                          else if (v == 'c')
-                            widget.onDup();
-                          else if (v == 'h1')
-                            widget.onType(BlockType.h1);
-                          else if (v == 'h2')
-                            widget.onType(BlockType.h2);
-                          else if (v == 't')
-                            widget.onType(BlockType.text);
-                          else if (v == 'b')
-                            widget.onType(BlockType.bullet);
-                          else if (v == 'cd')
-                            widget.onType(BlockType.code);
-                        },
-                        itemBuilder: (_) => [
-                          _mi('d', Icons.delete_outline_rounded, '삭제', _red),
-                          _mi('c', Icons.content_copy_rounded, '복제', _txt1),
-                          const PopupMenuDivider(height: 6),
-                          _mi('h1', Icons.looks_one_outlined, '제목 1', _txt1),
-                          _mi('h2', Icons.looks_two_outlined, '제목 2', _txt1),
-                          _mi('t', Icons.short_text_rounded, '텍스트', _txt1),
-                          _mi(
-                            'b',
-                            Icons.format_list_bulleted_rounded,
-                            '글머리',
-                            _txt1,
-                          ),
-                          _mi('cd', Icons.code_rounded, '코드', _txt1),
-                        ],
+    return MouseRegion(
+      // ✅ cursor만 변경, setState 없음
+      cursor: SystemMouseCursors.text,
+      child: Container(
+        padding: EdgeInsets.only(
+          top: (isBul && isPrevBul) ? 1 : (isBul ? 3 : 2),
+          bottom: isBul ? 1 : 2,
+          left: 8,
+          right: 8,
+        ),
+        decoration: BoxDecoration(
+          color: _foc
+              ? Colors.white.withOpacity(0.015)
+              : widget.block.type == BlockType.code
+              ? const Color(0xFF0D1117)
+              : null,
+          borderRadius: BorderRadius.circular(6),
+          border: widget.block.type == BlockType.code
+              ? Border.all(color: _bdr)
+              : null,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 드래그 핸들
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Opacity(
+                opacity: _foc ? 0.5 : 0.0,
+                child: ReorderableDragStartListener(
+                  index: widget.idx,
+                  child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    color: _bg3,
+                    offset: const Offset(0, 28),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: _bdr2),
+                    ),
+                    icon: Icon(
+                      Icons.drag_indicator_rounded,
+                      size: 15,
+                      color: _txt2,
+                    ),
+                    iconSize: 15,
+                    onSelected: (v) {
+                      if (v == 'd')
+                        widget.onDel();
+                      else if (v == 'c')
+                        widget.onDup();
+                      else if (v == 'h1')
+                        widget.onType(BlockType.h1);
+                      else if (v == 'h2')
+                        widget.onType(BlockType.h2);
+                      else if (v == 't')
+                        widget.onType(BlockType.text);
+                      else if (v == 'b')
+                        widget.onType(BlockType.bullet);
+                      else if (v == 'cd')
+                        widget.onType(BlockType.code);
+                    },
+                    itemBuilder: (_) => [
+                      _mi('d', Icons.delete_outline_rounded, '삭제', _red),
+                      _mi('c', Icons.content_copy_rounded, '복제', _txt1),
+                      const PopupMenuDivider(height: 6),
+                      _mi('h1', Icons.looks_one_outlined, '제목 1', _txt1),
+                      _mi('h2', Icons.looks_two_outlined, '제목 2', _txt1),
+                      _mi('t', Icons.short_text_rounded, '텍스트', _txt1),
+                      _mi(
+                        'b',
+                        Icons.format_list_bulleted_rounded,
+                        '글머리',
+                        _txt1,
                       ),
+                      _mi('cd', Icons.code_rounded, '코드', _txt1),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (widget.block.type == BlockType.bullet)
+              Padding(
+                padding: const EdgeInsets.only(top: 13, right: 12),
+                child: Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: _acc.withOpacity(0.7),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: _acc.withOpacity(0.4), blurRadius: 4),
+                    ],
+                  ),
+                ),
+              ),
+            if (widget.block.type == BlockType.checkbox)
+              Padding(
+                padding: const EdgeInsets.only(top: 5, right: 10),
+                child: SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: Checkbox(
+                    value: widget.block.isChecked,
+                    onChanged: (v) => widget.onCheck(v!),
+                    activeColor: _acc,
+                    checkColor: Colors.black,
+                    side: const BorderSide(color: _txt2, width: 1.5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   ),
                 ),
-                if (widget.block.type == BlockType.bullet)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, right: 10),
-                    child: Icon(Icons.circle, size: 4, color: _txt2),
+              ),
+            if (widget.block.type == BlockType.code)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, right: 6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
                   ),
-                if (widget.block.type == BlockType.checkbox)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 5, right: 10),
-                    child: SizedBox(
-                      width: 17,
-                      height: 17,
-                      child: Checkbox(
-                        value: widget.block.isChecked,
-                        onChanged: (v) => widget.onCheck(v!),
-                        activeColor: _acc,
-                        checkColor: Colors.black,
-                        side: const BorderSide(color: _txt2, width: 1.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
+                  decoration: BoxDecoration(
+                    color: _bdr,
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                if (widget.block.type == BlockType.code)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2, right: 6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _bdr,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'CODE',
-                        style: TextStyle(
-                          color: _txt2,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ),
-                  ),
-                Expanded(
-                  child: CompositedTransformTarget(
-                    link: widget.block.layerLink,
-                    child: TextField(
-                      controller: widget.block.controller,
-                      focusNode: widget.block.focusNode,
-                      maxLines: null,
-                      style: _style().copyWith(
-                        decoration:
-                            (widget.block.type == BlockType.checkbox &&
-                                widget.block.isChecked)
-                            ? TextDecoration.lineThrough
-                            : null,
-                        color:
-                            (widget.block.type == BlockType.checkbox &&
-                                widget.block.isChecked)
-                            ? _txt2
-                            : null,
-                      ),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                        filled: true,
-                        fillColor: Colors.transparent,
-                        hoverColor: Colors.transparent,
-                        hintText: (_foc && widget.block.controller.text.isEmpty)
-                            ? _hint(widget.block.type)
-                            : '',
-                        hintStyle: TextStyle(
-                          color: _txt2.withOpacity(0.45),
-                          fontSize: 16,
-                        ),
-                      ),
-                      onChanged: (t) => widget.onTxt(t, widget.idx),
+                  child: const Text(
+                    'CODE',
+                    style: TextStyle(
+                      color: _txt2,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
                     ),
                   ),
                 ),
-              ],
+              ),
+            Expanded(
+              child: CompositedTransformTarget(
+                link: widget.block.layerLink,
+                child: TextField(
+                  controller: widget.block.controller,
+                  focusNode: widget.block.focusNode,
+                  maxLines: null,
+                  style: _style().copyWith(
+                    decoration:
+                        (widget.block.type == BlockType.checkbox &&
+                            widget.block.isChecked)
+                        ? TextDecoration.lineThrough
+                        : null,
+                    color:
+                        (widget.block.type == BlockType.checkbox &&
+                            widget.block.isChecked)
+                        ? _txt2
+                        : null,
+                  ),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    filled: true,
+                    fillColor: Colors.transparent,
+                    hoverColor: Colors.transparent,
+                    hintText: (_foc && widget.block.controller.text.isEmpty)
+                        ? _hint(widget.block.type)
+                        : '',
+                    hintStyle: TextStyle(
+                      color: _txt2.withOpacity(0.45),
+                      fontSize: 16,
+                    ),
+                  ),
+                  onChanged: (t) => widget.onTxt(t, widget.idx),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -1635,18 +1675,22 @@ class _PremiumTabs extends StatelessWidget {
     isScrollable: true,
     tabAlignment: TabAlignment.start,
     dividerColor: Colors.transparent,
-    indicator: BoxDecoration(
-      gradient: const LinearGradient(
-        colors: [Color(0xFF1A2A0A), Color(0xFF1A2A0A)],
-      ),
-      borderRadius: BorderRadius.circular(9),
-      border: Border.all(color: _acc.withOpacity(0.3)),
+    indicator: const UnderlineTabIndicator(
+      borderSide: BorderSide(color: _acc, width: 2),
+      insets: EdgeInsets.symmetric(horizontal: 6),
     ),
     labelColor: _acc,
     unselectedLabelColor: _txt2,
-    labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-    unselectedLabelStyle: const TextStyle(fontSize: 12),
-    labelPadding: const EdgeInsets.symmetric(horizontal: 14),
+    labelStyle: const TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.1,
+    ),
+    unselectedLabelStyle: const TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w400,
+    ),
+    labelPadding: const EdgeInsets.symmetric(horizontal: 10),
     tabs: [
       _T(Icons.auto_awesome_rounded, '요약'),
       _T(Icons.manage_search_rounded, '분석'),
@@ -1754,13 +1798,14 @@ class _SumCardState extends State<_SumCard>
   @override
   void initState() {
     super.initState();
+    // ✅ 첫 번째 카드만 애니메이션, 나머지는 즉시 표시
     _ac = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: 300 + widget.index * 70),
+      duration: Duration(milliseconds: widget.index == 0 ? 250 : 0),
     );
     _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
     _scale = Tween(
-      begin: 0.96,
+      begin: widget.index == 0 ? 0.97 : 1.0,
       end: 1.0,
     ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
     _ac.forward();
@@ -1814,34 +1859,32 @@ class _SumCardState extends State<_SumCard>
             children: [
               // 헤더
               Padding(
-                padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
+                padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
                 child: Row(
                   children: [
-                    // 상태 도트
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
-                      width: 7,
-                      height: 7,
+                      width: 6,
+                      height: 6,
                       decoration: BoxDecoration(
-                        color: pinned ? _acc : _txt2.withOpacity(0.3),
+                        color: pinned ? _acc : _txt2.withOpacity(0.25),
                         shape: BoxShape.circle,
                         boxShadow: pinned
                             ? [
                                 BoxShadow(
-                                  color: _acc.withOpacity(0.7),
-                                  blurRadius: 8,
-                                  spreadRadius: 1,
+                                  color: _acc.withOpacity(0.8),
+                                  blurRadius: 6,
                                 ),
                               ]
                             : [],
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 7),
                     Text(
-                      pinned ? 'PINNED' : 'LATEST',
+                      pinned ? '확정' : '최신 분석',
                       style: TextStyle(
-                        color: pinned ? _acc : _txt2,
-                        fontSize: 10,
+                        color: pinned ? _acc : _txt2.withOpacity(0.6),
+                        fontSize: 9,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.8,
                       ),
@@ -1850,34 +1893,33 @@ class _SumCardState extends State<_SumCard>
                     _IBtn(
                       Icons.content_copy_rounded,
                       widget.onCopy,
-                      color: _txt2,
-                      sz: 13,
+                      color: _txt2.withOpacity(0.5),
+                      sz: 12,
                     ),
-                    const SizedBox(width: 2),
+                    const SizedBox(width: 1),
                     _IBtn(
                       pinned ? Icons.push_pin : Icons.push_pin_outlined,
                       widget.onPin,
-                      color: pinned ? _acc : _txt2,
-                      sz: 13,
+                      color: pinned ? _acc : _txt2.withOpacity(0.5),
+                      sz: 12,
                     ),
-                    const SizedBox(width: 2),
+                    const SizedBox(width: 1),
                     _IBtn(
                       Icons.close_rounded,
                       widget.onDel,
-                      color: _txt2,
-                      sz: 13,
+                      color: _txt2.withOpacity(0.5),
+                      sz: 12,
                     ),
                   ],
                 ),
               ),
-              // 구분선
               Container(
-                height: 1,
+                height: 0.5,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
                       Colors.transparent,
-                      pinned ? _acc.withOpacity(0.2) : _bdr,
+                      pinned ? _acc.withOpacity(0.15) : _bdr.withOpacity(0.5),
                       Colors.transparent,
                     ],
                   ),
@@ -2635,28 +2677,36 @@ class _EmptyState extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            gradient: RadialGradient(colors: [_bg4, _bg3]),
+            color: _bg3,
             shape: BoxShape.circle,
-            border: Border.all(color: _bdr2),
+            border: Border.all(color: _bdr, width: 0.5),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20),
+            ],
           ),
-          child: Icon(icon, size: 28, color: _txt2),
+          child: Icon(icon, size: 26, color: _txt2.withOpacity(0.7)),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 20),
         Text(
           title,
           style: const TextStyle(
             color: _txt0,
-            fontSize: 15,
+            fontSize: 14,
             fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           desc,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: _txt2, fontSize: 13, height: 1.6),
+          style: TextStyle(
+            color: _txt2.withOpacity(0.7),
+            fontSize: 12,
+            height: 1.7,
+          ),
         ),
       ],
     ),
@@ -2733,12 +2783,22 @@ class _FloatActionState extends State<_FloatAction>
   @override
   void initState() {
     super.initState();
-    _ac = AnimationController(vsync: this, duration: const Duration(seconds: 2))
-      ..repeat(reverse: true);
+    _ac = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    );
     _scale = Tween(
       begin: 1.0,
       end: 1.02,
     ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeInOut));
+  }
+
+  @override
+  void didUpdateWidget(_FloatAction old) {
+    super.didUpdateWidget(old);
+    // loading 상태일 때만 애니메이션 실행
+    if (widget.loading && !_ac.isAnimating) _ac.repeat(reverse: true);
+    if (!widget.loading && _ac.isAnimating) _ac.stop();
   }
 
   @override

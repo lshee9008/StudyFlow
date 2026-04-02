@@ -177,22 +177,46 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   List<Block> _parseBlocks(String content) {
     if (content.isEmpty) return [];
     try {
-      return (jsonDecode(content) as List)
+      final blocks = (jsonDecode(content) as List)
           .map((e) => Block.fromJson(e))
           .toList();
+      // ✅ text 블록에 마크다운 헤딩/불릿 있으면 타입 변환
+      return blocks.map((b) => _convertMarkdownBlock(b)).toList();
     } catch (_) {
       return MarkdownParser.parse(content)
           .asMap()
           .entries
           .map(
             (e) => Block(
-              id: '${DateTime.now().microsecondsSinceEpoch}_${e.key}',
+              id: '\${DateTime.now().microsecondsSinceEpoch}_\${e.key}',
               type: e.value['type'],
               content: e.value['content'],
             ),
           )
           .toList();
     }
+  }
+
+  Block _convertMarkdownBlock(Block b) {
+    if (b.type != BlockType.text) return b;
+    final t = b.controller.text;
+    if (t.startsWith('# ')) {
+      b.type = BlockType.h1;
+      b.controller.text = t.substring(2);
+    } else if (t.startsWith('## ')) {
+      b.type = BlockType.h2;
+      b.controller.text = t.substring(3);
+    } else if (t.startsWith('### ')) {
+      b.type = BlockType.h3;
+      b.controller.text = t.substring(4);
+    } else if (t.startsWith('- ') || t.startsWith('* ')) {
+      b.type = BlockType.bullet;
+      b.controller.text = t.substring(2);
+    } else if (t.startsWith('[] ') || t.startsWith('- [ ] ')) {
+      b.type = BlockType.checkbox;
+      b.controller.text = t.replaceFirst(RegExp(r'^(\[\] |- \[ \] )'), '');
+    }
+    return b;
   }
 
   List<SummaryBlock> _parseSummary(String? s) {
