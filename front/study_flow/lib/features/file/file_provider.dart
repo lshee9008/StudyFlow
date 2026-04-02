@@ -51,6 +51,10 @@ class FileEditorState {
   final DateTime? lastSavedAt;
   final String lastSentContent;
 
+  // ✅ title/tags도 state에 보관 (웹 호환)
+  final String fileTitle;
+  final String fileTags;
+
   FileEditorState({
     required this.blocks,
     this.isLoading = false,
@@ -72,6 +76,8 @@ class FileEditorState {
     this.focusedText = '',
     this.lastSavedAt,
     this.lastSentContent = '',
+    this.fileTitle = '',
+    this.fileTags = '',
   });
 
   FileEditorState copyWith({
@@ -95,6 +101,8 @@ class FileEditorState {
     String? focusedText,
     DateTime? lastSavedAt,
     String? lastSentContent,
+    String? fileTitle,
+    String? fileTags,
   }) => FileEditorState(
     blocks: blocks ?? this.blocks,
     isLoading: isLoading ?? this.isLoading,
@@ -116,6 +124,8 @@ class FileEditorState {
     focusedText: focusedText ?? this.focusedText,
     lastSavedAt: lastSavedAt ?? this.lastSavedAt,
     lastSentContent: lastSentContent ?? this.lastSentContent,
+    fileTitle: fileTitle ?? this.fileTitle,
+    fileTags: fileTags ?? this.fileTags,
   );
 
   String get fullContent => blocks.map((b) => b.controller.text).join('\n');
@@ -168,6 +178,9 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         filePrompt: file.prompt,
         summaryBlocks: summary,
         lastSentContent: file.content,
+        // ✅ title/tags 저장 (웹에서 DB 접근 불가 시 여기서 읽음)
+        fileTitle: file.title == '제목 없음' ? '' : file.title,
+        fileTags: file.tags,
       );
     } else {
       state = state.copyWith(blocks: [_newBlock(0)], isLoading: false);

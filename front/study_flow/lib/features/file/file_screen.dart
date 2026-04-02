@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -124,25 +125,27 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   Future<void> _init() async {
     await ref.read(fileEditorProvider.notifier).loadFileDetail(widget.fileId);
     final st = ref.read(fileEditorProvider);
-    // ✅ 로컬 DB에서 title/tags 직접 로드
-    try {
-      final file = await FilesDBHelper.getFile(widget.fileId);
-      if (file != null && mounted) {
-        setState(() {
-          _tCtrl.text = (file.title == '제목 없음') ? '' : file.title;
-          _gCtrl.text = file.tags;
-          _pCtrl.text = file.prompt ?? st.filePrompt ?? '';
-        });
-      } else if (mounted) {
-        setState(() {
-          _pCtrl.text = st.filePrompt ?? '';
-        });
-      }
-    } catch (_) {
-      if (mounted)
-        setState(() {
-          _pCtrl.text = st.filePrompt ?? '';
-        });
+
+    // ✅ state에 저장된 title/tags 먼저 세팅 (웹/모바일 공통)
+    if (mounted)
+      setState(() {
+        _tCtrl.text = st.fileTitle;
+        _gCtrl.text = st.fileTags;
+        _pCtrl.text = st.filePrompt ?? '';
+      });
+
+    // 로컬 DB가 있는 환경에서는 DB 값으로 덮어쓰기 (더 최신일 수 있음)
+    if (!kIsWeb) {
+      try {
+        final file = await FilesDBHelper.getFile(widget.fileId);
+        if (file != null && mounted) {
+          setState(() {
+            if (file.title != '제목 없음') _tCtrl.text = file.title;
+            _gCtrl.text = file.tags;
+            _pCtrl.text = file.prompt ?? st.filePrompt ?? '';
+          });
+        }
+      } catch (_) {}
     }
   }
 
