@@ -123,7 +123,7 @@ class FileEditorState {
   int get wordCount =>
       fullContent.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
   int get meaningfulCharCount =>
-      fullContent.replaceAll(RegExp(r'\s'), '').length;
+      blocks.fold(0, (sum, b) => sum + b.controller.text.trim().length);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -265,7 +265,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     required String tags,
   }) async {
     // 의미있는 내용이 50자 미만이면 무시
-    if (state.meaningfulCharCount < 50) return;
+    if (state.meaningfulCharCount < 15) return;
 
     state = state.copyWith(isSummaryLoading: true);
     try {
@@ -374,7 +374,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   // ─── 암기 노트 ──────────────────────────────────────
   Future<void> generateMemo(String title) async {
-    if (state.meaningfulCharCount < 50) return;
+    if (state.meaningfulCharCount < 15) return;
     state = state.copyWith(isMemoLoading: true);
     try {
       final res = await http
@@ -408,7 +408,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   // ─── 퀴즈 ───────────────────────────────────────────
   Future<void> generateQuiz() async {
-    if (state.meaningfulCharCount < 100) return;
+    if (state.meaningfulCharCount < 10) return;
     state = state.copyWith(isQuizLoading: true);
     try {
       final content = state.fullContent.substring(
@@ -481,7 +481,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   // ─── 지식 그래프 ────────────────────────────────────
   Future<void> requestGraph() async {
-    if (state.meaningfulCharCount < 30) return;
+    if (state.meaningfulCharCount < 10) return;
     state = state.copyWith(isGraphLoading: true);
     try {
       final content = state.fullContent.substring(

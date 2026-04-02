@@ -1,193 +1,182 @@
-// ╔══════════════════════════════════════════════════════════╗
-// ║  file_screen.dart v4  —  Premium Notion-exact Editor     ║
-// ╚══════════════════════════════════════════════════════════╝
+// ╔══════════════════════════════════════════════════════╗
+// ║  StudyFlow — Premium File Editor  v5                 ║
+// ║  Aurora BG · Glow Cards · Micro-interactions         ║
+// ╚══════════════════════════════════════════════════════╝
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../models/block_model.dart';
+import '../../core/db_helper/files_db_helper.dart';
 import 'file_provider.dart';
 
-// ── 색상 팔레트 ────────────────────────────────────────────
-const _c = _Colors();
+// ══════════════════ DESIGN TOKENS ══════════════════════
+const _bg0 = Color(0xFF07070E); // 최심층
+const _bg1 = Color(0xFF0D0D16); // 메인 배경
+const _bg2 = Color(0xFF12121C); // 패널
+const _bg3 = Color(0xFF181826); // 카드
+const _bg4 = Color(0xFF1E1E30); // hover
+const _bdr = Color(0xFF232336);
+const _bdr2 = Color(0xFF2E2E48);
+const _txt0 = Color(0xFFF0F0FA);
+const _txt1 = Color(0xFFAAAACC);
+const _txt2 = Color(0xFF555575);
+const _acc = Color(0xFFCCFF66); // lime
+const _accD = Color(0xFF0F1A04);
+const _accG = Color(0xFF88CC00);
+const _blu = Color(0xFF4F8EFF);
+const _grn = Color(0xFF4ADE80);
+const _red = Color(0xFFFF4F6A);
+const _pur = Color(0xFFA78BFA);
+const _yel = Color(0xFFFFD166);
 
-class _Colors {
-  const _Colors();
-  Color get bg => const Color(0xFF0C0C10);
-  Color get surface => const Color(0xFF141418);
-  Color get card => const Color(0xFF1A1A22);
-  Color get hover => const Color(0xFF202028);
-  Color get border => const Color(0xFF252530);
-  Color get borderHi => const Color(0xFF323240);
-  Color get txt => const Color(0xFFEEEEF8);
-  Color get txt2 => const Color(0xFF7878A0);
-  Color get txt3 => const Color(0xFF3A3A50);
-  Color get acc => const Color(0xFFCCFF66);
-  Color get accDim => const Color(0xFF192208);
-  Color get accMid => const Color(0xFF88CC00);
-  Color get blue => const Color(0xFF5B8DEF);
-  Color get green => const Color(0xFF4ADE80);
-  Color get red => const Color(0xFFFF5577);
-  Color get purple => const Color(0xFFA78BFA);
-  Color get yellow => const Color(0xFFFFCC44);
-}
-
-// ── 텍스트 스타일 ────────────────────────────────────────────
-TextStyle _ts(
-  double size, {
-  Color? color,
-  FontWeight w = FontWeight.w400,
-  double h = 1.0,
-  double ls = 0,
-}) => TextStyle(
-  fontSize: size,
-  color: color,
-  fontWeight: w,
-  height: h,
-  letterSpacing: ls,
-);
-
-// ═══════════════════════════════════════════════════════════
-// FileScreen
-// ═══════════════════════════════════════════════════════════
+// ══════════════════ MAIN SCREEN ════════════════════════
 class FileScreen extends ConsumerStatefulWidget {
-  final String fileId;
-  final String projectId;
+  final String fileId, projectId;
   const FileScreen({Key? key, required this.fileId, this.projectId = 'default'})
     : super(key: key);
   @override
-  ConsumerState<FileScreen> createState() => _FileScreenState();
+  ConsumerState<FileScreen> createState() => _FS();
 }
 
-class _FileScreenState extends ConsumerState<FileScreen>
-    with TickerProviderStateMixin {
-  final _titleCtrl = TextEditingController();
-  final _tagsCtrl = TextEditingController();
-  final _promptCtrl = TextEditingController();
+class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
+  final _tCtrl = TextEditingController();
+  final _gCtrl = TextEditingController(); // tags
+  final _pCtrl = TextEditingController(); // prompt
   final _qaCtrl = TextEditingController();
-  late final TabController _tab;
+  late TabController _tab;
 
-  Timer? _saveT, _focusT, _autoSumT;
+  // Timers
+  Timer? _saveT, _focT, _sumT;
   bool _saving = false;
   int _lastSumLen = 0;
-  int _viewMode = 0; // 0:split 1:fullscreen 2:graph
-  bool _savePending = false; // ← 추가
 
-  // Slash menu
-  OverlayEntry? _slashEntry;
-  int _slashSel = 0;
-  List<_Cmd> _slashOpts = [];
+  // View
+  int _view = 0; // 0:split 1:full 2:graph
+  bool _panelCollapsed = false;
+
+  // Slash
+  OverlayEntry? _slash;
+  int _slashIdx = 0;
+  List<_Opt> _slashOpts = [];
 
   // Animations
-  late final AnimationController _saveAc;
-  late final AnimationController _panelAc;
-  late final Animation<double> _saveAlpha;
-  late final Animation<double> _panelFade;
+  late AnimationController _bgAc; // 오로라 배경
+  late AnimationController _saveAc; // 저장 체크
+  late AnimationController _sumAc; // 요약 펄스
+  late AnimationController _panelAc; // 패널 슬라이드
+  late Animation<double> _bgAnim, _saveAnim, _sumPulse, _panelSlide;
 
-  static const _cmds = [
-    _Cmd('h1', '제목 1', Icons.looks_one_outlined, _CmdCat.text),
-    _Cmd('h2', '제목 2', Icons.looks_two_outlined, _CmdCat.text),
-    _Cmd('h3', '제목 3', Icons.looks_3_outlined, _CmdCat.text),
-    _Cmd('p', '텍스트', Icons.short_text, _CmdCat.text),
-    _Cmd('bullet', '글머리 기호', Icons.format_list_bulleted, _CmdCat.list),
-    _Cmd('todo', '할 일', Icons.check_box_outline_blank, _CmdCat.list),
-    _Cmd('code', '코드 블록', Icons.data_object, _CmdCat.media),
-    _Cmd('quote', '인용문', Icons.format_quote, _CmdCat.media),
-    _Cmd('divider', '구분선', Icons.horizontal_rule, _CmdCat.media),
+  // Slash commands
+  static const _opts = [
+    _Opt('h1', '제목 1', Icons.looks_one_rounded, '# '),
+    _Opt('h2', '제목 2', Icons.looks_two_rounded, '## '),
+    _Opt('h3', '제목 3', Icons.looks_3_rounded, '### '),
+    _Opt('p', '텍스트', Icons.short_text_rounded, ''),
+    _Opt('bullet', '글머리', Icons.format_list_bulleted_rounded, '- '),
+    _Opt('todo', '할 일', Icons.check_box_outlined, '[] '),
+    _Opt('code', '코드', Icons.code_rounded, '```'),
+    _Opt('quote', '인용', Icons.format_quote_rounded, '> '),
+    _Opt('div', '구분선', Icons.horizontal_rule_rounded, '---'),
   ];
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 5, vsync: this);
+
+    _bgAc = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat(reverse: true);
     _saveAc = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 500),
     );
+    _sumAc = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
     _panelAc = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 350),
     );
-    _saveAlpha = CurvedAnimation(parent: _saveAc, curve: Curves.easeOut);
-    _panelFade = CurvedAnimation(parent: _panelAc, curve: Curves.easeOutCubic);
+
+    _bgAnim = CurvedAnimation(parent: _bgAc, curve: Curves.easeInOut);
+    _saveAnim = CurvedAnimation(parent: _saveAc, curve: Curves.elasticOut);
+    _sumPulse = Tween(
+      begin: 0.6,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _sumAc, curve: Curves.easeInOut));
+    _panelSlide = CurvedAnimation(parent: _panelAc, curve: Curves.easeOutCubic);
     _panelAc.value = 1;
+
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
   Future<void> _init() async {
     await ref.read(fileEditorProvider.notifier).loadFileDetail(widget.fileId);
     final st = ref.read(fileEditorProvider);
-    if (mounted)
-      setState(() {
-        _titleCtrl.text = '';
-        _tagsCtrl.text = '';
-        _promptCtrl.text = st.filePrompt ?? '';
-      });
-    // 파일 제목/태그는 DB에서 직접 가져옴
+    // ✅ 로컬 DB에서 title/tags 직접 로드
     try {
-      final f = await _getFileInfo(widget.fileId);
-      if (f != null && mounted)
+      final file = await FilesDBHelper.getFile(widget.fileId);
+      if (file != null && mounted) {
         setState(() {
-          _titleCtrl.text = f['title'] ?? '';
-          _tagsCtrl.text = f['tags'] ?? '';
+          _tCtrl.text = (file.title == '제목 없음') ? '' : file.title;
+          _gCtrl.text = file.tags;
+          _pCtrl.text = file.prompt ?? st.filePrompt ?? '';
         });
-    } catch (_) {}
-  }
-
-  Future<Map<String, dynamic>?> _getFileInfo(String id) async {
-    try {
-      // 로컬 DB에서
-      final f = await _fetchFileLocal(id);
-      return f;
+      } else if (mounted) {
+        setState(() {
+          _pCtrl.text = st.filePrompt ?? '';
+        });
+      }
     } catch (_) {
-      return null;
+      if (mounted)
+        setState(() {
+          _pCtrl.text = st.filePrompt ?? '';
+        });
     }
-  }
-
-  Future<Map<String, dynamic>?> _fetchFileLocal(String id) async {
-    // FilesDBHelper.getFile(id) 호출해서 title/tags 반환
-    return null; // 실제 구현 시 FilesDBHelper 사용
   }
 
   @override
   void dispose() {
     _saveT?.cancel();
-    _focusT?.cancel();
-    _autoSumT?.cancel();
-    _titleCtrl.dispose();
-    _tagsCtrl.dispose();
-    _promptCtrl.dispose();
+    _focT?.cancel();
+    _sumT?.cancel();
+    _tCtrl.dispose();
+    _gCtrl.dispose();
+    _pCtrl.dispose();
     _qaCtrl.dispose();
     _tab.dispose();
+    _bgAc.dispose();
     _saveAc.dispose();
+    _sumAc.dispose();
     _panelAc.dispose();
     _removeSlash();
     super.dispose();
   }
 
-  // ── 저장 ─────────────────────────────────────────────────
-  void _onChange({String? ft}) {
-    if (_savePending) return; // ← 중복 방지
-    _savePending = true;
-
+  // ── Save ──────────────────────────────────────────────
+  void _chg({String? ft}) {
     if (ft != null)
       ref.read(fileEditorProvider.notifier).state = ref
           .read(fileEditorProvider)
           .copyWith(focusedText: ft);
     setState(() => _saving = true);
     _saveT?.cancel();
-    _saveT = Timer(const Duration(milliseconds: 800), () async {
-      _savePending = false; // ← 타이머 완료 후 해제
+    _saveT = Timer(const Duration(milliseconds: 900), () async {
       await ref
           .read(fileEditorProvider.notifier)
           .saveFile(
             fileId: widget.fileId,
-            title: _titleCtrl.text,
-            tags: _tagsCtrl.text,
-            prompt: _promptCtrl.text,
+            title: _tCtrl.text,
+            tags: _gCtrl.text,
+            prompt: _pCtrl.text,
             updateAt: DateTime.now(),
           );
       if (mounted) {
@@ -195,124 +184,111 @@ class _FileScreenState extends ConsumerState<FileScreen>
         _saveAc.forward(from: 0);
       }
     });
-    final len = ref.read(fileEditorProvider).meaningfulCharCount;
-    if ((len - _lastSumLen).abs() > 100) {
-      _autoSumT?.cancel();
-      _autoSumT = Timer(const Duration(seconds: 8), _triggerSum);
+    final mc = ref.read(fileEditorProvider).meaningfulCharCount;
+    if ((mc - _lastSumLen).abs() > 120) {
+      _sumT?.cancel();
+      _sumT = Timer(const Duration(seconds: 9), _doSum);
     }
   }
 
-  void _triggerSum() {
+  void _doSum() {
     if (_tab.index == 0 && !ref.read(fileEditorProvider).isSummaryLoading) {
       _lastSumLen = ref.read(fileEditorProvider).meaningfulCharCount;
       ref
           .read(fileEditorProvider.notifier)
-          .requestSummary(title: _titleCtrl.text, tags: _tagsCtrl.text);
+          .requestSummary(title: _tCtrl.text, tags: _gCtrl.text);
     }
   }
 
-  void _onFocus(String text) {
-    _focusT?.cancel();
-    _focusT = Timer(const Duration(milliseconds: 1500), () {
-      if (text.trim().length > 15) {
+  void _focusEvent(String text) {
+    _focT?.cancel();
+    _focT = Timer(const Duration(milliseconds: 1800), () {
+      if (text.trim().length > 20) {
         ref
             .read(fileEditorProvider.notifier)
-            .analyzeBlock(text: text, title: _titleCtrl.text);
+            .analyzeBlock(text: text, title: _tCtrl.text);
       }
     });
   }
 
-  // ── 키 이벤트 ─────────────────────────────────────────────
-  KeyEventResult _onKey(FocusNode node, KeyEvent event, int idx) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+  // ── Key handler ───────────────────────────────────────
+  KeyEventResult _key(FocusNode n, KeyEvent e, int i) {
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
     final meta = HardwareKeyboard.instance.isMetaPressed;
     final ctrl = HardwareKeyboard.instance.isControlPressed;
     final shift = HardwareKeyboard.instance.isShiftPressed;
 
-    // Ctrl/Cmd+A
-    if ((meta || ctrl) && event.logicalKey == LogicalKeyboardKey.keyA) {
-      final c = ref.read(fileEditorProvider).blocks[idx].controller;
-      c.selection = TextSelection(baseOffset: 0, extentOffset: c.text.length);
+    if ((meta || ctrl) && e.logicalKey == LogicalKeyboardKey.keyA) {
+      final b = ref.read(fileEditorProvider).blocks[i];
+      b.controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: b.controller.text.length,
+      );
       return KeyEventResult.handled;
     }
 
-    // Slash menu nav
-    if (_slashEntry != null) {
-      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        if (_slashSel > 0) {
-          _slashSel--;
-          _slashEntry!.markNeedsBuild();
+    // slash nav
+    if (_slash != null) {
+      if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
+        if (_slashIdx > 0) {
+          _slashIdx--;
+          _slash!.markNeedsBuild();
         }
         return KeyEventResult.handled;
       }
-      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-        if (_slashSel < _slashOpts.length - 1) {
-          _slashSel++;
-          _slashEntry!.markNeedsBuild();
+      if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
+        if (_slashIdx < _slashOpts.length - 1) {
+          _slashIdx++;
+          _slash!.markNeedsBuild();
         }
         return KeyEventResult.handled;
       }
-      if (event.logicalKey == LogicalKeyboardKey.enter) {
-        _applyCmd(idx, _slashOpts[_slashSel]);
+      if (e.logicalKey == LogicalKeyboardKey.enter) {
+        _applyOpt(i, _slashOpts[_slashIdx]);
         return KeyEventResult.handled;
       }
-      if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (e.logicalKey == LogicalKeyboardKey.escape) {
         _removeSlash();
         return KeyEventResult.handled;
       }
     }
 
     final blocks = ref.read(fileEditorProvider).blocks;
-    final bc = blocks[idx].controller;
-    final bt = blocks[idx].type;
+    final bc = blocks[i].controller, bt = blocks[i].type;
 
-    // Tab / Shift+Tab
-    if (event.logicalKey == LogicalKeyboardKey.tab) {
+    if (e.logicalKey == LogicalKeyboardKey.tab) {
       shift
-          ? ref.read(fileEditorProvider.notifier).dedent(idx)
-          : ref.read(fileEditorProvider.notifier).indent(idx);
+          ? ref.read(fileEditorProvider.notifier).dedent(i)
+          : ref.read(fileEditorProvider.notifier).indent(i);
       return KeyEventResult.handled;
     }
 
-    // Enter
-    if (event.logicalKey == LogicalKeyboardKey.enter && !meta && !ctrl) {
-      final text = bc.text;
-      final pos = bc.selection.baseOffset.clamp(0, text.length);
-
-      // 빈 리스트 탈출
-      if (text.isEmpty &&
-          (bt == BlockType.bullet || bt == BlockType.checkbox)) {
-        ref.read(fileEditorProvider.notifier).exitListMode(idx);
+    if (e.logicalKey == LogicalKeyboardKey.enter && !meta && !ctrl) {
+      final txt = bc.text, pos = bc.selection.baseOffset.clamp(0, txt.length);
+      if (txt.isEmpty && (bt == BlockType.bullet || bt == BlockType.checkbox)) {
+        ref.read(fileEditorProvider.notifier).exitListMode(i);
         return KeyEventResult.handled;
       }
-
-      // 커서에서 분리
-      bc.text = text.substring(0, pos);
-      ref.read(fileEditorProvider.notifier).insertBlocks(idx + 1, [
-        text.substring(pos),
+      bc.text = txt.substring(0, pos);
+      ref.read(fileEditorProvider.notifier).insertBlocks(i + 1, [
+        txt.substring(pos),
       ]);
-
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final upd = ref.read(fileEditorProvider).blocks;
-        if (idx + 1 < upd.length) {
-          // 리스트 타입 유지
-          if (bt == BlockType.bullet || bt == BlockType.checkbox) {
-            ref.read(fileEditorProvider.notifier).setType(idx + 1, bt);
-          }
-          upd[idx + 1].focusNode.requestFocus();
-          upd[idx + 1].controller.selection = TextSelection.collapsed(
-            offset: 0,
-          );
+        if (i + 1 < upd.length) {
+          if (bt == BlockType.bullet || bt == BlockType.checkbox)
+            ref.read(fileEditorProvider.notifier).setType(i + 1, bt);
+          upd[i + 1].focusNode.requestFocus();
+          upd[i + 1].controller.selection = TextSelection.collapsed(offset: 0);
         }
       });
-      _onChange();
+      _chg();
       return KeyEventResult.handled;
     }
 
-    // Backspace
-    if (event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (bc.selection.isCollapsed && bc.selection.baseOffset == 0 && idx > 0) {
-        ref.read(fileEditorProvider.notifier).mergeWithPrev(idx);
+    if (e.logicalKey == LogicalKeyboardKey.backspace) {
+      if (bc.selection.isCollapsed && bc.selection.baseOffset == 0 && i > 0) {
+        ref.read(fileEditorProvider.notifier).mergeWithPrev(i);
         return KeyEventResult.handled;
       }
       if (bc.text.isEmpty &&
@@ -320,52 +296,47 @@ class _FileScreenState extends ConsumerState<FileScreen>
           bt != BlockType.h1 &&
           bt != BlockType.h2 &&
           bt != BlockType.h3) {
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.text);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
         return KeyEventResult.handled;
       }
     }
 
-    // 방향키
-    if (event.logicalKey == LogicalKeyboardKey.arrowUp && idx > 0) {
-      _focus(idx - 1);
+    if (e.logicalKey == LogicalKeyboardKey.arrowUp && i > 0) {
+      _foc(i - 1);
       return KeyEventResult.handled;
     }
-    if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
-        idx < blocks.length - 1) {
-      _focus(idx + 1);
+    if (e.logicalKey == LogicalKeyboardKey.arrowDown && i < blocks.length - 1) {
+      _foc(i + 1);
       return KeyEventResult.handled;
     }
-
     return KeyEventResult.ignored;
   }
 
-  void _focus(int idx) {
-    final blocks = ref.read(fileEditorProvider).blocks;
-    if (idx >= 0 && idx < blocks.length) {
-      blocks[idx].focusNode.requestFocus();
-      final c = blocks[idx].controller;
+  void _foc(int i) {
+    final b = ref.read(fileEditorProvider).blocks;
+    if (i >= 0 && i < b.length) {
+      b[i].focusNode.requestFocus();
+      final c = b[i].controller;
       c.selection = TextSelection.collapsed(offset: c.text.length);
     }
   }
 
-  // ── 텍스트 변경 ───────────────────────────────────────────
-  void _onText(String text, int idx) {
+  // ── Text change ───────────────────────────────────────
+  void _txt(String text, int i) {
     if (text.contains('\n')) {
       final lines = text.split('\n');
-      ref.read(fileEditorProvider).blocks[idx].controller.text = lines[0];
+      ref.read(fileEditorProvider).blocks[i].controller.text = lines[0];
       if (lines.length > 1) {
         ref
             .read(fileEditorProvider.notifier)
-            .insertBlocks(idx + 1, lines.sublist(1));
+            .insertBlocks(i + 1, lines.sublist(1));
         WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _focus(idx + lines.length - 1),
+          (_) => _foc(i + lines.length - 1),
         );
       }
-      _onChange(ft: lines[0]);
+      _chg(ft: lines[0]);
       return;
     }
-
-    // 마크다운 단축키
     if (text.endsWith(' ')) {
       BlockType? nt;
       String nc = text;
@@ -386,303 +357,240 @@ class _FileScreenState extends ConsumerState<FileScreen>
         nc = '';
       }
       if (nt != null) {
-        final c = ref.read(fileEditorProvider).blocks[idx].controller;
+        final c = ref.read(fileEditorProvider).blocks[i].controller;
         c.text = nc;
-        ref.read(fileEditorProvider.notifier).setType(idx, nt);
+        ref.read(fileEditorProvider.notifier).setType(i, nt);
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => c.selection = TextSelection.collapsed(offset: nc.length),
         );
-        _onChange(ft: nc);
+        _chg(ft: nc);
         return;
       }
     }
-
-    // 슬래시 메뉴
     final si = text.lastIndexOf('/');
     if (si != -1 && si == text.length - 1)
-      _showSlash(context, idx, '');
+      _showSlash(context, i, '');
     else if (si != -1 && !text.substring(si + 1).contains(' '))
-      _showSlash(context, idx, text.substring(si + 1));
+      _showSlash(context, i, text.substring(si + 1));
     else
       _removeSlash();
-
-    _onChange(ft: text);
+    _chg(ft: text);
   }
 
-  // ── 슬래시 메뉴 ──────────────────────────────────────────
-  void _showSlash(BuildContext ctx, int idx, String q) {
+  // ── Slash menu ────────────────────────────────────────
+  void _showSlash(BuildContext ctx, int i, String q) {
     _slashOpts = q.isEmpty
-        ? _cmds
-        : _cmds
-              .where((c) => c.label.toLowerCase().contains(q.toLowerCase()))
+        ? _opts
+        : _opts
+              .where((o) => o.label.toLowerCase().contains(q.toLowerCase()))
               .toList();
     if (_slashOpts.isEmpty) {
       _removeSlash();
       return;
     }
-    if (_slashEntry == null) _slashSel = 0;
-    _slashEntry?.remove();
-
-    final blocks = ref.read(fileEditorProvider).blocks;
-    _slashEntry = OverlayEntry(
+    if (_slash == null) _slashIdx = 0;
+    _slash?.remove();
+    final bl = ref.read(fileEditorProvider).blocks;
+    _slash = OverlayEntry(
       builder: (_) => Positioned(
-        width: 280,
+        width: 270,
         child: CompositedTransformFollower(
-          link: blocks[idx].layerLink,
+          link: bl[i].layerLink,
           showWhenUnlinked: false,
           offset: const Offset(0, 40),
           child: _SlashMenu(
-            cmds: _slashOpts,
-            sel: _slashSel,
-            onSel: (cmd) => _applyCmd(idx, cmd),
+            opts: _slashOpts,
+            sel: _slashIdx,
+            onSel: (o) => _applyOpt(i, o),
           ),
         ),
       ),
     );
-    Overlay.of(ctx).insert(_slashEntry!);
+    Overlay.of(ctx).insert(_slash!);
   }
 
-  void _applyCmd(int idx, _Cmd cmd) {
+  void _applyOpt(int i, _Opt opt) {
     _removeSlash();
-    final c = ref.read(fileEditorProvider).blocks[idx].controller;
+    final c = ref.read(fileEditorProvider).blocks[i].controller;
     final si = c.text.lastIndexOf('/');
     if (si != -1) c.text = c.text.substring(0, si);
-
-    switch (cmd.id) {
+    switch (opt.id) {
       case 'h1':
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.h1);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.h1);
         break;
       case 'h2':
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.h2);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.h2);
         break;
       case 'h3':
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.h3);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.h3);
         break;
       case 'bullet':
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.bullet);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.bullet);
         break;
       case 'todo':
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.checkbox);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.checkbox);
         break;
       case 'code':
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.code);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.code);
         break;
-      case 'divider':
-        c.text = '';
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.code);
-        c.text = '────────────────────────────────────';
-        break;
-      case 'quote':
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.h3);
+      case 'div':
+        c.text = '─────────────────────';
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.code);
         break;
       default:
-        ref.read(fileEditorProvider.notifier).setType(idx, BlockType.text);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
     }
-    _focus(idx);
+    _foc(i);
   }
 
   void _removeSlash() {
-    _slashEntry?.remove();
-    _slashEntry = null;
+    _slash?.remove();
+    _slash = null;
   }
 
-  void _snack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: _ts(13, color: _c.txt)),
-        backgroundColor: _c.card,
-        duration: const Duration(milliseconds: 1800),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
+  void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(msg, style: const TextStyle(color: _txt0, fontSize: 13)),
+      backgroundColor: _bg3,
+      duration: const Duration(milliseconds: 1600),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+  );
 
-  // ═════════════════════════════════════════════════════════
-  // BUILD
-  // ═════════════════════════════════════════════════════════
+  // ════════════════════ BUILD ════════════════════════════
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(fileEditorProvider);
     return Scaffold(
-      backgroundColor: _c.bg,
-      appBar: _appBar(st),
-      body: FadeTransition(
-        opacity: _panelFade,
-        child: switch (_viewMode) {
-          1 => _editor(st),
-          2 => _graph(st),
-          _ => _SplitPane(left: _editor(st), right: _panel(st)),
-        },
+      backgroundColor: _bg0,
+      body: Stack(
+        children: [
+          // ── 오로라 배경 ──────────────────────────────
+          _AuroraBG(anim: _bgAnim),
+
+          // ── 메인 레이아웃 ────────────────────────────
+          Column(
+            children: [
+              _AppBar(
+                saving: _saving,
+                savedAt: st.lastSavedAt,
+                saveAnim: _saveAnim,
+                charCount: st.charCount,
+                view: _view,
+                onBack: () => Navigator.pop(context),
+                onCopy: () {
+                  Clipboard.setData(
+                    ClipboardData(
+                      text: st.blocks.map((b) => b.controller.text).join('\n'),
+                    ),
+                  );
+                  _snack('복사됨');
+                },
+                onMdCopy: () async {
+                  await ref
+                      .read(fileEditorProvider.notifier)
+                      .copyMarkdown(_tCtrl.text, _gCtrl.text);
+                  _snack('Markdown 복사됨');
+                },
+                onView: () {
+                  _panelAc.reverse().then((_) {
+                    setState(() => _view = _view == 0 ? 1 : 0);
+                    _panelAc.forward();
+                  });
+                },
+                onGraph: () {
+                  setState(() => _view = _view == 2 ? 0 : 2);
+                  if (_view == 2)
+                    ref.read(fileEditorProvider.notifier).requestGraph();
+                },
+              ),
+              Expanded(
+                child: _view == 2
+                    ? _GraphView(st: st, ref: ref)
+                    : _view == 1
+                    ? _buildEditor(st)
+                    : _Split(left: _buildEditor(st), right: _buildPanel(st)),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  // ── AppBar ────────────────────────────────────────────────
-  PreferredSizeWidget _appBar(FileEditorState st) => PreferredSize(
-    preferredSize: const Size.fromHeight(52),
-    child: Container(
-      color: _c.bg,
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const SizedBox(width: 8),
-              // 뒤로가기
-              IconButton(
-                icon: Icon(Icons.arrow_back_rounded, size: 18, color: _c.txt3),
-                onPressed: () => Navigator.pop(context),
-                splashRadius: 18,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-              const SizedBox(width: 8),
-              // 저장 상태
-              _SaveStatus(
-                saving: _saving,
-                savedAt: st.lastSavedAt,
-                anim: _saveAlpha,
-              ),
-              const Spacer(),
-              // 글자 수
-              Text('${st.charCount}자', style: _ts(11, color: _c.txt3)),
-              const SizedBox(width: 12),
-              // 툴바 버튼들
-              _TBtn(Icons.copy_outlined, '복사', () {
-                Clipboard.setData(
-                  ClipboardData(
-                    text: st.blocks.map((b) => b.controller.text).join('\n'),
-                  ),
-                );
-                _snack('복사됨');
-              }),
-              _TBtn(Icons.download_outlined, 'MD 복사', () async {
-                await ref
-                    .read(fileEditorProvider.notifier)
-                    .copyMarkdown(_titleCtrl.text, _tagsCtrl.text);
-                _snack('Markdown 복사됨');
-              }),
-              _TBtn(
-                _viewMode == 0
-                    ? Icons.crop_square_rounded
-                    : Icons.view_column_rounded,
-                _viewMode == 0 ? '전체화면' : '분할 뷰',
-                () {
-                  setState(() => _viewMode = _viewMode == 0 ? 1 : 0);
-                },
-              ),
-              _TBtn(Icons.account_tree_outlined, '지식 그래프', () {
-                setState(() => _viewMode = _viewMode == 2 ? 0 : 2);
-                if (_viewMode == 2)
-                  ref.read(fileEditorProvider.notifier).requestGraph();
-              }),
-              const SizedBox(width: 12),
-            ],
-          ),
-          Container(height: 1, color: _c.border),
-        ],
-      ),
-    ),
-  );
-
-  // ── 에디터 ────────────────────────────────────────────────
-  Widget _editor(FileEditorState st) {
+  // ── Editor ────────────────────────────────────────────
+  Widget _buildEditor(FileEditorState st) {
     final blocks = st.blocks;
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(80, 56, 80, 0),
+            padding: const EdgeInsets.fromLTRB(88, 64, 88, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 아이콘
-                _EmojiPicker(
+                // 이모지 아이콘
+                _IconRow(
                   current: st.icon ?? '',
                   onChange: (e) {
                     ref.read(fileEditorProvider.notifier).setIcon(e);
-                    _onChange();
+                    _chg();
                   },
                 ),
-                const SizedBox(height: 20),
-                // 제목
-                TextField(
-                  controller: _titleCtrl,
-                  style: _ts(
-                    38,
-                    color: _c.txt,
-                    w: FontWeight.w800,
-                    h: 1.15,
-                    ls: -1.0,
-                  ),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    filled: false,
-                    hintText: '제목 없음',
-                    hintStyle: _ts(
-                      38,
-                      color: _c.txt3,
-                      w: FontWeight.w800,
-                      h: 1.15,
-                      ls: -1.0,
-                    ),
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  onChanged: (_) => _onChange(),
-                ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 22),
+                // 타이틀
+                _GlowTitle(ctrl: _tCtrl, onChange: () => _chg()),
+                const SizedBox(height: 32),
                 // 프로퍼티
-                _Prop(
+                _PropRow(
                   icon: Icons.tag_rounded,
                   label: 'Tags',
-                  ctrl: _tagsCtrl,
-                  hint: '태그를 추가하세요',
-                  onChange: (_) => _onChange(),
+                  ctrl: _gCtrl,
+                  hint: '태그',
+                  onChange: (_) => _chg(),
                 ),
-                _Prop(
+                _PropRow(
                   icon: Icons.auto_awesome_rounded,
                   label: 'Prompt',
-                  ctrl: _promptCtrl,
-                  hint: 'AI 요약 지시사항...',
+                  ctrl: _pCtrl,
+                  hint: 'AI 지시사항',
                   onChange: (v) {
                     ref.read(fileEditorProvider.notifier).setPrompt(v);
-                    _onChange();
+                    _chg();
                   },
                 ),
-                const SizedBox(height: 24),
-                Divider(height: 1, color: _c.border),
-                const SizedBox(height: 12),
+                const SizedBox(height: 28),
+                const _Divider(),
+                const SizedBox(height: 14),
               ],
             ),
           ),
         ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(80, 0, 80, 240),
+          padding: const EdgeInsets.fromLTRB(88, 0, 88, 280),
           sliver: SliverReorderableList(
             itemCount: blocks.length,
             onReorder: (o, n) =>
                 ref.read(fileEditorProvider.notifier).reorder(o, n),
-            itemBuilder: (ctx, i) => _Block(
+            itemBuilder: (ctx, i) => _NBlock(
               key: ValueKey(blocks[i].id),
-              index: i,
+              idx: i,
               block: blocks[i],
               prevType: i > 0 ? blocks[i - 1].type : null,
-              onKey: _onKey,
-              onText: _onText,
-              onDelete: () =>
-                  ref.read(fileEditorProvider.notifier).removeBlock(i),
+              onKey: _key,
+              onTxt: _txt,
+              onDel: () => ref.read(fileEditorProvider.notifier).removeBlock(i),
               onDup: () => ref.read(fileEditorProvider.notifier).duplicate(i),
               onType: (t) =>
                   ref.read(fileEditorProvider.notifier).setType(i, t),
               onCheck: (v) =>
                   ref.read(fileEditorProvider.notifier).toggleCheck(i, v),
               onFocus: () {
-                _onChange(ft: blocks[i].controller.text);
-                _onFocus(blocks[i].controller.text);
+                _chg(ft: blocks[i].controller.text);
+                _focusEvent(blocks[i].controller.text);
               },
             ),
           ),
@@ -691,423 +599,53 @@ class _FileScreenState extends ConsumerState<FileScreen>
     );
   }
 
-  // ── AI 패널 ───────────────────────────────────────────────
-  Widget _panel(FileEditorState st) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F0F16),
-        border: Border(left: BorderSide(color: _c.border)),
-      ),
-      child: Column(
-        children: [
-          // 탭바
-          Container(
-            height: 52,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: _c.border)),
-            ),
-            child: TabBar(
-              controller: _tab,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              dividerColor: Colors.transparent,
-              indicator: BoxDecoration(
-                color: _c.hover,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _c.borderHi),
-              ),
-              labelColor: _c.txt,
-              unselectedLabelColor: _c.txt2,
-              labelStyle: _ts(12, w: FontWeight.w600),
-              unselectedLabelStyle: _ts(12),
-              labelPadding: const EdgeInsets.symmetric(horizontal: 14),
-              tabs: [
-                _tab_(Icons.auto_awesome_rounded, '요약'),
-                _tab_(Icons.manage_search_rounded, '분석'),
-                _tab_(Icons.psychology_rounded, '암기'),
-                _tab_(Icons.quiz_rounded, '퀴즈'),
-                _tab_(Icons.chat_bubble_outline, 'Ask'),
-              ],
-            ),
-          ),
-          // 탭 내용
-          Expanded(
-            child: TabBarView(
-              controller: _tab,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _SumTab(
-                  state: st,
-                  ref: ref,
-                  onGenerate: _triggerSum,
-                  titleCtrl: _titleCtrl,
-                  tagsCtrl: _tagsCtrl,
-                  snack: _snack,
-                ),
-                _AnaTab(state: st),
-                _MemoTab(state: st, ref: ref, titleCtrl: _titleCtrl),
-                _QuizTab(state: st, ref: ref),
-                _AskTab(
-                  state: st,
-                  ctrl: _qaCtrl,
-                  onAsk: (q) => ref
-                      .read(fileEditorProvider.notifier)
-                      .askAI(q, widget.projectId),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Tab _tab_(IconData icon, String txt) => Tab(
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [Icon(icon, size: 13), const SizedBox(width: 5), Text(txt)],
-    ),
-  );
-
-  // ── 지식 그래프 ───────────────────────────────────────────
-  Widget _graph(FileEditorState st) {
-    if (st.graphData == null && !st.isGraphLoading) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => ref.read(fileEditorProvider.notifier).requestGraph(),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.hub_rounded, color: _c.acc, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'AI Semantic Graph',
-                style: _ts(18, color: _c.txt, w: FontWeight.w700, ls: -0.3),
-              ),
-              const Spacer(),
-              _TBtn(
-                Icons.refresh_rounded,
-                '재생성',
-                () => ref.read(fileEditorProvider.notifier).requestGraph(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Gemma3 모델이 개념 간 의미적 연결을 도출합니다.',
-            style: _ts(12, color: _c.txt2),
-          ),
-          const SizedBox(height: 20),
-          // 통계 카드 4개
-          Row(
-            children: [
-              _Stat('블록', '${st.blocks.length}개', Icons.article_outlined),
-              const SizedBox(width: 12),
-              _Stat('글자', '${st.charCount}자', Icons.text_fields_rounded),
-              const SizedBox(width: 12),
-              _Stat(
-                '확정 요약',
-                '${st.summaryBlocks.where((b) => b.isSaved).length}개',
-                Icons.bookmark_rounded,
-                accent: true,
-              ),
-              const SizedBox(width: 12),
-              _Stat(
-                '읽기',
-                '${(st.wordCount / 200).ceil()}분',
-                Icons.timer_outlined,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: _c.card,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _c.border),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: st.isGraphLoading
-                    ? Center(
-                        child: CircularProgressIndicator(
-                          color: _c.acc,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : st.graphData != null
-                    ? _GraphViz(data: st.graphData!)
-                    : Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.hub_outlined, size: 48, color: _c.txt3),
-                            const SizedBox(height: 12),
-                            Text(
-                              '충분한 내용을 작성하면 그래프가 생성됩니다.',
-                              style: _ts(13, color: _c.txt2),
-                            ),
-                          ],
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// 요약 탭  (핵심 — 완전 리디자인)
-// ═══════════════════════════════════════════════════════════
-class _SumTab extends StatelessWidget {
-  final FileEditorState state;
-  final WidgetRef ref;
-  final VoidCallback onGenerate;
-  final TextEditingController titleCtrl, tagsCtrl;
-  final void Function(String) snack;
-  const _SumTab({
-    required this.state,
-    required this.ref,
-    required this.onGenerate,
-    required this.titleCtrl,
-    required this.tagsCtrl,
-    required this.snack,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = _c;
-    return Stack(
-      children: [
-        // 배경 — 내용 없을 때
-        if (state.summaryBlocks.isEmpty && !state.isSummaryLoading)
-          _Empty(
-            icon: Icons.auto_awesome_rounded,
-            title: '스마트 요약',
-            desc: '50자 이상 작성하면 AI가 자동으로\n구조화된 요약 노트를 생성합니다.',
-          ),
-
-        // 로딩 중
-        if (state.isSummaryLoading && state.summaryBlocks.isEmpty)
-          const _Loader('AI가 내용을 분석하고 있어요...'),
-
-        // 요약 카드 목록
-        ListView.builder(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
-          itemCount: state.summaryBlocks.length,
-          itemBuilder: (_, i) => _SumCard(
-            key: ValueKey('sum_$i'),
-            block: state.summaryBlocks[i],
-            index: i,
-            onPin: () =>
-                ref.read(fileEditorProvider.notifier).toggleSummarySave(i),
-            onDel: () =>
-                ref.read(fileEditorProvider.notifier).removeSummaryBlock(i),
-            onCopy: () {
-              Clipboard.setData(
-                ClipboardData(text: state.summaryBlocks[i].content),
-              );
-              snack('복사됨');
-            },
-          ),
-        ),
-
-        // 하단 페이드
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 100,
-          child: IgnorePointer(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [const Color(0xFF0F0F16), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
-        ),
-
-        // 플로팅 버튼
-        Positioned(
-          bottom: 20,
-          left: 14,
-          right: 14,
-          child: _FloatBtn(
-            loading: state.isSummaryLoading,
-            label: state.summaryBlocks.any((b) => b.isSaved)
-                ? '추가 분석'
-                : '요약 생성',
-            icon: Icons.auto_fix_high_rounded,
-            onTap: () => ref
-                .read(fileEditorProvider.notifier)
-                .requestSummary(title: titleCtrl.text, tags: tagsCtrl.text),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// 요약 카드 — 고급 디자인
-// ═══════════════════════════════════════════════════════════
-class _SumCard extends StatefulWidget {
-  final SummaryBlock block;
-  final int index;
-  final VoidCallback onPin, onDel, onCopy;
-  const _SumCard({
-    Key? key,
-    required this.block,
-    required this.index,
-    required this.onPin,
-    required this.onDel,
-    required this.onCopy,
-  }) : super(key: key);
-  @override
-  State<_SumCard> createState() => _SumCardState();
-}
-
-class _SumCardState extends State<_SumCard>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ac;
-  late final Animation<double> _fade, _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _ac = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: 350 + widget.index * 60),
-    );
-    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
-    _scale = Tween(
-      begin: 0.96,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
-    _ac.forward();
-  }
-
-  @override
-  void dispose() {
-    _ac.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pinned = widget.block.isSaved;
-    final c = _c;
-    return FadeTransition(
-      opacity: _fade,
-      child: ScaleTransition(
-        scale: _scale,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          margin: const EdgeInsets.only(bottom: 12),
+  // ── AI Panel ──────────────────────────────────────────
+  Widget _buildPanel(FileEditorState st) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
           decoration: BoxDecoration(
-            color: pinned ? const Color(0xFF0F1A06) : c.card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: pinned ? c.acc.withOpacity(0.35) : c.border,
-              width: pinned ? 1.5 : 1,
-            ),
-            boxShadow: pinned
-                ? [
-                    BoxShadow(
-                      color: c.acc.withOpacity(0.07),
-                      blurRadius: 20,
-                      spreadRadius: 0,
-                    ),
-                  ]
-                : [],
+            color: _bg2.withOpacity(0.85),
+            border: const Border(left: BorderSide(color: _bdr)),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 헤더
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-                child: Row(
+              // 탭 헤더
+              Container(
+                height: 54,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: _bdr)),
+                ),
+                child: _PremiumTabs(ctrl: _tab),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tab,
+                  physics: const NeverScrollableScrollPhysics(),
                   children: [
-                    // 상태 인디케이터
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: pinned ? c.acc : c.txt3,
-                        shape: BoxShape.circle,
-                        boxShadow: pinned
-                            ? [
-                                BoxShadow(
-                                  color: c.acc.withOpacity(0.6),
-                                  blurRadius: 5,
-                                ),
-                              ]
-                            : [],
-                      ),
+                    _SumPanel(
+                      st: st,
+                      ref: ref,
+                      tCtrl: _tCtrl,
+                      gCtrl: _gCtrl,
+                      snack: _snack,
+                      pulse: _sumPulse,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      pinned ? 'PINNED' : 'LATEST',
-                      style: _ts(
-                        10,
-                        color: pinned ? c.acc : c.txt3,
-                        w: FontWeight.w700,
-                        ls: 0.8,
-                      ),
-                    ),
-                    const Spacer(),
-                    // 액션 버튼들
-                    _IBtn(
-                      Icons.content_copy_outlined,
-                      widget.onCopy,
-                      color: c.txt3,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 2),
-                    _IBtn(
-                      pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                      widget.onPin,
-                      color: pinned ? c.acc : c.txt3,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 2),
-                    _IBtn(
-                      Icons.close_rounded,
-                      widget.onDel,
-                      color: c.txt3,
-                      size: 14,
+                    _AnaPanel(st: st),
+                    _MemoPanel(st: st, ref: ref, tCtrl: _tCtrl),
+                    _QuizPanel(st: st, ref: ref),
+                    _AskPanel(
+                      st: st,
+                      ctrl: _qaCtrl,
+                      onAsk: (q) => ref
+                          .read(fileEditorProvider.notifier)
+                          .askAI(q, widget.projectId),
                     ),
                   ],
                 ),
               ),
-              // 구분선
-              Container(
-                height: 0.5,
-                color: pinned ? c.acc.withOpacity(0.15) : c.border,
-              ),
-              // 마크다운 본문
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: MarkdownBody(
-                  data: widget.block.content,
-                  styleSheet: _md(),
-                ),
-              ),
             ],
           ),
         ),
@@ -1116,889 +654,235 @@ class _SumCardState extends State<_SumCard>
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// 분석 탭
-// ═══════════════════════════════════════════════════════════
-class _AnaTab extends StatelessWidget {
-  final FileEditorState state;
-  const _AnaTab({required this.state});
+// ══════════════════ AURORA BACKGROUND ══════════════════
+class _AuroraBG extends StatelessWidget {
+  final Animation<double> anim;
+  const _AuroraBG({required this.anim});
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // 포커스 텍스트 카드
-        AnimatedSize(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutCubic,
-          child: state.focusedText.trim().isNotEmpty
-              ? Container(
-                  margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0E1508),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _c.acc.withOpacity(0.2)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 4,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: _c.acc,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _c.acc.withOpacity(0.8),
-                                  blurRadius: 4,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            '현재 분석 중',
-                            style: _ts(
-                              10,
-                              color: _c.acc,
-                              w: FontWeight.w700,
-                              ls: 0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        state.focusedText,
-                        style: _ts(13, color: _c.txt2, h: 1.5),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                )
-              : const SizedBox.shrink(),
-        ),
-        Expanded(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            child: state.isAnalysisLoading
-                ? const _Loader('문단의 핵심 의미를 파악 중...')
-                : state.currentAnalysis?.isNotEmpty == true
-                ? SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(14, 16, 14, 40),
-                    child: MarkdownBody(
-                      data: state.currentAnalysis!,
-                      styleSheet: _md(),
-                    ),
-                  )
-                : const _Empty(
-                    icon: Icons.manage_search_rounded,
-                    title: '문단 분석',
-                    desc: '에디터의 문단을 클릭하면\nAI가 즉시 심층 분석합니다.',
-                  ),
-          ),
-        ),
-      ],
+    return AnimatedBuilder(
+      animation: anim,
+      builder: (_, __) {
+        final t = anim.value;
+        return SizedBox.expand(child: CustomPaint(painter: _AuroraPainter(t)));
+      },
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// 암기 탭
-// ═══════════════════════════════════════════════════════════
-class _MemoTab extends StatelessWidget {
-  final FileEditorState state;
-  final WidgetRef ref;
-  final TextEditingController titleCtrl;
-  const _MemoTab({
-    required this.state,
-    required this.ref,
-    required this.titleCtrl,
-  });
+class _AuroraPainter extends CustomPainter {
+  final double t;
+  const _AuroraPainter(this.t);
+
   @override
-  Widget build(BuildContext context) => Stack(
-    children: [
-      if (state.currentMemo == null && !state.isMemoLoading)
-        const _Empty(
-          icon: Icons.psychology_rounded,
-          title: '핵심 암기',
-          desc: '본문에서 시험에 꼭 나올\n핵심 개념을 추출합니다.',
-        ),
-      if (state.currentMemo?.isNotEmpty == true)
-        SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
-          child: MarkdownBody(data: state.currentMemo!, styleSheet: _md()),
-        ),
-      Positioned(
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 100,
-        child: IgnorePointer(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [const Color(0xFF0F0F16), Colors.transparent],
-              ),
-            ),
-          ),
-        ),
-      ),
-      if (state.currentMemo == null || state.isMemoLoading)
-        Positioned(
-          bottom: 20,
-          left: 14,
-          right: 14,
-          child: _FloatBtn(
-            loading: state.isMemoLoading,
-            label: '암기 노트 생성',
-            icon: Icons.lightbulb_rounded,
-            onTap: () => ref
-                .read(fileEditorProvider.notifier)
-                .generateMemo(titleCtrl.text),
-          ),
-        ),
-    ],
-  );
+  void paint(Canvas canvas, Size size) {
+    void blob(double cx, double cy, double r, Color c, double a) {
+      canvas.drawCircle(
+        Offset(cx * size.width, cy * size.height),
+        r,
+        Paint()
+          ..color = c.withOpacity(a)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120),
+      );
+    }
+
+    // 움직이는 오로라 오브들
+    blob(
+      0.15 + t * 0.08,
+      0.2 + math.sin(t * math.pi) * 0.05,
+      260,
+      const Color(0xFF4F8EFF),
+      0.045,
+    );
+    blob(
+      0.85 - t * 0.06,
+      0.15 + math.cos(t * math.pi) * 0.04,
+      200,
+      _acc,
+      0.035,
+    );
+    blob(0.5 + math.sin(t * math.pi) * 0.1, 0.9, 300, _pur, 0.03);
+    blob(0.9, 0.7 + t * 0.05, 180, _grn, 0.025);
+  }
+
+  @override
+  bool shouldRepaint(_AuroraPainter o) => o.t != t;
 }
 
-// ═══════════════════════════════════════════════════════════
-// 퀴즈 탭
-// ═══════════════════════════════════════════════════════════
-class _QuizTab extends StatelessWidget {
-  final FileEditorState state;
-  final WidgetRef ref;
-  const _QuizTab({required this.state, required this.ref});
-  @override
-  Widget build(BuildContext context) => Stack(
-    children: [
-      if (state.quizData == null && !state.isQuizLoading)
-        const _Empty(
-          icon: Icons.quiz_rounded,
-          title: '인터랙티브 퀴즈',
-          desc: '학습 내용으로 객관식 퀴즈를\n즉시 생성합니다.',
-        ),
-      if (state.quizData != null)
-        ListView.builder(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
-          itemCount: state.quizData!.length,
-          itemBuilder: (_, qi) => _QItem(
-            q: state.quizData![qi],
-            qi: qi,
-            answered: state.quizAnswers[qi],
-            onAns: (oi) =>
-                ref.read(fileEditorProvider.notifier).answerQuiz(qi, oi),
-          ),
-        ),
-      Positioned(
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 100,
-        child: IgnorePointer(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [const Color(0xFF0F0F16), Colors.transparent],
-              ),
-            ),
-          ),
-        ),
-      ),
-      if (state.quizData == null || state.isQuizLoading)
-        Positioned(
-          bottom: 20,
-          left: 14,
-          right: 14,
-          child: _FloatBtn(
-            loading: state.isQuizLoading,
-            label: '퀴즈 생성',
-            icon: Icons.quiz_rounded,
-            onTap: () => ref.read(fileEditorProvider.notifier).generateQuiz(),
-          ),
-        ),
-    ],
-  );
-}
-
-class _QItem extends StatelessWidget {
-  final dynamic q;
-  final int qi;
-  final int? answered;
-  final void Function(int) onAns;
-  const _QItem({
-    required this.q,
-    required this.qi,
-    required this.answered,
-    required this.onAns,
+// ══════════════════ APP BAR ════════════════════════════
+class _AppBar extends StatelessWidget implements PreferredSizeWidget {
+  final bool saving;
+  final DateTime? savedAt;
+  final Animation<double> saveAnim;
+  final int charCount, view;
+  final VoidCallback onBack, onCopy, onMdCopy, onView, onGraph;
+  const _AppBar({
+    required this.saving,
+    this.savedAt,
+    required this.saveAnim,
+    required this.charCount,
+    required this.view,
+    required this.onBack,
+    required this.onCopy,
+    required this.onMdCopy,
+    required this.onView,
+    required this.onGraph,
   });
+
+  @override
+  Size get preferredSize => const Size.fromHeight(52);
+
   @override
   Widget build(BuildContext context) {
-    final correct = q['answer'] ?? 0;
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      height: 52,
+      color: Colors.transparent,
+      child: Row(
         children: [
-          Text(
-            'Q${qi + 1}.  ${q['question']}',
-            style: _ts(14, color: _c.txt, w: FontWeight.w600, h: 1.5),
-          ),
-          const SizedBox(height: 12),
-          ...List.generate((q['options'] as List).length, (oi) {
-            Color bg = _c.card, bdr = _c.border, tc = _c.txt;
-            if (answered != null) {
-              if (oi == correct) {
-                bg = _c.green.withOpacity(0.1);
-                bdr = _c.green.withOpacity(0.4);
-                tc = _c.green;
-              } else if (oi == answered) {
-                bg = _c.red.withOpacity(0.1);
-                bdr = _c.red.withOpacity(0.4);
-                tc = _c.red;
-              }
-            }
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: GestureDetector(
-                onTap: () => onAns(oi),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: bdr),
-                  ),
-                  child: Text(
-                    q['options'][oi],
-                    style: _ts(13, color: tc, w: FontWeight.w500),
-                  ),
-                ),
-              ),
-            );
-          }),
-          if (answered != null) ...[
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: _c.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _c.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        answered == correct
-                            ? Icons.check_circle_rounded
-                            : Icons.cancel_rounded,
-                        size: 14,
-                        color: answered == correct ? _c.green : _c.red,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        answered == correct ? '정답' : '오답',
-                        style: _ts(
-                          12,
-                          color: answered == correct ? _c.green : _c.red,
-                          w: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    q['explanation'] ?? '',
-                    style: _ts(12, color: _c.txt2, h: 1.6),
-                  ),
-                ],
-              ),
+          const SizedBox(width: 6),
+          // 뒤로가기
+          _CircleBtn(icon: Icons.arrow_back_rounded, onTap: onBack),
+          const SizedBox(width: 12),
+          // 저장 상태
+          _SaveChip(saving: saving, savedAt: savedAt, anim: saveAnim),
+          const Spacer(),
+          // 글자 수
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _bg3,
+              borderRadius: BorderRadius.circular(20),
             ),
-          ],
+            child: Text(
+              '$charCount자',
+              style: const TextStyle(color: _txt2, fontSize: 11),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _TipBtn(Icons.copy_rounded, '복사', onCopy),
+          _TipBtn(Icons.download_outlined, 'MD 복사', onMdCopy),
+          _TipBtn(
+            view == 0 ? Icons.crop_square_rounded : Icons.view_column_rounded,
+            view == 0 ? '전체화면' : '분할 뷰',
+            onView,
+          ),
+          _TipBtn(Icons.account_tree_outlined, '지식 그래프', onGraph),
+          const SizedBox(width: 10),
         ],
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Ask 탭
-// ═══════════════════════════════════════════════════════════
-class _AskTab extends StatelessWidget {
-  final FileEditorState state;
-  final TextEditingController ctrl;
-  final void Function(String) onAsk;
-  const _AskTab({required this.state, required this.ctrl, required this.onAsk});
-  @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Expanded(
-        child: state.isQALoading
-            ? const _Loader('노트 + 웹 검색 중...')
-            : state.qaAnswer != null
-            ? SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(14, 16, 14, 20),
-                child: MarkdownBody(data: state.qaAnswer!, styleSheet: _md()),
-              )
-            : const _Empty(
-                icon: Icons.chat_bubble_outline_rounded,
-                title: 'Quick Ask',
-                desc: '내 노트 + 실시간 웹 검색으로\n어떤 질문이든 답합니다.',
-              ),
-      ),
-      Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: _c.border)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: ctrl,
-                style: _ts(13, color: _c.txt),
-                decoration: InputDecoration(
-                  hintText: '질문을 입력하세요...',
-                  hintStyle: _ts(13, color: _c.txt3),
-                  filled: true,
-                  fillColor: _c.card,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: _c.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: _c.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: _c.acc),
-                  ),
-                ),
-                onSubmitted: (v) {
-                  onAsk(v);
-                  ctrl.clear();
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () {
-                onAsk(ctrl.text);
-                ctrl.clear();
-              },
-              child: Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(
-                  color: _c.acc,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.arrow_upward_rounded,
-                  color: Colors.black,
-                  size: 17,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ],
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
-// 노션 블록
-// ═══════════════════════════════════════════════════════════
-class _Block extends StatefulWidget {
-  final int index;
-  final Block block;
-  final BlockType? prevType;
-  final KeyEventResult Function(FocusNode, KeyEvent, int) onKey;
-  final Function(String, int) onText;
-  final VoidCallback onDelete, onDup;
-  final Function(BlockType) onType;
-  final Function(bool) onCheck;
-  final VoidCallback onFocus;
-  const _Block({
-    Key? key,
-    required this.index,
-    required this.block,
-    this.prevType,
-    required this.onKey,
-    required this.onText,
-    required this.onDelete,
-    required this.onDup,
-    required this.onType,
-    required this.onCheck,
-    required this.onFocus,
-  }) : super(key: key);
-  @override
-  State<_Block> createState() => _BlockState();
-}
-
-class _BlockState extends State<_Block> with SingleTickerProviderStateMixin {
-  bool _hov = false, _foc = false;
-  late final AnimationController _ac;
-  late final Animation<double> _fade;
-  late final Animation<Offset> _slide;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.block.focusNode.addListener(_onFocChange);
-    _ac = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 180),
-    );
-    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
-    _slide = Tween(
-      begin: const Offset(0, -.04),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOut));
-    _ac.forward();
-  }
-
-  @override
-  void dispose() {
-    widget.block.focusNode.removeListener(_onFocChange);
-    _ac.dispose();
-    super.dispose();
-  }
-
-  void _onFocChange() {
-    if (mounted) {
-      setState(() => _foc = widget.block.focusNode.hasFocus);
-      if (_foc) widget.onFocus();
-    }
-  }
-
-  TextStyle _style() {
-    switch (widget.block.type) {
-      case BlockType.h1:
-        return _ts(32, color: _c.txt, w: FontWeight.w800, h: 1.3, ls: -0.7);
-      case BlockType.h2:
-        return _ts(24, color: _c.txt, w: FontWeight.w700, h: 1.35, ls: -0.3);
-      case BlockType.h3:
-        return _ts(19, color: _c.txt, w: FontWeight.w600, h: 1.4);
-      case BlockType.code:
-        return _ts(
-          14,
-          color: const Color(0xFFDDD6FE),
-          h: 1.6,
-        ).copyWith(fontFamily: 'Courier');
-      default:
-        return _ts(16, color: _c.txt, h: 1.75, ls: 0.1);
-    }
-  }
-
-  Color? _bgColor() {
-    if (widget.block.type == BlockType.code) return const Color(0xFF0D1117);
-    return null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    widget.block.focusNode.onKeyEvent = (n, e) =>
-        widget.onKey(n, e, widget.index);
-    final isBullet = widget.block.type == BlockType.bullet;
-    final isPrevBullet = widget.prevType == BlockType.bullet;
-    final topPad = (isBullet && isPrevBullet) ? 1.0 : (isBullet ? 3.0 : 2.0);
-
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(
-        position: _slide,
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _hov = true),
-          onExit: (_) => setState(() => _hov = false),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            padding: EdgeInsets.only(
-              top: topPad,
-              bottom: isBullet ? 1 : 2,
-              left: 8,
-              right: 8,
-            ),
-            decoration: BoxDecoration(
-              color: _foc ? Colors.white.withOpacity(0.02) : _bgColor(),
-              borderRadius: BorderRadius.circular(5),
-              border: widget.block.type == BlockType.code
-                  ? Border.all(color: _c.border)
-                  : null,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 드래그 핸들
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: AnimatedOpacity(
-                    opacity: _hov ? 1 : 0,
-                    duration: const Duration(milliseconds: 120),
-                    child: ReorderableDragStartListener(
-                      index: widget.index,
-                      child: PopupMenuButton<String>(
-                        padding: EdgeInsets.zero,
-                        color: _c.card,
-                        offset: const Offset(0, 28),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: BorderSide(color: _c.border),
-                        ),
-                        icon: Icon(
-                          Icons.drag_indicator_rounded,
-                          size: 15,
-                          color: _c.txt3,
-                        ),
-                        iconSize: 15,
-                        onSelected: (v) {
-                          if (v == 'd')
-                            widget.onDelete();
-                          else if (v == 'c')
-                            widget.onDup();
-                          else if (v == 'h1')
-                            widget.onType(BlockType.h1);
-                          else if (v == 'h2')
-                            widget.onType(BlockType.h2);
-                          else if (v == 't')
-                            widget.onType(BlockType.text);
-                          else if (v == 'b')
-                            widget.onType(BlockType.bullet);
-                          else if (v == 'cd')
-                            widget.onType(BlockType.code);
-                        },
-                        itemBuilder: (_) => [
-                          _mi('d', Icons.delete_outline_rounded, '삭제', _c.red),
-                          _mi('c', Icons.content_copy_rounded, '복제', _c.txt),
-                          const PopupMenuDivider(height: 6),
-                          _mi('h1', Icons.looks_one_outlined, '제목 1', _c.txt),
-                          _mi('h2', Icons.looks_two_outlined, '제목 2', _c.txt),
-                          _mi('t', Icons.short_text, '텍스트', _c.txt),
-                          _mi('b', Icons.format_list_bulleted, '글머리', _c.txt),
-                          _mi('cd', Icons.data_object, '코드', _c.txt),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // bullet
-                if (widget.block.type == BlockType.bullet)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, right: 10),
-                    child: Icon(Icons.circle, size: 4, color: _c.txt2),
-                  ),
-
-                // checkbox
-                if (widget.block.type == BlockType.checkbox)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 5, right: 10),
-                    child: SizedBox(
-                      width: 17,
-                      height: 17,
-                      child: Checkbox(
-                        value: widget.block.isChecked,
-                        onChanged: (v) => widget.onCheck(v!),
-                        activeColor: _c.acc,
-                        checkColor: Colors.black,
-                        side: BorderSide(color: _c.txt3, width: 1.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // 코드 태그
-                if (widget.block.type == BlockType.code)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3, right: 8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _c.border,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'code',
-                        style: _ts(
-                          9,
-                          color: _c.txt3,
-                          w: FontWeight.w600,
-                          ls: 0.3,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // TextField
-                Expanded(
-                  child: CompositedTransformTarget(
-                    link: widget.block.layerLink,
-                    child: TextField(
-                      controller: widget.block.controller,
-                      focusNode: widget.block.focusNode,
-                      maxLines: null,
-                      style: _style().copyWith(
-                        decoration:
-                            (widget.block.type == BlockType.checkbox &&
-                                widget.block.isChecked)
-                            ? TextDecoration.lineThrough
-                            : null,
-                        color:
-                            (widget.block.type == BlockType.checkbox &&
-                                widget.block.isChecked)
-                            ? _c.txt3
-                            : null,
-                      ),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                        filled: false,
-                        hintText: (_foc && widget.block.controller.text.isEmpty)
-                            ? _hintFor(widget.block.type)
-                            : '',
-                        hintStyle: _ts(16, color: _c.txt3.withOpacity(0.5)),
-                      ),
-                      onChanged: (t) => widget.onText(t, widget.index),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _hintFor(BlockType t) => switch (t) {
-    BlockType.h1 => '제목 1',
-    BlockType.h2 => '제목 2',
-    BlockType.h3 => '제목 3',
-    BlockType.code => '코드를 입력하세요...',
-    BlockType.bullet => '리스트 항목',
-    BlockType.checkbox => '할 일 추가',
-    _ => "입력하거나  '/'  로 블록 추가",
-  };
-
-  PopupMenuItem<String> _mi(String v, IconData icon, String txt, Color c) =>
-      PopupMenuItem(
-        value: v,
-        height: 34,
-        child: Row(
-          children: [
-            Icon(icon, size: 14, color: c.withOpacity(0.8)),
-            const SizedBox(width: 8),
-            Text(txt, style: _ts(13, color: c)),
-          ],
-        ),
-      );
-}
-
-// ═══════════════════════════════════════════════════════════
-// 슬래시 메뉴
-// ═══════════════════════════════════════════════════════════
-enum _CmdCat { text, list, media }
-
-class _Cmd {
-  final String id, label;
+class _CircleBtn extends StatefulWidget {
   final IconData icon;
-  final _CmdCat cat;
-  const _Cmd(this.id, this.label, this.icon, this.cat);
-}
-
-class _SlashMenu extends StatelessWidget {
-  final List<_Cmd> cmds;
-  final int sel;
-  final void Function(_Cmd) onSel;
-  const _SlashMenu({
-    required this.cmds,
-    required this.sel,
-    required this.onSel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // 카테고리 그룹핑
-    final cats = {for (var c in cmds) c.cat: true};
-    return Material(
-      elevation: 20,
-      color: _c.card,
-      borderRadius: BorderRadius.circular(12),
-      shadowColor: Colors.black.withOpacity(0.5),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 280),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _c.borderHi),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.add_circle_outline_rounded,
-                    size: 12,
-                    color: _c.acc,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '블록 추가',
-                    style: _ts(10, color: _c.txt2, w: FontWeight.w600, ls: 0.5),
-                  ),
-                ],
-              ),
-            ),
-            ...cmds.asMap().entries.map(
-              (e) => _CmdItem(
-                cmd: e.value,
-                sel: e.key == sel,
-                onTap: () => onSel(e.value),
-              ),
-            ),
-            const SizedBox(height: 6),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CmdItem extends StatefulWidget {
-  final _Cmd cmd;
-  final bool sel;
   final VoidCallback onTap;
-  const _CmdItem({required this.cmd, required this.sel, required this.onTap});
+  const _CircleBtn({required this.icon, required this.onTap});
   @override
-  State<_CmdItem> createState() => _CmdItemState();
+  State<_CircleBtn> createState() => _CircleBtnState();
 }
 
-class _CmdItemState extends State<_CmdItem> {
-  bool _h = false;
+class _CircleBtnState extends State<_CircleBtn> {
+  bool _hov = false;
   @override
   Widget build(BuildContext context) => MouseRegion(
-    onEnter: (_) => setState(() => _h = true),
-    onExit: (_) => setState(() => _h = false),
+    onEnter: (_) => setState(() => _hov = true),
+    onExit: (_) => setState(() => _hov = false),
     child: GestureDetector(
       onTap: widget.onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 80),
-        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        duration: const Duration(milliseconds: 150),
+        width: 34,
+        height: 34,
         decoration: BoxDecoration(
-          color: (widget.sel || _h) ? _c.hover : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          color: _hov ? _bg4 : Colors.transparent,
+          shape: BoxShape.circle,
+          border: Border.all(color: _hov ? _bdr2 : Colors.transparent),
         ),
-        child: Row(
-          children: [
-            Icon(
-              widget.cmd.icon,
-              size: 15,
-              color: (widget.sel || _h) ? _c.acc : _c.txt2,
-            ),
-            const SizedBox(width: 10),
-            Text(
-              widget.cmd.label,
-              style: _ts(
-                13,
-                color: (widget.sel || _h) ? _c.txt : _c.txt2,
-                w: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
+        child: Icon(widget.icon, size: 17, color: _hov ? _txt0 : _txt2),
       ),
     ),
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// 공통 작은 위젯들
-// ═══════════════════════════════════════════════════════════
-class _SplitPane extends StatefulWidget {
-  final Widget left, right;
-  const _SplitPane({required this.left, required this.right});
+class _SaveChip extends StatelessWidget {
+  final bool saving;
+  final DateTime? savedAt;
+  final Animation<double> anim;
+  const _SaveChip({required this.saving, this.savedAt, required this.anim});
   @override
-  State<_SplitPane> createState() => _SplitPaneState();
-}
-
-class _SplitPaneState extends State<_SplitPane> {
-  double _ratio = 0.58;
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (_, c) {
-      final w = c.maxWidth;
+  Widget build(BuildContext context) {
+    if (saving)
       return Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(width: w * _ratio, child: widget.left),
-          MouseRegion(
-            cursor: SystemMouseCursors.resizeColumn,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onPanUpdate: (d) => setState(
-                () => _ratio = (_ratio + d.delta.dx / w).clamp(0.35, 0.72),
-              ),
-              child: Container(
-                width: 5,
-                color: Colors.transparent,
-                child: Center(child: Container(width: 1, color: _c.border)),
-              ),
+          SizedBox(
+            width: 11,
+            height: 11,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.2,
+              color: _txt2.withOpacity(0.5),
             ),
           ),
-          Expanded(child: widget.right),
+          const SizedBox(width: 7),
+          const Text('저장 중', style: TextStyle(color: _txt2, fontSize: 11)),
         ],
       );
-    },
+    if (savedAt != null)
+      return FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(
+          scale: anim,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_rounded,
+                size: 13,
+                color: _grn.withOpacity(0.8),
+              ),
+              const SizedBox(width: 5),
+              const Text('저장됨', style: TextStyle(color: _txt2, fontSize: 11)),
+            ],
+          ),
+        ),
+      );
+    return const SizedBox.shrink();
+  }
+}
+
+class _TipBtn extends StatelessWidget {
+  final IconData icon;
+  final String tip;
+  final VoidCallback onTap;
+  const _TipBtn(this.icon, this.tip, this.onTap);
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tip,
+    preferBelow: true,
+    child: IconButton(
+      icon: Icon(icon, size: 16),
+      onPressed: onTap,
+      color: _txt2,
+      hoverColor: _bg4,
+      splashRadius: 16,
+      padding: const EdgeInsets.all(6),
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+    ),
   );
 }
 
-class _Prop extends StatefulWidget {
-  final IconData icon;
-  final String label;
+// ══════════════════ GLOW TITLE ═════════════════════════
+class _GlowTitle extends StatefulWidget {
   final TextEditingController ctrl;
-  final String hint;
-  final void Function(String) onChange;
-  const _Prop({
-    required this.icon,
-    required this.label,
-    required this.ctrl,
-    required this.hint,
-    required this.onChange,
-  });
+  final VoidCallback onChange;
+  const _GlowTitle({required this.ctrl, required this.onChange});
   @override
-  State<_Prop> createState() => _PropState();
+  State<_GlowTitle> createState() => _GlowTitleState();
 }
 
-class _PropState extends State<_Prop> {
+class _GlowTitleState extends State<_GlowTitle> {
   bool _foc = false;
   late FocusNode _fn;
   @override
@@ -2014,61 +898,67 @@ class _PropState extends State<_Prop> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(
-      children: [
-        Icon(widget.icon, size: 14, color: _foc ? _c.acc : _c.txt3),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 60,
-          child: Text(widget.label, style: _ts(12, color: _c.txt3)),
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: _foc && widget.ctrl.text.isNotEmpty
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: _acc.withOpacity(0.04),
+                  blurRadius: 40,
+                  spreadRadius: 10,
+                ),
+              ],
+            )
+          : null,
+      child: TextField(
+        controller: widget.ctrl,
+        focusNode: _fn,
+        style: const TextStyle(
+          fontSize: 40,
+          fontWeight: FontWeight.w800,
+          color: _txt0,
+          height: 1.18,
+          letterSpacing: -1.2,
+          shadows: [Shadow(color: Color(0x22CCFF66), blurRadius: 30)],
         ),
-        Expanded(
-          child: TextField(
-            controller: widget.ctrl,
-            focusNode: _fn,
-            style: _ts(13, color: _c.txt2),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              filled: true,
-              fillColor: _foc ? _c.hover : Colors.transparent,
-              hoverColor: _c.hover,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 6,
-              ),
-              hintText: widget.hint,
-              hintStyle: _ts(13, color: _c.txt3.withOpacity(0.5)),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: BorderSide(color: _c.border),
-              ),
-            ),
-            onChanged: widget.onChange,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          filled: false,
+          isDense: true,
+          contentPadding: EdgeInsets.zero,
+          hintText: '제목 없음',
+          hintStyle: TextStyle(
+            fontSize: 40,
+            fontWeight: FontWeight.w800,
+            color: _txt2,
+            height: 1.18,
+            letterSpacing: -1.2,
           ),
         ),
-      ],
-    ),
-  );
+        onChanged: (_) => widget.onChange(),
+      ),
+    );
+  }
 }
 
-class _EmojiPicker extends StatefulWidget {
+// ══════════════════ ICON PICKER ════════════════════════
+class _IconRow extends StatefulWidget {
   final String current;
   final void Function(String) onChange;
-  const _EmojiPicker({required this.current, required this.onChange});
+  const _IconRow({required this.current, required this.onChange});
   @override
-  State<_EmojiPicker> createState() => _EmojiPickerState();
+  State<_IconRow> createState() => _IconRowState();
 }
 
-class _EmojiPickerState extends State<_EmojiPicker> {
+class _IconRowState extends State<_IconRow>
+    with SingleTickerProviderStateMixin {
   bool _open = false;
-  static const _emojis = [
+  late AnimationController _ac;
+  late Animation<double> _anim;
+  static const _icons = [
     '📚',
     '✏️',
     '💡',
@@ -2089,99 +979,786 @@ class _EmojiPickerState extends State<_EmojiPicker> {
     '🎨',
     '📐',
     '🗺️',
+    '🧬',
+    '⚗️',
+    '🔭',
+    '🎵',
   ];
+  @override
+  void initState() {
+    super.initState();
+    _ac = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _anim = CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic);
+  }
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    setState(() => _open = !_open);
+    _open ? _ac.forward() : _ac.reverse();
+  }
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       GestureDetector(
-        onTap: () => setState(() => _open = !_open),
+        onTap: _toggle,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 130),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: _open ? _c.hover : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: _open ? _bg4 : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 widget.current.isNotEmpty ? widget.current : '🪄',
-                style: const TextStyle(fontSize: 32),
+                style: const TextStyle(fontSize: 36),
               ),
-              const SizedBox(width: 6),
-              Text(_open ? '닫기' : '', style: _ts(11, color: _c.txt3)),
+              const SizedBox(width: 8),
+              AnimatedRotation(
+                turns: _open ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: const Icon(
+                  Icons.expand_more_rounded,
+                  size: 16,
+                  color: _txt2,
+                ),
+              ),
             ],
           ),
         ),
       ),
-      if (_open) ...[
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 4,
-          runSpacing: 4,
-          children: _emojis
-              .map(
-                (e) => GestureDetector(
-                  onTap: () {
-                    widget.onChange(e);
-                    setState(() => _open = false);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 100),
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: e == widget.current ? _c.accDim : _c.card,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: e == widget.current
-                            ? _c.acc.withOpacity(0.4)
-                            : _c.border,
+      SizeTransition(
+        sizeFactor: _anim,
+        axisAlignment: -1,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: _icons
+                .map(
+                  (ic) => GestureDetector(
+                    onTap: () {
+                      widget.onChange(ic);
+                      _toggle();
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 120),
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: ic == widget.current ? _accD : _bg3,
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(
+                          color: ic == widget.current
+                              ? _acc.withOpacity(0.5)
+                              : _bdr,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(ic, style: const TextStyle(fontSize: 20)),
                       ),
                     ),
-                    child: Center(
-                      child: Text(e, style: const TextStyle(fontSize: 20)),
-                    ),
                   ),
-                ),
-              )
-              .toList(),
+                )
+                .toList(),
+          ),
         ),
-      ],
+      ),
     ],
   );
 }
 
-class _FloatBtn extends StatefulWidget {
-  final bool loading;
-  final String label;
+// ══════════════════ PROP ROW ═══════════════════════════
+class _PropRow extends StatefulWidget {
   final IconData icon;
-  final VoidCallback? onTap;
-  const _FloatBtn({
-    required this.loading,
-    required this.label,
+  final String label;
+  final TextEditingController ctrl;
+  final String hint;
+  final void Function(String) onChange;
+  const _PropRow({
     required this.icon,
-    this.onTap,
+    required this.label,
+    required this.ctrl,
+    required this.hint,
+    required this.onChange,
   });
   @override
-  State<_FloatBtn> createState() => _FloatBtnState();
+  State<_PropRow> createState() => _PropRowState();
 }
 
-class _FloatBtnState extends State<_FloatBtn>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ac;
-  late final Animation<double> _pulse;
+class _PropRowState extends State<_PropRow> {
+  bool _foc = false;
+  late FocusNode _fn;
   @override
   void initState() {
     super.initState();
-    _ac = AnimationController(vsync: this, duration: const Duration(seconds: 2))
-      ..repeat(reverse: true);
-    _pulse = Tween(
-      begin: 1.0,
-      end: 1.025,
-    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeInOut));
+    _fn = FocusNode()..addListener(() => setState(() => _foc = _fn.hasFocus));
+  }
+
+  @override
+  void dispose() {
+    _fn.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          child: Icon(widget.icon, size: 14, color: _foc ? _acc : _txt2),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 62,
+          child: Text(
+            widget.label,
+            style: const TextStyle(color: _txt2, fontSize: 12),
+          ),
+        ),
+        Expanded(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
+              color: _foc ? _bg4 : Colors.transparent,
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: _foc ? _bdr2 : Colors.transparent),
+            ),
+            child: TextField(
+              controller: widget.ctrl,
+              focusNode: _fn,
+              style: const TextStyle(color: _txt1, fontSize: 13),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                filled: false,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                hintText: widget.hint,
+                hintStyle: const TextStyle(color: _txt2, fontSize: 13),
+              ),
+              onChanged: widget.onChange,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _Divider extends StatelessWidget {
+  const _Divider();
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 1,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [Colors.transparent, _bdr, Colors.transparent],
+      ),
+    ),
+  );
+}
+
+// ══════════════════ NOTION BLOCK ═══════════════════════
+class _NBlock extends StatefulWidget {
+  final int idx;
+  final Block block;
+  final BlockType? prevType;
+  final KeyEventResult Function(FocusNode, KeyEvent, int) onKey;
+  final Function(String, int) onTxt;
+  final VoidCallback onDel, onDup, onFocus;
+  final Function(BlockType) onType;
+  final Function(bool) onCheck;
+  const _NBlock({
+    Key? key,
+    required this.idx,
+    required this.block,
+    this.prevType,
+    required this.onKey,
+    required this.onTxt,
+    required this.onDel,
+    required this.onDup,
+    required this.onType,
+    required this.onCheck,
+    required this.onFocus,
+  }) : super(key: key);
+  @override
+  State<_NBlock> createState() => _NBlockState();
+}
+
+class _NBlockState extends State<_NBlock> with SingleTickerProviderStateMixin {
+  bool _hov = false, _foc = false;
+  late AnimationController _ac;
+  late Animation<double> _fade;
+  late Animation<Offset> _slide;
+  @override
+  void initState() {
+    super.initState();
+    widget.block.focusNode.addListener(_onFoc);
+    _ac = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
+    _slide = Tween(
+      begin: const Offset(0, -.03),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
+    _ac.forward();
+  }
+
+  @override
+  void dispose() {
+    widget.block.focusNode.removeListener(_onFoc);
+    _ac.dispose();
+    super.dispose();
+  }
+
+  void _onFoc() {
+    if (mounted) {
+      setState(() => _foc = widget.block.focusNode.hasFocus);
+      if (_foc) widget.onFocus();
+    }
+  }
+
+  TextStyle _style() {
+    switch (widget.block.type) {
+      case BlockType.h1:
+        return const TextStyle(
+          fontSize: 32,
+          fontWeight: FontWeight.w800,
+          color: _txt0,
+          height: 1.3,
+          letterSpacing: -0.7,
+          shadows: [Shadow(color: Color(0x15FFFFFF), blurRadius: 20)],
+        );
+      case BlockType.h2:
+        return const TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.w700,
+          color: _txt0,
+          height: 1.35,
+          letterSpacing: -0.3,
+        );
+      case BlockType.h3:
+        return const TextStyle(
+          fontSize: 19,
+          fontWeight: FontWeight.w600,
+          color: _txt0,
+          height: 1.4,
+        );
+      case BlockType.code:
+        return const TextStyle(
+          fontSize: 14,
+          fontFamily: 'Courier',
+          color: Color(0xFFBBAFF8),
+          height: 1.6,
+          letterSpacing: 0.2,
+        );
+      default:
+        return const TextStyle(
+          fontSize: 16,
+          color: _txt0,
+          height: 1.8,
+          letterSpacing: 0.15,
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    widget.block.focusNode.onKeyEvent = (n, e) =>
+        widget.onKey(n, e, widget.idx);
+    final isBul = widget.block.type == BlockType.bullet;
+    final isPrevBul = widget.prevType == BlockType.bullet;
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hov = true),
+          onExit: (_) => setState(() => _hov = false),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            padding: EdgeInsets.only(
+              top: (isBul && isPrevBul) ? 1 : (isBul ? 3 : 2),
+              bottom: isBul ? 1 : 2,
+              left: 8,
+              right: 8,
+            ),
+            decoration: BoxDecoration(
+              color: _foc
+                  ? Colors.white.withOpacity(0.018)
+                  : widget.block.type == BlockType.code
+                  ? const Color(0xFF0D1117)
+                  : null,
+              borderRadius: BorderRadius.circular(6),
+              border: widget.block.type == BlockType.code
+                  ? Border.all(color: _bdr)
+                  : null,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 드래그 핸들
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: AnimatedOpacity(
+                    opacity: _hov ? 1 : 0,
+                    duration: const Duration(milliseconds: 120),
+                    child: ReorderableDragStartListener(
+                      index: widget.idx,
+                      child: PopupMenuButton<String>(
+                        padding: EdgeInsets.zero,
+                        color: _bg3,
+                        offset: const Offset(0, 28),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: _bdr2),
+                        ),
+                        icon: Icon(
+                          Icons.drag_indicator_rounded,
+                          size: 15,
+                          color: _txt2,
+                        ),
+                        iconSize: 15,
+                        onSelected: (v) {
+                          if (v == 'd')
+                            widget.onDel();
+                          else if (v == 'c')
+                            widget.onDup();
+                          else if (v == 'h1')
+                            widget.onType(BlockType.h1);
+                          else if (v == 'h2')
+                            widget.onType(BlockType.h2);
+                          else if (v == 't')
+                            widget.onType(BlockType.text);
+                          else if (v == 'b')
+                            widget.onType(BlockType.bullet);
+                          else if (v == 'cd')
+                            widget.onType(BlockType.code);
+                        },
+                        itemBuilder: (_) => [
+                          _mi('d', Icons.delete_outline_rounded, '삭제', _red),
+                          _mi('c', Icons.content_copy_rounded, '복제', _txt1),
+                          const PopupMenuDivider(height: 6),
+                          _mi('h1', Icons.looks_one_outlined, '제목 1', _txt1),
+                          _mi('h2', Icons.looks_two_outlined, '제목 2', _txt1),
+                          _mi('t', Icons.short_text_rounded, '텍스트', _txt1),
+                          _mi(
+                            'b',
+                            Icons.format_list_bulleted_rounded,
+                            '글머리',
+                            _txt1,
+                          ),
+                          _mi('cd', Icons.code_rounded, '코드', _txt1),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (widget.block.type == BlockType.bullet)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12, right: 10),
+                    child: Icon(Icons.circle, size: 4, color: _txt2),
+                  ),
+                if (widget.block.type == BlockType.checkbox)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5, right: 10),
+                    child: SizedBox(
+                      width: 17,
+                      height: 17,
+                      child: Checkbox(
+                        value: widget.block.isChecked,
+                        onChanged: (v) => widget.onCheck(v!),
+                        activeColor: _acc,
+                        checkColor: Colors.black,
+                        side: const BorderSide(color: _txt2, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (widget.block.type == BlockType.code)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, right: 6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _bdr,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'CODE',
+                        style: TextStyle(
+                          color: _txt2,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  child: CompositedTransformTarget(
+                    link: widget.block.layerLink,
+                    child: TextField(
+                      controller: widget.block.controller,
+                      focusNode: widget.block.focusNode,
+                      maxLines: null,
+                      style: _style().copyWith(
+                        decoration:
+                            (widget.block.type == BlockType.checkbox &&
+                                widget.block.isChecked)
+                            ? TextDecoration.lineThrough
+                            : null,
+                        color:
+                            (widget.block.type == BlockType.checkbox &&
+                                widget.block.isChecked)
+                            ? _txt2
+                            : null,
+                      ),
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                        filled: false,
+                        hintText: (_foc && widget.block.controller.text.isEmpty)
+                            ? _hint(widget.block.type)
+                            : '',
+                        hintStyle: TextStyle(
+                          color: _txt2.withOpacity(0.45),
+                          fontSize: 16,
+                        ),
+                      ),
+                      onChanged: (t) => widget.onTxt(t, widget.idx),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _hint(BlockType t) => switch (t) {
+    BlockType.h1 => '제목 1',
+    BlockType.h2 => '제목 2',
+    BlockType.h3 => '제목 3',
+    BlockType.bullet => '항목 입력',
+    BlockType.checkbox => '할 일 추가',
+    BlockType.code => '코드 입력',
+    _ => "'/' 로 블록 삽입  ·  입력 시작",
+  };
+
+  PopupMenuItem<String> _mi(String v, IconData icon, String txt, Color c) =>
+      PopupMenuItem(
+        value: v,
+        height: 34,
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: c.withOpacity(0.85)),
+            const SizedBox(width: 8),
+            Text(txt, style: TextStyle(color: c, fontSize: 13)),
+          ],
+        ),
+      );
+}
+
+// ══════════════════ SLASH MENU ═════════════════════════
+class _Opt {
+  final String id, label, hint;
+  final IconData icon;
+  const _Opt(this.id, this.label, this.icon, this.hint);
+}
+
+class _SlashMenu extends StatelessWidget {
+  final List<_Opt> opts;
+  final int sel;
+  final void Function(_Opt) onSel;
+  const _SlashMenu({
+    required this.opts,
+    required this.sel,
+    required this.onSel,
+  });
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(14),
+    child: BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: _bg3.withOpacity(0.92),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _bdr2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.add_circle_outline_rounded, size: 11, color: _acc),
+                  const SizedBox(width: 6),
+                  const Text(
+                    '블록 삽입',
+                    style: TextStyle(
+                      color: _txt2,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ...opts.asMap().entries.map(
+              (e) => _SlashItem(
+                opt: e.value,
+                sel: e.key == sel,
+                onTap: () => onSel(e.value),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _SlashItem extends StatefulWidget {
+  final _Opt opt;
+  final bool sel;
+  final VoidCallback onTap;
+  const _SlashItem({required this.opt, required this.sel, required this.onTap});
+  @override
+  State<_SlashItem> createState() => _SlashItemState();
+}
+
+class _SlashItemState extends State<_SlashItem> {
+  bool _h = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _h = true),
+    onExit: (_) => setState(() => _h = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 80),
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: (widget.sel || _h) ? _bg4 : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+            color: (widget.sel || _h) ? _bdr2 : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              widget.opt.icon,
+              size: 15,
+              color: (widget.sel || _h) ? _acc : _txt2,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              widget.opt.label,
+              style: TextStyle(
+                color: (widget.sel || _h) ? _txt0 : _txt1,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            if (widget.opt.hint.isNotEmpty)
+              Text(
+                widget.opt.hint,
+                style: const TextStyle(
+                  color: _txt2,
+                  fontSize: 10,
+                  fontFamily: 'Courier',
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+// ══════════════════ PREMIUM TABS ═══════════════════════
+class _PremiumTabs extends StatelessWidget {
+  final TabController ctrl;
+  const _PremiumTabs({required this.ctrl});
+  @override
+  Widget build(BuildContext context) => TabBar(
+    controller: ctrl,
+    isScrollable: true,
+    tabAlignment: TabAlignment.start,
+    dividerColor: Colors.transparent,
+    indicator: BoxDecoration(
+      gradient: const LinearGradient(
+        colors: [Color(0xFF1A2A0A), Color(0xFF1A2A0A)],
+      ),
+      borderRadius: BorderRadius.circular(9),
+      border: Border.all(color: _acc.withOpacity(0.3)),
+    ),
+    labelColor: _acc,
+    unselectedLabelColor: _txt2,
+    labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+    unselectedLabelStyle: const TextStyle(fontSize: 12),
+    labelPadding: const EdgeInsets.symmetric(horizontal: 14),
+    tabs: [
+      _T(Icons.auto_awesome_rounded, '요약'),
+      _T(Icons.manage_search_rounded, '분석'),
+      _T(Icons.psychology_rounded, '암기'),
+      _T(Icons.quiz_rounded, '퀴즈'),
+      _T(Icons.chat_bubble_outline, 'Ask'),
+    ],
+  );
+  Tab _T(IconData icon, String txt) => Tab(
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [Icon(icon, size: 13), const SizedBox(width: 5), Text(txt)],
+    ),
+  );
+}
+
+// ══════════════════ SUMMARY PANEL ══════════════════════
+class _SumPanel extends StatelessWidget {
+  final FileEditorState st;
+  final WidgetRef ref;
+  final TextEditingController tCtrl, gCtrl;
+  final void Function(String) snack;
+  final Animation<double> pulse;
+  const _SumPanel({
+    required this.st,
+    required this.ref,
+    required this.tCtrl,
+    required this.gCtrl,
+    required this.snack,
+    required this.pulse,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        if (st.summaryBlocks.isEmpty && !st.isSummaryLoading)
+          const _EmptyState(
+            icon: Icons.auto_awesome_rounded,
+            title: '스마트 요약',
+            desc: '80자 이상 작성하면\nAI가 자동으로 요약합니다.',
+          ),
+        if (st.isSummaryLoading && st.summaryBlocks.isEmpty)
+          const _LoadingState(msg: '내용을 분석하는 중...'),
+        ListView.builder(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
+          itemCount: st.summaryBlocks.length,
+          itemBuilder: (_, i) => _SumCard(
+            key: ValueKey('sc$i'),
+            block: st.summaryBlocks[i],
+            index: i,
+            onPin: () =>
+                ref.read(fileEditorProvider.notifier).toggleSummarySave(i),
+            onDel: () =>
+                ref.read(fileEditorProvider.notifier).removeSummaryBlock(i),
+            onCopy: () {
+              Clipboard.setData(
+                ClipboardData(text: st.summaryBlocks[i].content),
+              );
+              snack('복사됨');
+            },
+          ),
+        ),
+        _GradFade(),
+        Positioned(
+          bottom: 16,
+          left: 14,
+          right: 14,
+          child: _FloatAction(
+            loading: st.isSummaryLoading,
+            label: st.summaryBlocks.any((b) => b.isSaved) ? '추가 분석' : '요약 생성',
+            icon: Icons.auto_fix_high_rounded,
+            pulse: pulse,
+            onTap: () => ref
+                .read(fileEditorProvider.notifier)
+                .requestSummary(title: tCtrl.text, tags: gCtrl.text),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── 요약 카드 — 글로우 효과 ───────────────────────────────
+class _SumCard extends StatefulWidget {
+  final SummaryBlock block;
+  final int index;
+  final VoidCallback onPin, onDel, onCopy;
+  const _SumCard({
+    Key? key,
+    required this.block,
+    required this.index,
+    required this.onPin,
+    required this.onDel,
+    required this.onCopy,
+  }) : super(key: key);
+  @override
+  State<_SumCard> createState() => _SumCardState();
+}
+
+class _SumCardState extends State<_SumCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ac;
+  late Animation<double> _fade, _scale, _slide;
+  @override
+  void initState() {
+    super.initState();
+    _ac = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 300 + widget.index * 70),
+    );
+    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
+    _scale = Tween(
+      begin: 0.96,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
+    _ac.forward();
   }
 
   @override
@@ -2191,239 +1768,677 @@ class _FloatBtnState extends State<_FloatBtn>
   }
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: ScaleTransition(
-      scale: widget.loading ? _pulse : const AlwaysStoppedAnimation(1.0),
-      child: GestureDetector(
-        onTap: widget.loading ? null : widget.onTap,
+  Widget build(BuildContext context) {
+    final pinned = widget.block.isSaved;
+    return FadeTransition(
+      opacity: _fade,
+      child: ScaleTransition(
+        scale: _scale,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+          duration: const Duration(milliseconds: 300),
+          margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: widget.loading ? _c.accDim : _c.card,
-            borderRadius: BorderRadius.circular(30),
+            color: pinned ? const Color(0xFF0A1505) : _bg3,
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: widget.loading ? _c.acc.withOpacity(0.35) : _c.borderHi,
+              color: pinned ? _acc.withOpacity(0.4) : _bdr,
+              width: pinned ? 1.5 : 1,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
-              ),
-              if (widget.loading)
-                BoxShadow(color: _c.acc.withOpacity(0.12), blurRadius: 20),
-            ],
+            boxShadow: pinned
+                ? [
+                    BoxShadow(
+                      color: _acc.withOpacity(0.08),
+                      blurRadius: 24,
+                      spreadRadius: 0,
+                    ),
+                    BoxShadow(
+                      color: _acc.withOpacity(0.04),
+                      blurRadius: 60,
+                      spreadRadius: 10,
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 8,
+                    ),
+                  ],
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              widget.loading
-                  ? SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: _c.acc,
+              // 헤더
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
+                child: Row(
+                  children: [
+                    // 상태 도트
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: pinned ? _acc : _txt2.withOpacity(0.3),
+                        shape: BoxShape.circle,
+                        boxShadow: pinned
+                            ? [
+                                BoxShadow(
+                                  color: _acc.withOpacity(0.7),
+                                  blurRadius: 8,
+                                  spreadRadius: 1,
+                                ),
+                              ]
+                            : [],
                       ),
-                    )
-                  : Icon(widget.icon, color: _c.acc, size: 15),
-              const SizedBox(width: 9),
-              Text(
-                widget.loading ? '생성 중...' : widget.label,
-                style: _ts(13, color: _c.txt, w: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      pinned ? 'PINNED' : 'LATEST',
+                      style: TextStyle(
+                        color: pinned ? _acc : _txt2,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const Spacer(),
+                    _IBtn(
+                      Icons.content_copy_rounded,
+                      widget.onCopy,
+                      color: _txt2,
+                      sz: 13,
+                    ),
+                    const SizedBox(width: 2),
+                    _IBtn(
+                      pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                      widget.onPin,
+                      color: pinned ? _acc : _txt2,
+                      sz: 13,
+                    ),
+                    const SizedBox(width: 2),
+                    _IBtn(
+                      Icons.close_rounded,
+                      widget.onDel,
+                      color: _txt2,
+                      sz: 13,
+                    ),
+                  ],
+                ),
+              ),
+              // 구분선
+              Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      pinned ? _acc.withOpacity(0.2) : _bdr,
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+              // 내용
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: MarkdownBody(
+                  data: widget.block.content,
+                  styleSheet: _mdStyle(),
+                ),
               ),
             ],
           ),
         ),
       ),
-    ),
-  );
-}
-
-class _Empty extends StatelessWidget {
-  final IconData icon;
-  final String title, desc;
-  const _Empty({required this.icon, required this.title, required this.desc});
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: _c.card, shape: BoxShape.circle),
-          child: Icon(icon, size: 28, color: _c.txt3),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          title,
-          style: _ts(15, color: _c.txt, w: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          desc,
-          textAlign: TextAlign.center,
-          style: _ts(13, color: _c.txt2, h: 1.6),
-        ),
-      ],
-    ),
-  );
-}
-
-class _Loader extends StatelessWidget {
-  final String msg;
-  const _Loader(this.msg);
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 26,
-          height: 26,
-          child: CircularProgressIndicator(color: _c.acc, strokeWidth: 2),
-        ),
-        const SizedBox(height: 14),
-        Text(msg, style: _ts(13, color: _c.txt2)),
-      ],
-    ),
-  );
-}
-
-class _TBtn extends StatelessWidget {
-  final IconData icon;
-  final String tip;
-  final VoidCallback onTap;
-  const _TBtn(this.icon, this.tip, this.onTap);
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: tip,
-    child: IconButton(
-      icon: Icon(icon, size: 16),
-      onPressed: onTap,
-      color: _c.txt3,
-      hoverColor: _c.hover,
-      splashRadius: 16,
-      padding: const EdgeInsets.all(6),
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-    ),
-  );
-}
-
-class _IBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color? color;
-  final double size;
-  const _IBtn(this.icon, this.onTap, {this.color, this.size = 14});
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(5),
-    child: Padding(
-      padding: const EdgeInsets.all(5),
-      child: Icon(icon, size: size, color: color ?? _c.txt3),
-    ),
-  );
-}
-
-class _SaveStatus extends StatelessWidget {
-  final bool saving;
-  final DateTime? savedAt;
-  final Animation<double> anim;
-  const _SaveStatus({
-    required this.saving,
-    required this.savedAt,
-    required this.anim,
-  });
-  @override
-  Widget build(BuildContext context) {
-    if (saving)
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 10,
-            height: 10,
-            child: CircularProgressIndicator(strokeWidth: 1.2, color: _c.txt3),
-          ),
-          const SizedBox(width: 6),
-          Text('저장 중', style: _ts(11, color: _c.txt3)),
-        ],
-      );
-    if (savedAt != null)
-      return FadeTransition(
-        opacity: anim,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.check_rounded,
-              size: 12,
-              color: _c.green.withOpacity(0.7),
-            ),
-            const SizedBox(width: 5),
-            Text('저장됨', style: _ts(11, color: _c.txt3)),
-          ],
-        ),
-      );
-    return const SizedBox.shrink();
+    );
   }
 }
 
-class _Stat extends StatelessWidget {
-  final String label, value;
+// ══════════════════ 분석 패널 ═══════════════════════════
+class _AnaPanel extends StatelessWidget {
+  final FileEditorState st;
+  const _AnaPanel({required this.st});
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      AnimatedSize(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        child: st.focusedText.trim().isNotEmpty
+            ? Container(
+                margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF070E03),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _acc.withOpacity(0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: _acc,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: _acc.withOpacity(0.8),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        const Text(
+                          '분석 중인 문단',
+                          style: TextStyle(
+                            color: _acc,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      st.focusedText,
+                      style: const TextStyle(
+                        color: _txt1,
+                        fontSize: 13,
+                        height: 1.5,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              )
+            : const SizedBox.shrink(),
+      ),
+      Expanded(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          child: st.isAnalysisLoading
+              ? const _LoadingState(msg: '문맥 의미 분석 중...')
+              : st.currentAnalysis?.isNotEmpty == true
+              ? SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(14, 16, 14, 40),
+                  child: MarkdownBody(
+                    data: st.currentAnalysis!,
+                    styleSheet: _mdStyle(),
+                  ),
+                )
+              : const _EmptyState(
+                  icon: Icons.manage_search_rounded,
+                  title: '문단 분석',
+                  desc: '에디터 문단을 클릭하면\nAI가 즉시 심층 분석합니다.',
+                ),
+        ),
+      ),
+    ],
+  );
+}
+
+// ══════════════════ 암기/퀴즈/ASK 패널 ═════════════════
+class _MemoPanel extends StatelessWidget {
+  final FileEditorState st;
+  final WidgetRef ref;
+  final TextEditingController tCtrl;
+  const _MemoPanel({required this.st, required this.ref, required this.tCtrl});
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      if (st.currentMemo == null && !st.isMemoLoading)
+        const _EmptyState(
+          icon: Icons.psychology_rounded,
+          title: '핵심 암기',
+          desc: '본문에서 핵심 개념을\n자동 추출합니다.',
+        ),
+      if (st.currentMemo?.isNotEmpty == true)
+        SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
+          child: MarkdownBody(data: st.currentMemo!, styleSheet: _mdStyle()),
+        ),
+      _GradFade(),
+      if (st.currentMemo == null || st.isMemoLoading)
+        Positioned(
+          bottom: 16,
+          left: 14,
+          right: 14,
+          child: _FloatAction(
+            loading: st.isMemoLoading,
+            label: '암기 노트 생성',
+            icon: Icons.lightbulb_rounded,
+            onTap: () =>
+                ref.read(fileEditorProvider.notifier).generateMemo(tCtrl.text),
+          ),
+        ),
+    ],
+  );
+}
+
+class _QuizPanel extends StatelessWidget {
+  final FileEditorState st;
+  final WidgetRef ref;
+  const _QuizPanel({required this.st, required this.ref});
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      if (st.quizData == null && !st.isQuizLoading)
+        const _EmptyState(
+          icon: Icons.quiz_rounded,
+          title: '퀴즈',
+          desc: '본문으로 인터랙티브\n객관식 퀴즈를 생성합니다.',
+        ),
+      if (st.quizData != null)
+        ListView.builder(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
+          itemCount: st.quizData!.length,
+          itemBuilder: (_, qi) => _QCard(
+            q: st.quizData![qi],
+            qi: qi,
+            answered: st.quizAnswers[qi],
+            onAns: (oi) =>
+                ref.read(fileEditorProvider.notifier).answerQuiz(qi, oi),
+          ),
+        ),
+      _GradFade(),
+      if (st.quizData == null || st.isQuizLoading)
+        Positioned(
+          bottom: 16,
+          left: 14,
+          right: 14,
+          child: _FloatAction(
+            loading: st.isQuizLoading,
+            label: '퀴즈 생성',
+            icon: Icons.quiz_rounded,
+            onTap: () => ref.read(fileEditorProvider.notifier).generateQuiz(),
+          ),
+        ),
+    ],
+  );
+}
+
+class _QCard extends StatelessWidget {
+  final dynamic q;
+  final int qi;
+  final int? answered;
+  final void Function(int) onAns;
+  const _QCard({
+    required this.q,
+    required this.qi,
+    required this.answered,
+    required this.onAns,
+  });
+  @override
+  Widget build(BuildContext context) {
+    final correct = q['answer'] ?? 0;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Q${qi + 1}.  ${q['question']}',
+            style: const TextStyle(
+              color: _txt0,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...List.generate((q['options'] as List).length, (oi) {
+            Color bg = _bg3, bdr = _bdr, tc = _txt0;
+            if (answered != null) {
+              if (oi == correct) {
+                bg = _grn.withOpacity(0.1);
+                bdr = _grn.withOpacity(0.4);
+                tc = _grn;
+              } else if (oi == answered) {
+                bg = _red.withOpacity(0.1);
+                bdr = _red.withOpacity(0.4);
+                tc = _red;
+              }
+            }
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: GestureDetector(
+                onTap: () => onAns(oi),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: bdr),
+                  ),
+                  child: Text(
+                    q['options'][oi],
+                    style: TextStyle(
+                      color: tc,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+          if (answered != null) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _bg2,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _bdr),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        answered == correct
+                            ? Icons.check_circle_rounded
+                            : Icons.cancel_rounded,
+                        size: 14,
+                        color: answered == correct ? _grn : _red,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        answered == correct ? '정답' : '오답',
+                        style: TextStyle(
+                          color: answered == correct ? _grn : _red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    q['explanation'] ?? '',
+                    style: const TextStyle(
+                      color: _txt1,
+                      fontSize: 12,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AskPanel extends StatelessWidget {
+  final FileEditorState st;
+  final TextEditingController ctrl;
+  final void Function(String) onAsk;
+  const _AskPanel({required this.st, required this.ctrl, required this.onAsk});
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Expanded(
+        child: st.isQALoading
+            ? const _LoadingState(msg: '노트 + 웹 검색 중...')
+            : st.qaAnswer != null
+            ? SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(14, 16, 14, 20),
+                child: MarkdownBody(data: st.qaAnswer!, styleSheet: _mdStyle()),
+              )
+            : const _EmptyState(
+                icon: Icons.chat_bubble_outline_rounded,
+                title: 'Quick Ask',
+                desc: '내 노트 + 실시간 웹으로\n무엇이든 답합니다.',
+              ),
+      ),
+      Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: _bdr)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: ctrl,
+                style: const TextStyle(color: _txt0, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: '질문 입력...',
+                  hintStyle: const TextStyle(color: _txt2, fontSize: 13),
+                  filled: true,
+                  fillColor: _bg3,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: const BorderSide(color: _bdr),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: const BorderSide(color: _bdr),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: const BorderSide(color: _acc),
+                  ),
+                ),
+                onSubmitted: (v) {
+                  onAsk(v);
+                  ctrl.clear();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () {
+                onAsk(ctrl.text);
+                ctrl.clear();
+              },
+              child: Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: _acc,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: _acc.withOpacity(0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.arrow_upward_rounded,
+                  color: Colors.black,
+                  size: 17,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+// ══════════════════ 지식 그래프 뷰 ═════════════════════
+class _GraphView extends StatelessWidget {
+  final FileEditorState st;
+  final WidgetRef ref;
+  const _GraphView({required this.st, required this.ref});
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(28),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _accD,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(color: _acc.withOpacity(0.2), blurRadius: 12),
+                ],
+              ),
+              child: const Icon(Icons.hub_rounded, color: _acc, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'AI Semantic Graph',
+                  style: TextStyle(
+                    color: _txt0,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const Text(
+                  '개념 간 의미적 연결 시각화',
+                  style: TextStyle(color: _txt2, fontSize: 12),
+                ),
+              ],
+            ),
+            const Spacer(),
+            _TipBtn(
+              Icons.refresh_rounded,
+              '재생성',
+              () => ref.read(fileEditorProvider.notifier).requestGraph(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            _SC(Icons.article_outlined, '블록', '${st.blocks.length}개'),
+            const SizedBox(width: 12),
+            _SC(Icons.text_fields_rounded, '글자', '${st.charCount}자'),
+            const SizedBox(width: 12),
+            _SC(
+              Icons.bookmark_rounded,
+              '확정 요약',
+              '${st.summaryBlocks.where((b) => b.isSaved).length}개',
+              accent: true,
+            ),
+            const SizedBox(width: 12),
+            _SC(Icons.timer_outlined, '읽기', '${(st.wordCount / 200).ceil()}분'),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: _bg3,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: _bdr),
+              boxShadow: [
+                BoxShadow(color: _acc.withOpacity(0.04), blurRadius: 40),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: st.isGraphLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: _acc,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : st.graphData != null
+                  ? _GraphCanvas(data: st.graphData!)
+                  : const _EmptyState(
+                      icon: Icons.hub_outlined,
+                      title: '지식 그래프',
+                      desc: '충분한 내용 작성 시\n자동으로 그래프가 생성됩니다.',
+                    ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _SC extends StatelessWidget {
   final IconData icon;
+  final String label, value;
   final bool accent;
-  const _Stat(this.label, this.value, this.icon, {this.accent = false});
+  const _SC(this.icon, this.label, this.value, {this.accent = false});
   @override
   Widget build(BuildContext context) => Expanded(
     child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: accent ? _c.accDim : _c.card,
+        color: accent ? _accD : _bg3,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: accent ? _c.acc.withOpacity(0.25) : _c.border,
-        ),
+        border: Border.all(color: accent ? _acc.withOpacity(0.3) : _bdr),
+        boxShadow: accent
+            ? [BoxShadow(color: _acc.withOpacity(0.06), blurRadius: 20)]
+            : [],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: accent ? _c.acc : _c.txt3),
+          Icon(icon, size: 18, color: accent ? _acc : _txt2),
           const SizedBox(height: 10),
           Text(
             value,
-            style: _ts(18, color: accent ? _c.acc : _c.txt, w: FontWeight.w700),
+            style: TextStyle(
+              color: accent ? _acc : _txt0,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 2),
-          Text(label, style: _ts(11, color: _c.txt2)),
+          Text(label, style: const TextStyle(color: _txt2, fontSize: 11)),
         ],
       ),
     ),
   );
 }
 
-class _GraphViz extends StatefulWidget {
+// ══════════════════ 그래프 캔버스 ══════════════════════
+class _GraphCanvas extends StatefulWidget {
   final Map<String, dynamic> data;
-  const _GraphViz({required this.data});
+  const _GraphCanvas({required this.data});
   @override
-  State<_GraphViz> createState() => _GVState();
+  State<_GraphCanvas> createState() => _GCState();
 }
 
-class _GVState extends State<_GraphViz> with SingleTickerProviderStateMixin {
-  late final AnimationController _ac;
-  List<_N> nodes = [];
-  List<_E> edges = [];
-  double t = 0;
+class _GCState extends State<_GraphCanvas> with SingleTickerProviderStateMixin {
+  late AnimationController _ac;
+  List<_GN> ns = [];
+  List<_GE> es = [];
+  double _t = 0;
   @override
   void initState() {
     super.initState();
     _ac = AnimationController(vsync: this, duration: const Duration(days: 1))
       ..addListener(
         () => setState(() {
-          t += 0.007;
+          _t += 0.006;
           _tick();
         }),
       )
@@ -2434,20 +2449,20 @@ class _GVState extends State<_GraphViz> with SingleTickerProviderStateMixin {
   void _build() {
     final sz = context.size ?? const Size(800, 500);
     final cx = sz.width / 2, cy = sz.height / 2;
-    nodes.clear();
-    edges.clear();
-    final rn = widget.data['nodes'] as List? ?? [];
-    final re = widget.data['edges'] as List? ?? [];
+    ns.clear();
+    es.clear();
+    final rn = widget.data['nodes'] as List ?? ([]);
+    final re = widget.data['edges'] as List ?? ([]);
     for (int i = 0; i < rn.length; i++) {
       final ic = i == 0;
-      nodes.add(
-        _N(
+      ns.add(
+        _GN(
           id: rn[i]['id'].toString(),
           label: rn[i]['label'].toString(),
-          r: ic ? 13 : 7,
-          color: ic ? _c.acc : _c.blue,
-          br: ic ? 0 : 60 + math.Random().nextDouble() * 110,
-          ba: ic ? 0 : (2 * math.pi / (rn.length - 1)) * i,
+          r: ic ? 14 : 7,
+          color: ic ? _acc : _blu,
+          br: ic ? 0 : 65 + math.Random().nextDouble() * 110,
+          ba: ic ? 0 : (2 * math.pi / (math.max(rn.length - 1, 1))) * i,
           x: cx,
           y: cy,
           core: ic,
@@ -2455,21 +2470,23 @@ class _GVState extends State<_GraphViz> with SingleTickerProviderStateMixin {
       );
     }
     for (var e in re)
-      edges.add(_E(e['source'].toString(), e['target'].toString()));
+      es.add(_GE(e['source'].toString(), e['target'].toString()));
   }
 
   void _tick() {
     final sz = context.size ?? const Size(800, 500);
     final cx = sz.width / 2, cy = sz.height / 2;
-    for (var n in nodes) {
+    for (var n in ns) {
       if (n.core) {
         n.x = cx;
         n.y = cy;
         continue;
       }
-      final tx = cx + math.cos(n.ba + t * 0.3) * n.br;
+      final tx = cx + math.cos(n.ba + _t * 0.3) * n.br;
       final ty =
-          cy + math.sin(n.ba + t * 0.3) * n.br + math.sin(t * 1.2 + n.ba) * 12;
+          cy +
+          math.sin(n.ba + _t * 0.3) * n.br +
+          math.sin(_t * 1.1 + n.ba) * 12;
       n.x += (tx - n.x) * 0.04;
       n.y += (ty - n.y) * 0.04;
     }
@@ -2483,17 +2500,15 @@ class _GVState extends State<_GraphViz> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) =>
-      CustomPaint(painter: _GP(nodes, edges), size: Size.infinite);
+      CustomPaint(painter: _GP(ns, es), size: Size.infinite);
 }
 
-class _N {
-  String id;
-  String label;
-  double r;
+class _GN {
+  String id, label;
+  double r, x, y, br, ba;
   Color color;
-  double x, y, br, ba;
   bool core;
-  _N({
+  _GN({
     required this.id,
     required this.label,
     required this.r,
@@ -2506,55 +2521,55 @@ class _N {
   });
 }
 
-class _E {
+class _GE {
   String s, t;
-  _E(this.s, this.t);
+  _GE(this.s, this.t);
 }
 
 class _GP extends CustomPainter {
-  final List<_N> nodes;
-  final List<_E> edges;
-  _GP(this.nodes, this.edges);
+  final List<_GN> ns;
+  final List<_GE> es;
+  _GP(this.ns, this.es);
   @override
-  void paint(Canvas canvas, Size size) {
+  void paint(Canvas c, Size s) {
     final lp = Paint()
-      ..strokeWidth = 0.8
+      ..strokeWidth = 0.7
       ..style = PaintingStyle.stroke
-      ..color = const Color(0xFF252535);
+      ..color = const Color(0xFF252538);
     final hp = Paint()
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke
-      ..color = _c.acc.withOpacity(0.2);
-    for (var e in edges) {
-      final s = nodes.where((n) => n.id == e.s).firstOrNull;
-      final t = nodes.where((n) => n.id == e.t).firstOrNull;
-      if (s != null && t != null)
-        canvas.drawLine(Offset(s.x, s.y), Offset(t.x, t.y), s.core ? hp : lp);
+      ..color = _acc.withOpacity(0.18);
+    for (var e in es) {
+      final a = ns.where((n) => n.id == e.s).firstOrNull;
+      final b = ns.where((n) => n.id == e.t).firstOrNull;
+      if (a != null && b != null)
+        c.drawLine(Offset(a.x, a.y), Offset(b.x, b.y), a.core ? hp : lp);
     }
-    for (var n in nodes) {
-      canvas.drawCircle(
+    for (var n in ns) {
+      c.drawCircle(
         Offset(n.x, n.y),
         n.r,
         Paint()
           ..color = n.color
-          ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 3),
+          ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 4),
       );
       if (n.label.isNotEmpty) {
-        final lbl = n.label.length > 8
-            ? '${n.label.substring(0, 8)}…'
+        final lbl = n.label.length > 9
+            ? '${n.label.substring(0, 9)}…'
             : n.label;
         final tp = TextPainter(
           text: TextSpan(
             text: lbl,
             style: TextStyle(
-              color: n.core ? Colors.white : _c.txt2,
+              color: n.core ? Colors.white : _txt1,
               fontSize: n.core ? 11 : 9,
               fontWeight: n.core ? FontWeight.w800 : FontWeight.w500,
             ),
           ),
           textDirection: TextDirection.ltr,
         )..layout();
-        tp.paint(canvas, Offset(n.x - tp.width / 2, n.y + n.r + 4));
+        tp.paint(c, Offset(n.x - tp.width / 2, n.y + n.r + 4));
       }
     }
   }
@@ -2563,38 +2578,317 @@ class _GP extends CustomPainter {
   bool shouldRepaint(_) => true;
 }
 
-// ── Markdown 스타일 ───────────────────────────────────────
-MarkdownStyleSheet _md() => MarkdownStyleSheet(
-  p: _ts(14, color: _c.txt, h: 1.8, ls: 0.1),
-  strong: _ts(14, color: Colors.white, w: FontWeight.w700),
-  em: _ts(14, color: _c.txt).copyWith(fontStyle: FontStyle.italic),
-  code: _ts(
-    13,
-    color: const Color(0xFFBBAFF8),
-    h: 1.6,
-  ).copyWith(fontFamily: 'Courier', backgroundColor: const Color(0xFF1A1A2E)),
+// ══════════════════ SPLIT PANE ═════════════════════════
+class _Split extends StatefulWidget {
+  final Widget left, right;
+  const _Split({required this.left, required this.right});
+  @override
+  State<_Split> createState() => _SplitState();
+}
+
+class _SplitState extends State<_Split> {
+  double _r = 0.58;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (_, c) {
+      final w = c.maxWidth;
+      return Row(
+        children: [
+          SizedBox(width: w * _r, child: widget.left),
+          MouseRegion(
+            cursor: SystemMouseCursors.resizeColumn,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanUpdate: (d) =>
+                  setState(() => _r = (_r + d.delta.dx / w).clamp(0.35, 0.72)),
+              child: Container(
+                width: 5,
+                color: Colors.transparent,
+                child: Center(child: Container(width: 1, color: _bdr)),
+              ),
+            ),
+          ),
+          Expanded(child: widget.right),
+        ],
+      );
+    },
+  );
+}
+
+// ══════════════════ 공통 위젯 ══════════════════════════
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title, desc;
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.desc,
+  });
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: RadialGradient(colors: [_bg4, _bg3]),
+            shape: BoxShape.circle,
+            border: Border.all(color: _bdr2),
+          ),
+          child: Icon(icon, size: 28, color: _txt2),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          title,
+          style: const TextStyle(
+            color: _txt0,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          desc,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _txt2, fontSize: 13, height: 1.6),
+        ),
+      ],
+    ),
+  );
+}
+
+class _LoadingState extends StatelessWidget {
+  final String msg;
+  const _LoadingState({required this.msg});
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            color: _acc,
+            strokeWidth: 2,
+            strokeCap: StrokeCap.round,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(msg, style: const TextStyle(color: _txt2, fontSize: 13)),
+      ],
+    ),
+  );
+}
+
+class _GradFade extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Positioned(
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 90,
+    child: IgnorePointer(
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [Color(0xFF0F0F16), Colors.transparent],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _FloatAction extends StatefulWidget {
+  final bool loading;
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+  final Animation<double>? pulse;
+  const _FloatAction({
+    required this.loading,
+    required this.label,
+    required this.icon,
+    this.onTap,
+    this.pulse,
+  });
+  @override
+  State<_FloatAction> createState() => _FloatActionState();
+}
+
+class _FloatActionState extends State<_FloatAction>
+    with SingleTickerProviderStateMixin {
+  bool _hov = false;
+  late AnimationController _ac;
+  late Animation<double> _scale;
+  @override
+  void initState() {
+    super.initState();
+    _ac = AnimationController(vsync: this, duration: const Duration(seconds: 2))
+      ..repeat(reverse: true);
+    _scale = Tween(
+      begin: 1.0,
+      end: 1.02,
+    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: ScaleTransition(
+      scale: widget.loading ? _scale : const AlwaysStoppedAnimation(1.0),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hov = true),
+        onExit: (_) => setState(() => _hov = false),
+        child: GestureDetector(
+          onTap: widget.loading ? null : widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+            decoration: BoxDecoration(
+              gradient: widget.loading
+                  ? LinearGradient(colors: [_accD, const Color(0xFF1A2A0A)])
+                  : null,
+              color: widget.loading ? null : (_hov ? _bg4 : _bg3),
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(
+                color: widget.loading
+                    ? _acc.withOpacity(0.4)
+                    : (_hov ? _bdr2 : _bdr),
+                width: widget.loading ? 1.5 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+                if (widget.loading)
+                  BoxShadow(
+                    color: _acc.withOpacity(0.15),
+                    blurRadius: 24,
+                    spreadRadius: 2,
+                  ),
+                if (_hov && !widget.loading)
+                  BoxShadow(color: _acc.withOpacity(0.06), blurRadius: 20),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                widget.loading
+                    ? SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: _acc,
+                          strokeCap: StrokeCap.round,
+                        ),
+                      )
+                    : Icon(widget.icon, color: _acc, size: 15),
+                const SizedBox(width: 9),
+                Text(
+                  widget.loading ? '생성 중...' : widget.label,
+                  style: TextStyle(
+                    color: widget.loading ? _acc : (_hov ? _txt0 : _txt1),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _IBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? color;
+  final double sz;
+  const _IBtn(this.icon, this.onTap, {this.color, this.sz = 14});
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(6),
+    child: Padding(
+      padding: const EdgeInsets.all(5),
+      child: Icon(icon, size: sz, color: color ?? _txt2),
+    ),
+  );
+}
+
+// ══════════════════ MARKDOWN STYLE ═════════════════════
+MarkdownStyleSheet _mdStyle() => MarkdownStyleSheet(
+  p: const TextStyle(
+    color: _txt0,
+    fontSize: 14,
+    height: 1.82,
+    letterSpacing: 0.1,
+  ),
+  strong: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+  em: const TextStyle(color: _txt0, fontStyle: FontStyle.italic),
+  code: const TextStyle(
+    backgroundColor: Color(0xFF1A1A2E),
+    fontFamily: 'Courier',
+    color: Color(0xFFBBAFF8),
+    fontSize: 13,
+  ),
   codeblockDecoration: BoxDecoration(
     color: const Color(0xFF0D1117),
     borderRadius: BorderRadius.circular(10),
-    border: Border.all(color: _c.border),
+    border: Border.all(color: _bdr),
   ),
   tableBorder: TableBorder(
-    horizontalInside: BorderSide(color: _c.border),
-    bottom: BorderSide(color: _c.border),
+    horizontalInside: const BorderSide(color: _bdr),
+    bottom: const BorderSide(color: _bdr),
   ),
-  tableHead: _ts(12, color: _c.txt2, w: FontWeight.w700),
-  tableBody: _ts(13, color: _c.txt),
+  tableHead: const TextStyle(
+    fontWeight: FontWeight.w700,
+    color: _txt1,
+    fontSize: 13,
+  ),
+  tableBody: const TextStyle(color: _txt0, fontSize: 13),
   tableCellsPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
   blockquoteDecoration: BoxDecoration(
-    border: Border(left: BorderSide(color: _c.acc, width: 3)),
-    color: _c.accDim.withOpacity(0.5),
+    border: Border(left: BorderSide(color: _acc, width: 3)),
+    color: _accD.withOpacity(0.4),
   ),
-  blockquotePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-  listBullet: _ts(14, color: _c.txt2),
-  h1: _ts(19, color: Colors.white, w: FontWeight.w800, h: 1.5, ls: -0.3),
-  h2: _ts(16, color: Colors.white, w: FontWeight.w700, h: 1.5),
-  h3: _ts(14, color: Colors.white, w: FontWeight.w600, h: 1.5),
+  blockquotePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+  listBullet: const TextStyle(color: _txt2, fontSize: 14),
+  h1: const TextStyle(
+    fontSize: 19,
+    color: Colors.white,
+    fontWeight: FontWeight.w800,
+    height: 1.5,
+    letterSpacing: -0.3,
+  ),
+  h2: const TextStyle(
+    fontSize: 16,
+    color: Colors.white,
+    fontWeight: FontWeight.w700,
+    height: 1.5,
+  ),
+  h3: const TextStyle(
+    fontSize: 14,
+    color: Colors.white,
+    fontWeight: FontWeight.w700,
+    height: 1.5,
+  ),
   horizontalRuleDecoration: BoxDecoration(
-    border: Border(top: BorderSide(color: _c.border)),
+    border: Border(top: BorderSide(color: _bdr)),
   ),
 );
