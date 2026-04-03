@@ -50,6 +50,8 @@ class FileEditorState {
   final String focusedText;
   final DateTime? lastSavedAt;
   final String lastSentContent;
+  final String? proofreadResult;
+  final bool isProofreadLoading;
 
   // ✅ title/tags도 state에 보관 (웹 호환)
   final String fileTitle;
@@ -78,6 +80,8 @@ class FileEditorState {
     this.lastSentContent = '',
     this.fileTitle = '',
     this.fileTags = '',
+    this.proofreadResult,
+    this.isProofreadLoading = false,
   });
 
   FileEditorState copyWith({
@@ -103,6 +107,8 @@ class FileEditorState {
     String? lastSentContent,
     String? fileTitle,
     String? fileTags,
+    String? proofreadResult,
+    bool? isProofreadLoading,
   }) => FileEditorState(
     blocks: blocks ?? this.blocks,
     isLoading: isLoading ?? this.isLoading,
@@ -126,12 +132,25 @@ class FileEditorState {
     lastSentContent: lastSentContent ?? this.lastSentContent,
     fileTitle: fileTitle ?? this.fileTitle,
     fileTags: fileTags ?? this.fileTags,
+    proofreadResult: proofreadResult ?? this.proofreadResult,
+    isProofreadLoading: isProofreadLoading ?? this.isProofreadLoading,
   );
 
   String get fullContent => blocks.map((b) => b.controller.text).join('\n');
   int get charCount => blocks.fold(0, (s, b) => s + b.controller.text.length);
   int get wordCount =>
       fullContent.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+  String get fullContentForAI {
+    // JSON 블록 배열 그대로 보내서 백엔드에서 파싱
+    return jsonEncode(
+      blocks.map((b) {
+        final j = b.toJson();
+        j['content'] = b.controller.text;
+        return j;
+      }).toList(),
+    );
+  }
+
   int get meaningfulCharCount =>
       blocks.fold(0, (sum, b) => sum + b.controller.text.trim().length);
 }
@@ -201,7 +220,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .entries
           .map(
             (e) => Block(
-              id: '\${DateTime.now().microsecondsSinceEpoch}_\${e.key}',
+              id: '${DateTime.now().microsecondsSinceEpoch}_${e.key}',
               type: e.value['type'],
               content: e.value['content'],
             ),
@@ -310,7 +329,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       final savedText = saved.map((b) => b.content).join('\n\n');
 
       // Delta: 변경된 부분만 전송
-      final full = state.fullContent;
+      final full = state.fullContentForAI;
       final last = state.lastSentContent;
       String toSend = full;
       if (last.isNotEmpty && full.length > last.length + 100) {
@@ -711,6 +730,47 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     type: type,
     content: content,
   );
+
+  // ─── 글 교정 ───────────────────────────────────────
+  Future<void> proofreadContent({String style = 'academic'}) async {
+    if (state.meaningfulCharCount < 10) return;
+    state = state.copyWith(isProofreadLoading: true, proofreadResult: null);
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_api/api/ai/proofread'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'content': state.fullContentForAI,
+              'style': style,
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        state = state.copyWith(
+          proofreadResult: data['corrected'],
+          isProofreadLoading: false,
+        );
+      } else {
+        state = state.copyWith(isProofreadLoading: false);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      state = state.copyWith(isProofreadLoading: false);
+    }
+  }
+
+  void applyProofread() {
+    if (state.proofreadResult == null) return;
+    final parsed = _parseBlocks(state.proofreadResult!);
+    for (var b in state.blocks) b.dispose();
+    state = state.copyWith(
+      blocks: parsed.isEmpty ? [_newBlock(0)] : parsed,
+      proofreadResult: null,
+    );
+  }
 }
 
 // ─── FilesNotifier (파일 목록) ───────────────────────────
