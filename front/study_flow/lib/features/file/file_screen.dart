@@ -230,7 +230,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   void _onFocus(String text) {
     _focT?.cancel();
-    _focT = Timer(const Duration(milliseconds: 2500), () {
+    _focT = Timer(const Duration(milliseconds: 800), () {
       if (text.trim().length > 20) {
         ref
             .read(fileEditorProvider.notifier)
@@ -1702,16 +1702,47 @@ class _NBState extends State<_NBlock> {
   void initState() {
     super.initState();
     widget.block.focusNode.addListener(_onFoc);
-    // ✅ TextEditingController는 text·selection 변경 모두 notify함
-    widget.block.controller.addListener(_onSelChange);
+    // 키보드 selection 감지 (Shift+방향키 등)
+    widget.block.controller.addListener(_onCtrlChange);
   }
 
   @override
   void dispose() {
     widget.block.focusNode.removeListener(_onFoc);
-    widget.block.controller.removeListener(_onSelChange);
+    widget.block.controller.removeListener(_onCtrlChange);
     _selTimer?.cancel();
     super.dispose();
+  }
+
+  // 키보드로 selection 변경 시 감지
+  void _onCtrlChange() {
+    if (!mounted) return;
+    final ctrl = widget.block.controller;
+    final sel = ctrl.selection;
+    // 마우스는 onPointerUp이 처리하므로 여기선 키보드만 처리
+    // sel이 collapsed면 툴바 닫기, 아니면 타이머로 표시
+    _selTimer?.cancel();
+    _selTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      if (!sel.isValid || sel.isCollapsed) {
+        widget.onSelChanged?.call('', ctrl, GlobalKey());
+        return;
+      }
+      final txt = ctrl.text;
+      final selected = txt.substring(
+        sel.start.clamp(0, txt.length),
+        sel.end.clamp(0, txt.length),
+      );
+      if (selected.trim().isNotEmpty) {
+        widget.onSelChanged?.call(
+          selected,
+          ctrl,
+          widget.blockKey ?? GlobalKey(),
+        );
+      } else {
+        widget.onSelChanged?.call('', ctrl, GlobalKey());
+      }
+    });
   }
 
   void _onFoc() {
@@ -1721,32 +1752,6 @@ class _NBState extends State<_NBlock> {
       setState(() => _foc = f);
       if (_foc) widget.onFocus();
     }
-  }
-
-  void _onSelChange() {
-    if (!mounted) return;
-    _selTimer?.cancel();
-    _selTimer = Timer(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      final ctrl = widget.block.controller;
-      final sel = ctrl.selection;
-      if (!sel.isValid || sel.isCollapsed) {
-        widget.onSelChanged?.call('', ctrl, GlobalKey());
-        return;
-      }
-      final txt = ctrl.text;
-      final start = sel.start.clamp(0, txt.length);
-      final end = sel.end.clamp(0, txt.length);
-      final selected = txt.substring(start, end);
-      if (selected.trim().isEmpty) {
-        widget.onSelChanged?.call('', ctrl, GlobalKey());
-        return;
-      }
-      // ✅ _FS 레벨로 콜백 올림
-      if (widget.onSelChanged != null && widget.blockKey != null) {
-        widget.onSelChanged!(selected, ctrl, widget.blockKey!);
-      }
-    });
   }
 
   // ── 블록별 스타일 ──────────────────────────────
@@ -1804,218 +1809,256 @@ class _NBState extends State<_NBlock> {
 
     return KeyedSubtree(
       key: widget.blockKey,
-      child: Container(
-        padding: EdgeInsets.only(
-          top: (isBul && isPrevBul) ? 1 : (isBul ? 3 : 2),
-          bottom: isBul ? 1 : 2,
-          left: 8,
-          right: 8,
-        ),
-        decoration: BoxDecoration(
-          color: widget.isSelected
-              ? _acc.withOpacity(0.07)
-              : _foc
-              ? Colors.white.withOpacity(0.015)
-              : null,
-          borderRadius: BorderRadius.circular(6),
-          border: widget.isSelected
-              ? Border.all(color: _acc.withOpacity(0.3))
-              : widget.block.type == BlockType.code
-              ? Border.all(color: _bdr)
-              : null,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 드래그 핸들 + 선택
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: Opacity(
-                opacity: _foc ? 0.5 : 0,
-                child: ReorderableDragStartListener(
-                  index: widget.idx,
-                  child: PopupMenuButton<String>(
-                    padding: EdgeInsets.zero,
-                    color: _bg3,
-                    offset: const Offset(0, 28),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: _bdr2),
+      child: GestureDetector(
+        onTap: () {
+          // 공백 영역 클릭 시 TextField 포커스
+          widget.block.focusNode.requestFocus();
+          final c = widget.block.controller;
+          if (c.selection.isCollapsed && c.selection.baseOffset < 0) {
+            c.selection = TextSelection.collapsed(offset: c.text.length);
+          }
+        },
+        behavior: HitTestBehavior.translucent,
+        child: Container(
+          padding: EdgeInsets.only(
+            top: (isBul && isPrevBul) ? 1 : (isBul ? 3 : 2),
+            bottom: isBul ? 1 : 2,
+            left: 8,
+            right: 8,
+          ),
+          decoration: BoxDecoration(
+            color: widget.isSelected
+                ? _acc.withOpacity(0.07)
+                : _foc
+                ? Colors.white.withOpacity(0.015)
+                : null,
+            borderRadius: BorderRadius.circular(6),
+            border: widget.isSelected
+                ? Border.all(color: _acc.withOpacity(0.3))
+                : widget.block.type == BlockType.code
+                ? Border.all(color: _bdr)
+                : null,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 드래그 핸들 + 선택
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Opacity(
+                  opacity: _foc ? 0.5 : 0,
+                  child: ReorderableDragStartListener(
+                    index: widget.idx,
+                    child: PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      color: _bg3,
+                      offset: const Offset(0, 28),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: _bdr2),
+                      ),
+                      icon: Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 15,
+                        color: _txt2,
+                      ),
+                      iconSize: 15,
+                      onSelected: (v) {
+                        if (v == 'd')
+                          widget.onDel();
+                        else if (v == 'c')
+                          widget.onDup();
+                        else if (v == 's')
+                          widget.onSelect();
+                        else if (v == 'h1')
+                          widget.onType(BlockType.h1);
+                        else if (v == 'h2')
+                          widget.onType(BlockType.h2);
+                        else if (v == 't')
+                          widget.onType(BlockType.text);
+                        else if (v == 'b')
+                          widget.onType(BlockType.bullet);
+                        else if (v == 'cd')
+                          widget.onType(BlockType.code);
+                      },
+                      itemBuilder: (_) => [
+                        _mi('s', Icons.check_box_outlined, '선택', _acc),
+                        _mi('d', Icons.delete_outline_rounded, '삭제', _red),
+                        _mi('c', Icons.content_copy_rounded, '복제', _txt1),
+                        const PopupMenuDivider(height: 6),
+                        _mi('h1', Icons.looks_one_outlined, '제목 1', _txt1),
+                        _mi('h2', Icons.looks_two_outlined, '제목 2', _txt1),
+                        _mi('t', Icons.short_text_rounded, '텍스트', _txt1),
+                        _mi('b', Icons.format_list_bulleted, '글머리', _txt1),
+                        _mi('cd', Icons.code_rounded, '코드', _txt1),
+                      ],
                     ),
-                    icon: Icon(
-                      Icons.drag_indicator_rounded,
-                      size: 15,
-                      color: _txt2,
-                    ),
-                    iconSize: 15,
-                    onSelected: (v) {
-                      if (v == 'd')
-                        widget.onDel();
-                      else if (v == 'c')
-                        widget.onDup();
-                      else if (v == 's')
-                        widget.onSelect();
-                      else if (v == 'h1')
-                        widget.onType(BlockType.h1);
-                      else if (v == 'h2')
-                        widget.onType(BlockType.h2);
-                      else if (v == 't')
-                        widget.onType(BlockType.text);
-                      else if (v == 'b')
-                        widget.onType(BlockType.bullet);
-                      else if (v == 'cd')
-                        widget.onType(BlockType.code);
-                    },
-                    itemBuilder: (_) => [
-                      _mi('s', Icons.check_box_outlined, '선택', _acc),
-                      _mi('d', Icons.delete_outline_rounded, '삭제', _red),
-                      _mi('c', Icons.content_copy_rounded, '복제', _txt1),
-                      const PopupMenuDivider(height: 6),
-                      _mi('h1', Icons.looks_one_outlined, '제목 1', _txt1),
-                      _mi('h2', Icons.looks_two_outlined, '제목 2', _txt1),
-                      _mi('t', Icons.short_text_rounded, '텍스트', _txt1),
-                      _mi('b', Icons.format_list_bulleted, '글머리', _txt1),
-                      _mi('cd', Icons.code_rounded, '코드', _txt1),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // 불릿
-            if (widget.block.type == BlockType.bullet)
-              Padding(
-                padding: const EdgeInsets.only(top: 13, right: 12),
-                child: Container(
-                  width: 5,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: _acc.withOpacity(0.7),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(color: _acc.withOpacity(0.4), blurRadius: 4),
-                    ],
                   ),
                 ),
               ),
 
-            // 체크박스
-            if (widget.block.type == BlockType.checkbox)
-              Padding(
-                padding: const EdgeInsets.only(top: 5, right: 10),
-                child: SizedBox(
-                  width: 17,
-                  height: 17,
-                  child: Checkbox(
-                    value: widget.block.isChecked,
-                    onChanged: (v) => widget.onCheck(v!),
-                    activeColor: _acc,
-                    checkColor: Colors.black,
-                    side: const BorderSide(color: _txt2, width: 1.5),
-                    shape: RoundedRectangleBorder(
+              // 불릿
+              if (widget.block.type == BlockType.bullet)
+                Padding(
+                  padding: const EdgeInsets.only(top: 13, right: 12),
+                  child: Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: _acc.withOpacity(0.7),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: _acc.withOpacity(0.4), blurRadius: 4),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // 체크박스
+              if (widget.block.type == BlockType.checkbox)
+                Padding(
+                  padding: const EdgeInsets.only(top: 5, right: 10),
+                  child: SizedBox(
+                    width: 17,
+                    height: 17,
+                    child: Checkbox(
+                      value: widget.block.isChecked,
+                      onChanged: (v) => widget.onCheck(v!),
+                      activeColor: _acc,
+                      checkColor: Colors.black,
+                      side: const BorderSide(color: _txt2, width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // 코드 태그
+              if (widget.block.type == BlockType.code && !_isTable)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _bdr,
                       borderRadius: BorderRadius.circular(4),
                     ),
+                    child: const Text(
+                      'CODE',
+                      style: TextStyle(
+                        color: _txt2,
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
                   ),
                 ),
-              ),
 
-            // 코드 태그
-            if (widget.block.type == BlockType.code && !_isTable)
-              Padding(
-                padding: const EdgeInsets.only(top: 2, right: 6),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 1,
+              // 테이블 태그
+              if (_isTable)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _accD,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: _acc.withOpacity(0.3)),
+                    ),
+                    child: const Text(
+                      'TABLE',
+                      style: TextStyle(
+                        color: _acc,
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
                   ),
-                  decoration: BoxDecoration(
-                    color: _bdr,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'CODE',
-                    style: TextStyle(
-                      color: _txt2,
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
+                ),
+
+              // 텍스트 입력
+              Expanded(
+                child: Listener(
+                  // ✅ onPointerUp: 브라우저 드래그 선택을 Flutter가 직접 감지
+                  onPointerUp: (_) {
+                    _selTimer?.cancel();
+                    _selTimer = Timer(const Duration(milliseconds: 200), () {
+                      if (!mounted) return;
+                      final ctrl = widget.block.controller;
+                      final sel = ctrl.selection;
+                      if (!sel.isValid || sel.isCollapsed) {
+                        widget.onSelChanged?.call('', ctrl, GlobalKey());
+                        return;
+                      }
+                      final txt = ctrl.text;
+                      final selected = txt.substring(
+                        sel.start.clamp(0, txt.length),
+                        sel.end.clamp(0, txt.length),
+                      );
+                      if (selected.trim().isNotEmpty) {
+                        widget.onSelChanged?.call(
+                          selected,
+                          ctrl,
+                          widget.blockKey ?? GlobalKey(),
+                        );
+                      }
+                    });
+                  },
+                  child: CompositedTransformTarget(
+                    link: widget.block.layerLink,
+                    child: TextField(
+                      controller: widget.block.controller,
+                      focusNode: widget.block.focusNode,
+                      maxLines: null,
+                      style: _style().copyWith(
+                        decoration:
+                            (widget.block.type == BlockType.checkbox &&
+                                widget.block.isChecked)
+                            ? TextDecoration.lineThrough
+                            : null,
+                        color:
+                            (widget.block.type == BlockType.checkbox &&
+                                widget.block.isChecked)
+                            ? _txt2
+                            : null,
+                      ),
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        filled: true,
+                        fillColor: Colors.transparent,
+                        hoverColor: Colors.transparent,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                        hintText: (_foc && widget.block.controller.text.isEmpty)
+                            ? _hint(widget.block.type)
+                            : '',
+                        hintStyle: TextStyle(
+                          color: _txt2.withOpacity(0.4),
+                          fontSize: 16,
+                        ),
+                      ),
+                      onChanged: (t) => widget.onText(t, widget.idx),
                     ),
                   ),
                 ),
               ),
-
-            // 테이블 태그
-            if (_isTable)
-              Padding(
-                padding: const EdgeInsets.only(top: 2, right: 6),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _accD,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: _acc.withOpacity(0.3)),
-                  ),
-                  child: const Text(
-                    'TABLE',
-                    style: TextStyle(
-                      color: _acc,
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-              ),
-
-            // 텍스트 입력
-            Expanded(
-              child: CompositedTransformTarget(
-                link: widget.block.layerLink,
-                child: TextField(
-                  controller: widget.block.controller,
-                  focusNode: widget.block.focusNode,
-                  maxLines: null,
-                  style: _style().copyWith(
-                    decoration:
-                        (widget.block.type == BlockType.checkbox &&
-                            widget.block.isChecked)
-                        ? TextDecoration.lineThrough
-                        : null,
-                    color:
-                        (widget.block.type == BlockType.checkbox &&
-                            widget.block.isChecked)
-                        ? _txt2
-                        : null,
-                  ),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: true,
-                    fillColor: Colors.transparent,
-                    hoverColor: Colors.transparent,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: (_foc && widget.block.controller.text.isEmpty)
-                        ? _hint(widget.block.type)
-                        : '',
-                    hintStyle: TextStyle(
-                      color: _txt2.withOpacity(0.4),
-                      fontSize: 16,
-                    ),
-                  ),
-                  onChanged: (t) => widget.onText(t, widget.idx),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ); // KeyedSubtree + Container
+    ); // KeyedSubtree > GestureDetector > Container
   }
 
   String _hint(BlockType t) => switch (t) {
