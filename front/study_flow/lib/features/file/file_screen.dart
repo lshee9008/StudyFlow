@@ -231,10 +231,18 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   void _onFocus(String text) {
     _focT?.cancel();
     _focT = Timer(const Duration(milliseconds: 800), () {
-      if (text.trim().length > 20) {
+      // 마크다운 기호 제거
+      final clean = text
+          .replaceAll(RegExp(r'\*+'), '')
+          .replaceAll(RegExp(r'#+\s?'), '')
+          .replaceAll(RegExp(r'~~|__'), '')
+          .replaceAll('`', '')
+          .trim();
+      // ✅ 5자 이상이면 분석 (짧은 블록도 허용)
+      if (clean.length >= 5) {
         ref
             .read(fileEditorProvider.notifier)
-            .analyzeBlock(text: text, title: _tCtrl.text);
+            .analyzeBlock(text: clean, title: _tCtrl.text);
       }
     });
   }
@@ -976,7 +984,10 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                       snack: _snack,
                       pulse: _sumPulse,
                     ),
-                    _AnaPanel(st: st),
+                    Consumer(
+                      builder: (_, r, __) =>
+                          _AnaPanel(st: r.watch(fileEditorProvider)),
+                    ),
                     _MemoPanel(st: st, ref: ref, tCtrl: _tCtrl),
                     _QuizPanel(st: st, ref: ref),
                     _AskPanel(
@@ -1719,6 +1730,11 @@ class _NBState extends State<_NBlock> {
     if (!mounted) return;
     final ctrl = widget.block.controller;
     final sel = ctrl.selection;
+    // IME 조합 중이면 무시
+    if (ctrl.value.composing != TextRange.empty) return;
+    // 텍스트가 변경된 경우(타이핑)는 무시, selection만 감지
+    // collapsed selection = 그냥 커서 이동, 선택 없음 → 무시
+    if (sel.isCollapsed) return;
     // 마우스는 onPointerUp이 처리하므로 여기선 키보드만 처리
     // sel이 collapsed면 툴바 닫기, 아니면 타이머로 표시
     _selTimer?.cancel();
@@ -3090,14 +3106,18 @@ class _AnaPanel extends StatelessWidget {
       Expanded(
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),
+          // ✅ key로 강제 리빌드 — isAnalysisLoading 변경 시 AnimatedSwitcher가 새 위젯으로 인식
           child: st.isAnalysisLoading
               ? const _Load('문단 분석 중...')
               : st.currentAnalysis?.isNotEmpty == true
-              ? SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(14, 16, 14, 40),
-                  child: MarkdownBody(
-                    data: st.currentAnalysis!,
-                    styleSheet: _md(),
+              ? KeyedSubtree(
+                  key: ValueKey(st.currentAnalysis),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(14, 16, 14, 40),
+                    child: MarkdownBody(
+                      data: st.currentAnalysis!,
+                      styleSheet: _md(),
+                    ),
                   ),
                 )
               : const _Empty(

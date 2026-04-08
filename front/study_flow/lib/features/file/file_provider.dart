@@ -400,9 +400,36 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     required String text,
     required String title,
   }) async {
-    if (text.trim().length < 10 || text == _lastAnalyzedText) return;
+    if (text.trim().length < 5) return;
     _lastAnalyzedText = text;
-    state = state.copyWith(focusedText: text, isAnalysisLoading: true);
+    // ✅ currentAnalysis를 null로 리셋해서 이전 결과 지우기
+    // 이전 분석 결과 초기화 후 로딩 시작
+    state = FileEditorState(
+      blocks: state.blocks,
+      isLoading: state.isLoading,
+      isSummaryLoading: state.isSummaryLoading,
+      isAnalysisLoading: true,
+      isMemoLoading: state.isMemoLoading,
+      isQuizLoading: state.isQuizLoading,
+      isQALoading: state.isQALoading,
+      isGraphLoading: state.isGraphLoading,
+      icon: state.icon,
+      filePrompt: state.filePrompt,
+      summaryBlocks: state.summaryBlocks,
+      currentAnalysis: null, // ✅ 완전 초기화
+      currentMemo: state.currentMemo,
+      quizData: state.quizData,
+      quizAnswers: state.quizAnswers,
+      qaAnswer: state.qaAnswer,
+      graphData: state.graphData,
+      focusedText: text,
+      lastSavedAt: state.lastSavedAt,
+      lastSentContent: state.lastSentContent,
+      fileTitle: state.fileTitle,
+      fileTags: state.fileTags,
+      proofreadResult: state.proofreadResult,
+      isProofreadLoading: state.isProofreadLoading,
+    );
     try {
       final res = await http
           .post(
@@ -410,7 +437,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'text': text, 'context_title': title}),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 12));
       if (!mounted) return;
       if (res.statusCode == 200) {
         final analysis =
