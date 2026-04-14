@@ -1,8 +1,6 @@
 // ╔══════════════════════════════════════════════════════╗
-// ║  StudyFlow — Premium Editor v6                       ║
-// ║  Backspace fix · List enter · Tab indent             ║
-// ║  Ctrl+A · Drag select · Proofread · Table            ║
-// ║  Mindmap · Summary save · Real-time sync             ║
+// ║  StudyFlow — Premium Editor v7                       ║
+// ║  Notion-style UX · Inter font · High-quality UI      ║
 // ╚══════════════════════════════════════════════════════╝
 import 'dart:async';
 import 'dart:math' as math;
@@ -11,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -795,23 +794,45 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '글 교정',
-              style: TextStyle(
-                color: _txt0,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'AI가 맞춤법·문법·표현을 수정합니다.',
-              style: TextStyle(color: _txt2, fontSize: 13),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _accD,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: _acc.withOpacity(0.2)),
+                  ),
+                  child: const Icon(
+                    Icons.auto_fix_high_rounded,
+                    size: 15,
+                    color: _acc,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '글 교정',
+                      style: GoogleFonts.inter(
+                        color: _txt0,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'AI가 맞춤법·문법·표현을 수정합니다.',
+                      style: GoogleFonts.inter(color: _txt2, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 20),
             Row(
@@ -1068,8 +1089,15 @@ class _AppBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    height: 52,
-    color: Colors.transparent,
+    height: 50,
+    decoration: BoxDecoration(
+      border: Border(
+        bottom: BorderSide(
+          color: const Color(0xFF1C1C2C).withOpacity(0.8),
+          width: 0.5,
+        ),
+      ),
+    ),
     child: Row(
       children: [
         const SizedBox(width: 6),
@@ -1114,14 +1142,19 @@ class _AppBar extends StatelessWidget {
         ],
         // 글자 수
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
           decoration: BoxDecoration(
-            color: _bg3,
-            borderRadius: BorderRadius.circular(20),
+            color: const Color(0xFF161622),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _bdr.withOpacity(0.6)),
           ),
           child: Text(
             '$charCount자',
-            style: const TextStyle(color: _txt2, fontSize: 11),
+            style: GoogleFonts.inter(
+              color: _txt2,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
         const SizedBox(width: 6),
@@ -1187,11 +1220,14 @@ class _SaveChip extends StatelessWidget {
             height: 10,
             child: CircularProgressIndicator(
               strokeWidth: 1.2,
-              color: _txt2.withOpacity(0.5),
+              color: _txt2.withOpacity(0.4),
             ),
           ),
           const SizedBox(width: 6),
-          const Text('저장 중', style: TextStyle(color: _txt2, fontSize: 11)),
+          Text(
+            '저장 중',
+            style: GoogleFonts.inter(color: _txt2, fontSize: 11),
+          ),
         ],
       );
     if (savedAt != null)
@@ -1204,11 +1240,14 @@ class _SaveChip extends StatelessWidget {
             children: [
               Icon(
                 Icons.check_circle_rounded,
-                size: 12,
+                size: 11,
                 color: _grn.withOpacity(0.8),
               ),
               const SizedBox(width: 5),
-              const Text('저장됨', style: TextStyle(color: _txt2, fontSize: 11)),
+              Text(
+                '저장됨',
+                style: GoogleFonts.inter(color: _txt2, fontSize: 11),
+              ),
             ],
           ),
         ),
@@ -1402,18 +1441,18 @@ class _GTState extends State<_GlowTitle> {
   Widget build(BuildContext context) => TextField(
     controller: widget.ctrl,
     focusNode: _fn,
-    style: const TextStyle(
-      fontSize: 44,
-      fontWeight: FontWeight.w900,
+    style: GoogleFonts.inter(
+      fontSize: 40,
+      fontWeight: FontWeight.w800,
       color: _txt0,
-      height: 1.13,
-      letterSpacing: -2.0,
-      shadows: [
-        Shadow(color: Color(0x14CCFF66), blurRadius: 50),
-        Shadow(color: Color(0x08FFFFFF), blurRadius: 20),
+      height: 1.15,
+      letterSpacing: -1.5,
+      shadows: const [
+        Shadow(color: Color(0x10CCFF66), blurRadius: 40),
+        Shadow(color: Color(0x06FFFFFF), blurRadius: 16),
       ],
     ),
-    decoration: const InputDecoration(
+    decoration: InputDecoration(
       border: InputBorder.none,
       enabledBorder: InputBorder.none,
       focusedBorder: InputBorder.none,
@@ -1422,12 +1461,12 @@ class _GTState extends State<_GlowTitle> {
       isDense: true,
       contentPadding: EdgeInsets.zero,
       hintText: '제목 없음',
-      hintStyle: TextStyle(
-        fontSize: 44,
-        fontWeight: FontWeight.w900,
-        color: Color(0xFF1E1E38),
-        height: 1.13,
-        letterSpacing: -2.0,
+      hintStyle: GoogleFonts.inter(
+        fontSize: 40,
+        fontWeight: FontWeight.w800,
+        color: const Color(0xFF1C1C30),
+        height: 1.15,
+        letterSpacing: -1.5,
       ),
     ),
     onChanged: (_) => widget.onChange(),
@@ -1608,22 +1647,22 @@ class _PRState extends State<_PropRow> {
   bool get _foc => _fn.hasFocus;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 1),
+    padding: const EdgeInsets.symmetric(vertical: 2),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Icon(
           widget.icon,
-          size: 13,
-          color: _foc ? _acc.withOpacity(0.8) : _txt2.withOpacity(0.4),
+          size: 12,
+          color: _foc ? _acc.withOpacity(0.9) : _txt2.withOpacity(0.35),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         SizedBox(
-          width: 56,
+          width: 60,
           child: Text(
             widget.label,
-            style: TextStyle(
-              color: _foc ? _txt2 : _txt2.withOpacity(0.5),
+            style: GoogleFonts.inter(
+              color: _foc ? _txt1 : _txt2.withOpacity(0.45),
               fontSize: 11,
               fontWeight: FontWeight.w500,
               letterSpacing: 0.2,
@@ -1634,7 +1673,10 @@ class _PRState extends State<_PropRow> {
           child: TextField(
             controller: widget.ctrl,
             focusNode: _fn,
-            style: TextStyle(color: _foc ? _txt0 : _txt1, fontSize: 13),
+            style: GoogleFonts.inter(
+              color: _foc ? _txt0 : _txt1,
+              fontSize: 13,
+            ),
             decoration: InputDecoration(
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
@@ -1647,7 +1689,10 @@ class _PRState extends State<_PropRow> {
                 vertical: 4,
               ),
               hintText: widget.hint,
-              hintStyle: TextStyle(color: _txt2.withOpacity(0.3), fontSize: 13),
+              hintStyle: GoogleFonts.inter(
+                color: _txt2.withOpacity(0.25),
+                fontSize: 13,
+              ),
             ),
             onChanged: widget.onChange,
           ),
@@ -1772,40 +1817,40 @@ class _NBState extends State<_NBlock> {
 
   // ── 블록별 스타일 ──────────────────────────────
   TextStyle _style() => switch (widget.block.type) {
-    BlockType.h1 => const TextStyle(
-      fontSize: 34,
-      fontWeight: FontWeight.w900,
-      color: _txt0,
-      height: 1.25,
-      letterSpacing: -1.2,
-      shadows: [Shadow(color: Color(0x12CCFF66), blurRadius: 30)],
-    ),
-    BlockType.h2 => const TextStyle(
-      fontSize: 26,
+    BlockType.h1 => GoogleFonts.inter(
+      fontSize: 32,
       fontWeight: FontWeight.w800,
       color: _txt0,
-      height: 1.3,
-      letterSpacing: -0.6,
+      height: 1.25,
+      letterSpacing: -1.0,
+      shadows: const [Shadow(color: Color(0x10CCFF66), blurRadius: 24)],
     ),
-    BlockType.h3 => const TextStyle(
-      fontSize: 20,
+    BlockType.h2 => GoogleFonts.inter(
+      fontSize: 24,
       fontWeight: FontWeight.w700,
+      color: _txt0,
+      height: 1.3,
+      letterSpacing: -0.5,
+    ),
+    BlockType.h3 => GoogleFonts.inter(
+      fontSize: 19,
+      fontWeight: FontWeight.w600,
       color: _txt0,
       height: 1.4,
       letterSpacing: -0.2,
     ),
-    BlockType.code => const TextStyle(
+    BlockType.code => GoogleFonts.jetBrainsMono(
       fontSize: 13,
-      fontFamily: 'Courier',
-      color: Color(0xFFCCBBFF),
-      height: 1.7,
-      letterSpacing: 0.3,
+      color: const Color(0xFFD4BBFF),
+      height: 1.75,
+      letterSpacing: 0.2,
     ),
-    _ => const TextStyle(
-      fontSize: 16,
+    _ => GoogleFonts.inter(
+      fontSize: 15,
       color: _txt0,
       height: 1.85,
-      letterSpacing: 0.1,
+      letterSpacing: 0.0,
+      fontWeight: FontWeight.w400,
     ),
   };
 
@@ -1845,14 +1890,16 @@ class _NBState extends State<_NBlock> {
           decoration: BoxDecoration(
             color: widget.isSelected
                 ? _acc.withOpacity(0.07)
+                : widget.block.type == BlockType.code
+                ? const Color(0xFF0E0E1C)
                 : _foc
-                ? Colors.white.withOpacity(0.015)
+                ? Colors.white.withOpacity(0.012)
                 : null,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             border: widget.isSelected
                 ? Border.all(color: _acc.withOpacity(0.3))
                 : widget.block.type == BlockType.code
-                ? Border.all(color: _bdr)
+                ? Border.all(color: _bdr.withOpacity(0.8))
                 : null,
           ),
           child: Row(
@@ -1954,23 +2001,26 @@ class _NBState extends State<_NBlock> {
               // 코드 태그
               if (widget.block.type == BlockType.code && !_isTable)
                 Padding(
-                  padding: const EdgeInsets.only(top: 2, right: 6),
+                  padding: const EdgeInsets.only(top: 3, right: 7),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 1,
+                      horizontal: 6,
+                      vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: _bdr,
-                      borderRadius: BorderRadius.circular(4),
+                      color: const Color(0xFF1A1A30),
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(
+                        color: const Color(0xFFD4BBFF).withOpacity(0.2),
+                      ),
                     ),
-                    child: const Text(
-                      'CODE',
-                      style: TextStyle(
-                        color: _txt2,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
+                    child: Text(
+                      'code',
+                      style: GoogleFonts.jetBrainsMono(
+                        color: const Color(0xFFD4BBFF),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.3,
                       ),
                     ),
                   ),
@@ -1979,24 +2029,24 @@ class _NBState extends State<_NBlock> {
               // 테이블 태그
               if (_isTable)
                 Padding(
-                  padding: const EdgeInsets.only(top: 2, right: 6),
+                  padding: const EdgeInsets.only(top: 3, right: 7),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 1,
+                      horizontal: 6,
+                      vertical: 2,
                     ),
                     decoration: BoxDecoration(
                       color: _accD,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: _acc.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(color: _acc.withOpacity(0.25)),
                     ),
-                    child: const Text(
-                      'TABLE',
-                      style: TextStyle(
+                    child: Text(
+                      'table',
+                      style: GoogleFonts.inter(
                         color: _acc,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3,
                       ),
                     ),
                   ),
@@ -2081,10 +2131,10 @@ class _NBState extends State<_NBlock> {
     BlockType.h1 => '제목 1',
     BlockType.h2 => '제목 2',
     BlockType.h3 => '제목 3',
-    BlockType.bullet => '항목 입력',
-    BlockType.checkbox => '할 일 추가',
-    BlockType.code => '코드 또는 표 입력',
-    _ => "입력하거나  '/'  로 블록 삽입",
+    BlockType.bullet => '항목 입력...',
+    BlockType.checkbox => '할 일 추가...',
+    BlockType.code => '코드 또는 표 입력...',
+    _ => "내용을 입력하거나  /  로 블록 추가",
   };
 
   PopupMenuItem<String> _mi(String v, IconData icon, String txt, Color c) =>
@@ -2713,15 +2763,30 @@ class _SIS extends State<_SI> {
         ),
         child: Row(
           children: [
-            Icon(
-              widget.opt.icon,
-              size: 15,
-              color: (widget.sel || _h) ? _acc : _txt2,
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: (widget.sel || _h)
+                    ? _accD
+                    : const Color(0xFF18182A),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: (widget.sel || _h)
+                      ? _acc.withOpacity(0.3)
+                      : _bdr,
+                ),
+              ),
+              child: Icon(
+                widget.opt.icon,
+                size: 13,
+                color: (widget.sel || _h) ? _acc : _txt2,
+              ),
             ),
             const SizedBox(width: 10),
             Text(
               widget.opt.label,
-              style: TextStyle(
+              style: GoogleFonts.inter(
                 color: (widget.sel || _h) ? _txt0 : _txt1,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -2731,10 +2796,9 @@ class _SIS extends State<_SI> {
             if (widget.opt.hint.isNotEmpty)
               Text(
                 widget.opt.hint,
-                style: const TextStyle(
-                  color: _txt2,
+                style: GoogleFonts.jetBrainsMono(
+                  color: _txt2.withOpacity(0.5),
                   fontSize: 10,
-                  fontFamily: 'Courier',
                 ),
               ),
           ],
@@ -2754,34 +2818,36 @@ class _Tabs extends StatelessWidget {
     isScrollable: true,
     tabAlignment: TabAlignment.start,
     dividerColor: Colors.transparent,
-    indicator: const UnderlineTabIndicator(
-      borderSide: BorderSide(color: _acc, width: 2),
-      insets: EdgeInsets.symmetric(horizontal: 6),
+    indicator: BoxDecoration(
+      color: _accD,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: _acc.withOpacity(0.3)),
     ),
+    indicatorSize: TabBarIndicatorSize.tab,
     labelColor: _acc,
     unselectedLabelColor: _txt2,
-    labelStyle: const TextStyle(
+    labelStyle: GoogleFonts.inter(
       fontSize: 11,
       fontWeight: FontWeight.w700,
       letterSpacing: 0.1,
     ),
-    unselectedLabelStyle: const TextStyle(
+    unselectedLabelStyle: GoogleFonts.inter(
       fontSize: 11,
       fontWeight: FontWeight.w400,
     ),
-    labelPadding: const EdgeInsets.symmetric(horizontal: 10),
+    labelPadding: const EdgeInsets.symmetric(horizontal: 8),
     tabs: [
       _T(Icons.auto_awesome_rounded, '요약'),
       _T(Icons.manage_search_rounded, '분석'),
       _T(Icons.psychology_rounded, '암기'),
       _T(Icons.quiz_rounded, '퀴즈'),
-      _T(Icons.chat_bubble_outline, 'Ask'),
+      _T(Icons.chat_bubble_outline_rounded, 'Ask'),
     ],
   );
   Tab _T(IconData i, String t) => Tab(
     child: Row(
       mainAxisSize: MainAxisSize.min,
-      children: [Icon(i, size: 13), const SizedBox(width: 5), Text(t)],
+      children: [Icon(i, size: 12), const SizedBox(width: 5), Text(t)],
     ),
   );
 }
@@ -3235,11 +3301,12 @@ class _QCard extends StatelessWidget {
         children: [
           Text(
             'Q${qi + 1}.  ${q['question']}',
-            style: const TextStyle(
+            style: GoogleFonts.inter(
               color: _txt0,
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              height: 1.5,
+              height: 1.55,
+              letterSpacing: -0.1,
             ),
           ),
           const SizedBox(height: 12),
@@ -3368,10 +3435,10 @@ class _AskPanel extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: ctrl,
-                style: const TextStyle(color: _txt0, fontSize: 13),
+                style: GoogleFonts.inter(color: _txt0, fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: '질문 입력...',
-                  hintStyle: const TextStyle(color: _txt2, fontSize: 13),
+                  hintText: '노트에 대해 무엇이든 물어보세요...',
+                  hintStyle: GoogleFonts.inter(color: _txt2, fontSize: 13),
                   filled: true,
                   fillColor: _bg3,
                   contentPadding: const EdgeInsets.symmetric(
@@ -3379,16 +3446,16 @@ class _AskPanel extends StatelessWidget {
                     vertical: 12,
                   ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(16),
                     borderSide: const BorderSide(color: _bdr),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(16),
                     borderSide: const BorderSide(color: _bdr),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: _acc),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: _acc, width: 1.5),
                   ),
                 ),
                 onSubmitted: (v) {
@@ -4002,24 +4069,23 @@ class _Stat extends StatelessWidget {
 
 // ══════════════════ MARKDOWN STYLE ══════════════════
 MarkdownStyleSheet _md() => MarkdownStyleSheet(
-  p: const TextStyle(
+  p: GoogleFonts.inter(
     color: _txt0,
-    fontSize: 14,
+    fontSize: 13.5,
     height: 1.85,
-    letterSpacing: 0.1,
+    letterSpacing: 0.05,
   ),
-  strong: const TextStyle(
+  strong: GoogleFonts.inter(
     color: Colors.white,
     fontWeight: FontWeight.w700,
-    shadows: [Shadow(color: Color(0x20CCFF66), blurRadius: 8)],
+    shadows: const [Shadow(color: Color(0x18CCFF66), blurRadius: 6)],
   ),
-  em: const TextStyle(color: _txt0, fontStyle: FontStyle.italic),
-  code: const TextStyle(
-    backgroundColor: Color(0xFF141428),
-    fontFamily: 'Courier',
-    color: Color(0xFFCCBBFF),
-    fontSize: 13,
-    letterSpacing: 0.2,
+  em: GoogleFonts.inter(color: _txt0, fontStyle: FontStyle.italic),
+  code: GoogleFonts.jetBrainsMono(
+    backgroundColor: const Color(0xFF141428),
+    color: const Color(0xFFD4BBFF),
+    fontSize: 12.5,
+    letterSpacing: 0.15,
   ),
   codeblockDecoration: BoxDecoration(
     color: const Color(0xFF0D1117),
