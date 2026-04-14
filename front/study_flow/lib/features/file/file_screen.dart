@@ -19,21 +19,21 @@ import '../../core/db_helper/files_db_helper.dart';
 import 'file_provider.dart';
 
 // ══════════════════ TOKENS ════════════════════════════
-const _bg0 = Color(0xFF07070E);
-const _bg1 = Color(0xFF0D0D16);
-const _bg2 = Color(0xFF12121C);
-const _bg3 = Color(0xFF181826);
-const _bg4 = Color(0xFF1E1E30);
-const _bdr = Color(0xFF232336);
-const _bdr2 = Color(0xFF2E2E48);
-const _txt0 = Color(0xFFF0F0FA);
-const _txt1 = Color(0xFFAAAACC);
-const _txt2 = Color(0xFF555575);
+const _bg0 = Color(0xFF111111);
+const _bg1 = Color(0xFF191919);
+const _bg2 = Color(0xFF222222);
+const _bg3 = Color(0xFF2B2B2B);
+const _bg4 = Color(0xFF353535);
+const _bdr = Color(0xFF2E2E2E);
+const _bdr2 = Color(0xFF3A3A3A);
+const _txt0 = Color(0xFFE8E8E8);
+const _txt1 = Color(0xFF9A9A9A);
+const _txt2 = Color(0xFF666666);
 const _acc = Color(0xFFCCFF66);
-const _accD = Color(0xFF0F1A04);
+const _accD = Color(0xFF1A2508);
 const _grn = Color(0xFF4ADE80);
 const _red = Color(0xFFFF4F6A);
-const _blu = Color(0xFF4F8EFF);
+const _blu = Color(0xFF5B8EFF);
 const _pur = Color(0xFFA78BFA);
 const _yel = Color(0xFFFFD166);
 
@@ -212,14 +212,14 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       }
     });
     final mc = ref.read(fileEditorProvider).meaningfulCharCount;
-    if ((mc - _lastSumLen).abs() > 150) {
+    if ((mc - _lastSumLen).abs() > 80) {
       _sumT?.cancel();
-      _sumT = Timer(const Duration(seconds: 12), _doSum);
+      _sumT = Timer(const Duration(seconds: 8), _doSum);
     }
   }
 
   void _doSum() {
-    if (_tab.index == 0 && !ref.read(fileEditorProvider).isSummaryLoading) {
+    if (!ref.read(fileEditorProvider).isSummaryLoading) {
       _lastSumLen = ref.read(fileEditorProvider).meaningfulCharCount;
       ref
           .read(fileEditorProvider.notifier)
@@ -909,6 +909,20 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                       ref.read(fileEditorProvider.notifier).setPrompt(v);
                       _chg();
                     },
+                  ),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _pCtrl,
+                    builder: (_, v, __) => v.text.isEmpty
+                        ? _PromptSugs(
+                            onTap: (s) {
+                              _pCtrl.text = s;
+                              ref
+                                  .read(fileEditorProvider.notifier)
+                                  .setPrompt(s);
+                              _chg();
+                            },
+                          )
+                        : const SizedBox.shrink(),
                   ),
                   const SizedBox(height: 28),
                   const _Div(),
@@ -1702,6 +1716,120 @@ class _PRState extends State<_PropRow> {
   );
 }
 
+// ══════════════════ PROMPT SUGGESTIONS ═════════════
+class _PromptSugs extends StatefulWidget {
+  final void Function(String) onTap;
+  const _PromptSugs({required this.onTap});
+  @override
+  State<_PromptSugs> createState() => _PSState();
+}
+
+class _PSState extends State<_PromptSugs> with SingleTickerProviderStateMixin {
+  late AnimationController _ac;
+  late Animation<double> _fade;
+  @override
+  void initState() {
+    super.initState();
+    _ac = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )..forward();
+    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
+  }
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
+  }
+
+  static const _sugs = [
+    ('핵심 개념 위주로 요약', Icons.lightbulb_outline_rounded),
+    ('시험 대비 정리', Icons.school_outlined),
+    ('개조식으로 정리', Icons.format_list_bulleted_rounded),
+    ('코드 위주 분석', Icons.code_rounded),
+    ('표로 비교 정리', Icons.table_chart_outlined),
+    ('영어로 요약', Icons.translate_rounded),
+  ];
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+    opacity: _fade,
+    child: Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 4, left: 22),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: _sugs
+            .map(
+              (p) => _PSChip(
+                label: p.$1,
+                icon: p.$2,
+                onTap: () => widget.onTap(p.$1),
+              ),
+            )
+            .toList(),
+      ),
+    ),
+  );
+}
+
+class _PSChip extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _PSChip({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+  @override
+  State<_PSChip> createState() => _PSChipState();
+}
+
+class _PSChipState extends State<_PSChip> {
+  bool _h = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _h = true),
+    onExit: (_) => setState(() => _h = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: _h ? _accD : _bg3,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: _h ? _acc.withOpacity(0.4) : _bdr2,
+            width: _h ? 1 : 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              widget.icon,
+              size: 10,
+              color: _h ? _acc : _txt2,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              widget.label,
+              style: GoogleFonts.inter(
+                color: _h ? _acc : _txt1,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _Div extends StatelessWidget {
   const _Div();
   @override
@@ -1847,7 +1975,7 @@ class _NBState extends State<_NBlock> {
     ),
     _ => GoogleFonts.inter(
       fontSize: 15,
-      color: _txt0,
+      color: _txt0.withOpacity(0.85),
       height: 1.85,
       letterSpacing: 0.0,
       fontWeight: FontWeight.w400,
@@ -2868,51 +2996,158 @@ class _SumPanel extends StatelessWidget {
     required this.pulse,
   });
   @override
-  Widget build(BuildContext context) => Stack(
+  Widget build(BuildContext context) => Column(
     children: [
-      if (st.summaryBlocks.isEmpty && !st.isSummaryLoading)
-        const _Empty(
-          icon: Icons.auto_awesome_rounded,
-          title: '스마트 요약',
-          desc: '80자 이상 작성하면\nAI가 자동으로 요약합니다.',
-        ),
-      if (st.isSummaryLoading && st.summaryBlocks.isEmpty)
-        const _Load('AI가 분석 중...'),
-      ListView.builder(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 130),
-        itemCount: st.summaryBlocks.length,
-        itemBuilder: (_, i) => _SumCard(
-          key: ValueKey('sc$i'),
-          block: st.summaryBlocks[i],
-          index: i,
-          onPin: () =>
-              ref.read(fileEditorProvider.notifier).toggleSummarySave(i),
-          onDel: () =>
-              ref.read(fileEditorProvider.notifier).removeSummaryBlock(i),
-          onCopy: () {
-            Clipboard.setData(ClipboardData(text: st.summaryBlocks[i].content));
-            snack('복사됨');
-          },
-          onExport: () async {
-            // 저장 (파일에 summary 필드에 저장)
-            snack('확정 요약이 저장됩니다.');
-            ref.read(fileEditorProvider.notifier).toggleSummarySave(i);
-          },
+      // 미니 헤더
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 10, 8),
+        child: Row(
+          children: [
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: st.isSummaryLoading
+                    ? _acc.withOpacity(0.6)
+                    : st.summaryBlocks.isNotEmpty
+                    ? _acc
+                    : _txt2.withOpacity(0.3),
+                shape: BoxShape.circle,
+                boxShadow: st.summaryBlocks.isNotEmpty && !st.isSummaryLoading
+                    ? [BoxShadow(color: _acc.withOpacity(0.6), blurRadius: 6)]
+                    : [],
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              '자동 요약',
+              style: GoogleFonts.inter(
+                color: _txt2,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const Spacer(),
+            if (st.isSummaryLoading)
+              SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(
+                  color: _acc,
+                  strokeWidth: 1.5,
+                  strokeCap: StrokeCap.round,
+                ),
+              )
+            else
+              InkWell(
+                onTap: () => ref
+                    .read(fileEditorProvider.notifier)
+                    .requestSummary(title: tCtrl.text, tags: gCtrl.text),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.refresh_rounded, size: 12, color: _txt2.withOpacity(0.6)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '재요약',
+                        style: GoogleFonts.inter(
+                          color: _txt2.withOpacity(0.6),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
-      _Fade(),
-      Positioned(
-        bottom: 16,
-        left: 14,
-        right: 14,
-        child: _FABtn(
-          loading: st.isSummaryLoading,
-          label: st.summaryBlocks.any((b) => b.isSaved) ? '추가 분석' : '요약 생성',
-          icon: Icons.auto_fix_high_rounded,
-          pulse: pulse,
-          onTap: () => ref
-              .read(fileEditorProvider.notifier)
-              .requestSummary(title: tCtrl.text, tags: gCtrl.text),
+      Container(
+        height: 0.5,
+        color: _bdr.withOpacity(0.5),
+      ),
+      Expanded(
+        child: Stack(
+          children: [
+            if (st.summaryBlocks.isEmpty && !st.isSummaryLoading)
+              const _Empty(
+                icon: Icons.auto_awesome_rounded,
+                title: '자동 요약',
+                desc: '글을 작성하면\nAI가 자동으로 요약합니다.',
+              ),
+            if (st.isSummaryLoading && st.summaryBlocks.isEmpty)
+              const _Load('AI가 분석 중...'),
+            ListView.builder(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 20),
+              itemCount: st.summaryBlocks.length,
+              itemBuilder: (_, i) => _SumCard(
+                key: ValueKey('sc$i'),
+                block: st.summaryBlocks[i],
+                index: i,
+                onPin: () => ref
+                    .read(fileEditorProvider.notifier)
+                    .toggleSummarySave(i),
+                onDel: () => ref
+                    .read(fileEditorProvider.notifier)
+                    .removeSummaryBlock(i),
+                onCopy: () {
+                  Clipboard.setData(
+                    ClipboardData(text: st.summaryBlocks[i].content),
+                  );
+                  snack('복사됨');
+                },
+                onExport: () async {
+                  snack('확정 요약이 저장됩니다.');
+                  ref
+                      .read(fileEditorProvider.notifier)
+                      .toggleSummarySave(i);
+                },
+              ),
+            ),
+            if (st.isSummaryLoading && st.summaryBlocks.isNotEmpty)
+              Positioned(
+                bottom: 12,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: _bg3,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _bdr2),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 11,
+                          height: 11,
+                          child: CircularProgressIndicator(
+                            color: _acc,
+                            strokeWidth: 1.5,
+                            strokeCap: StrokeCap.round,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '업데이트 중...',
+                          style: GoogleFonts.inter(
+                            color: _txt1,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     ],
@@ -3894,7 +4129,7 @@ class _Fade extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
-            colors: [Color(0xFF0F0F16), Colors.transparent],
+            colors: [Color(0xFF191919), Colors.transparent],
           ),
         ),
       ),

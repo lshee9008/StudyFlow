@@ -7,18 +7,46 @@ router = APIRouter()
 OLLAMA = "http://localhost:11434/api/generate"
 MODEL = "gemma3:27b-cloud"
 
+# ── 요청 캐시 (최대 100개, 메모리) ──────────────────────
+import hashlib
+from collections import OrderedDict
+
+_llm_cache: OrderedDict = OrderedDict()
+_CACHE_MAX = 100
+_CACHE_TTL = 3600  # 1시간 (초)
+
+def _cache_key(prompt: str, temp: float, tokens: int) -> str:
+    raw = f"{prompt}|{temp}|{tokens}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
 
 # ══════════════════════════════════════════════════════════
 # LLM 호출
 # ══════════════════════════════════════════════════════════
 async def _llm(prompt: str, temp: float = 0.25, tokens: int = 1500) -> str:
+    import time
+    key = _cache_key(prompt, temp, tokens)
+    # 캐시 히트 확인
+    if key in _llm_cache:
+        entry = _llm_cache[key]
+        if time.time() - entry['ts'] < _CACHE_TTL:
+            _llm_cache.move_to_end(key)  # LRU 갱신
+            return entry['val']
+        else:
+            del _llm_cache[key]
+    # LLM 호출
     async with httpx.AsyncClient(timeout=120.0) as c:
         r = await c.post(OLLAMA, json={
             "model": MODEL, "prompt": prompt, "stream": False,
             "options": {"temperature": temp, "num_predict": tokens,
                         "top_p": 0.85, "repeat_penalty": 1.1}})
         r.raise_for_status()
-        return r.json().get("response", "").strip()
+        result = r.json().get("response", "").strip()
+    # 캐시 저장 (크기 초과 시 가장 오래된 항목 제거)
+    if len(_llm_cache) >= _CACHE_MAX:
+        _llm_cache.popitem(last=False)
+    _llm_cache[key] = {'val': result, 'ts': time.time()}
+    return result
 
 
 def _meaningful(text: str) -> int:
@@ -390,3 +418,19 @@ async def edit_selection(req: EditReq):
         return {"result": result.strip()}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+# ══════════════════════════════════════════════════════════
+# /cache/clear  — 캐시 초기화 (관리자용)
+# ══════════════════════════════════════════════════════════
+@router.post("/cache/clear")
+async def clear_cache():
+    _llm_cache.clear()
+    return {"cleared": True}
+
+
+@router.get("/cache/stats")
+async def cache_stats():
+    import time
+    valid = sum(1 for v in _llm_cache.values() if time.time() - v['ts'] < _CACHE_TTL)
+    return {"total": len(_llm_cache), "valid": valid, "max": _CACHE_MAX}

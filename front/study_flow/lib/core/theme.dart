@@ -3,38 +3,38 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // ── Color System ──────────────────────────────────
-  static const Color bgDeep = Color(0xFF06060B);
-  static const Color bgPrimary = Color(0xFF0D0D14);
-  static const Color bgSecondary = Color(0xFF13131C);
-  static const Color bgTertiary = Color(0xFF1A1A26);
-  static const Color bgQuaternary = Color(0xFF222232);
+  static const Color bgDeep = Color(0xFF111111);
+  static const Color bgPrimary = Color(0xFF191919);
+  static const Color bgSecondary = Color(0xFF222222);
+  static const Color bgTertiary = Color(0xFF2B2B2B);
+  static const Color bgQuaternary = Color(0xFF353535);
 
-  static const Color borderSubtle = Color(0xFF1C1C2A);
-  static const Color borderDefault = Color(0xFF272738);
-  static const Color borderStrong = Color(0xFF363650);
-  static const Color borderFocus = Color(0xFF4A4A70);
+  static const Color borderSubtle = Color(0xFF2E2E2E);
+  static const Color borderDefault = Color(0xFF3A3A3A);
+  static const Color borderStrong = Color(0xFF484848);
+  static const Color borderFocus = Color(0xFF606060);
 
-  static const Color textPrimary = Color(0xFFF2F2FA);
-  static const Color textSecondary = Color(0xFF8080A0);
-  static const Color textTertiary = Color(0xFF505070);
-  static const Color textMuted = Color(0xFF383855);
+  static const Color textPrimary = Color(0xFFE8E8E8);
+  static const Color textSecondary = Color(0xFF9A9A9A);
+  static const Color textTertiary = Color(0xFF666666);
+  static const Color textMuted = Color(0xFF444444);
 
   static const Color accent = Color(0xFFCCFF66);
-  static const Color accentDim = Color(0xFF161F05);
+  static const Color accentDim = Color(0xFF1A2508);
   static const Color accentMuted = Color(0xFF7ACC00);
   static const Color accentHover = Color(0xFFBBEE55);
   static const Color accentGlow = Color(0x1ACCFF66);
 
   static const Color blue = Color(0xFF5B8EFF);
-  static const Color blueDim = Color(0xFF0A1230);
+  static const Color blueDim = Color(0xFF0D1A3A);
   static const Color purple = Color(0xFF9B6CF8);
-  static const Color purpleDim = Color(0xFF140E28);
+  static const Color purpleDim = Color(0xFF1A1030);
   static const Color red = Color(0xFFFF5A7A);
-  static const Color redDim = Color(0xFF1E0810);
+  static const Color redDim = Color(0xFF2A0A12);
   static const Color green = Color(0xFF3AE0A0);
-  static const Color greenDim = Color(0xFF051A10);
+  static const Color greenDim = Color(0xFF071A10);
   static const Color yellow = Color(0xFFFFD166);
-  static const Color yellowDim = Color(0xFF1E1505);
+  static const Color yellowDim = Color(0xFF221A05);
 
   // ── Font Family ───────────────────────────────────
   static String get fontFamily => GoogleFonts.inter().fontFamily!;
