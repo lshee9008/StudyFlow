@@ -960,7 +960,7 @@ class _ProjectCardState extends State<_ProjectCard> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: _hover
-                  ? [_gradient[0].withOpacity(1.5), _gradient[1]]
+                  ? [_gradient[0].withOpacity(1.0), _gradient[1]]
                   : [AppTheme.bgSecondary, AppTheme.bgSecondary],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
