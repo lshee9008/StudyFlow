@@ -89,17 +89,31 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   late Animation<double> _bgAnim, _saveAnim, _sumPulse;
 
   static const _opts = [
-    _Opt('h1', '제목 1', Icons.looks_one_rounded, '# '),
-    _Opt('h2', '제목 2', Icons.looks_two_rounded, '## '),
-    _Opt('h3', '제목 3', Icons.looks_3_rounded, '### '),
-    _Opt('p', '텍스트', Icons.short_text_rounded, ''),
-    _Opt('bullet', '글머리', Icons.format_list_bulleted_rounded, '- '),
-    _Opt('number', '번호 목록', Icons.format_list_numbered_rounded, '1. '),
-    _Opt('todo', '할 일', Icons.check_box_outlined, '[] '),
-    _Opt('code', '코드', Icons.code_rounded, '```'),
-    _Opt('table', '표', Icons.table_chart_rounded, ''),
-    _Opt('quote', '인용', Icons.format_quote_rounded, '> '),
-    _Opt('div', '구분선', Icons.horizontal_rule_rounded, '---'),
+    // 기본 텍스트
+    _Opt('p', '텍스트', Icons.short_text_rounded, '',
+        '일반 텍스트를 작성하세요', '기본 블록'),
+    _Opt('h1', '제목 1', Icons.looks_one_rounded, '#',
+        '큰 섹션 제목', '기본 블록'),
+    _Opt('h2', '제목 2', Icons.looks_two_rounded, '##',
+        '중간 섹션 제목', '기본 블록'),
+    _Opt('h3', '제목 3', Icons.looks_3_rounded, '###',
+        '작은 섹션 제목', '기본 블록'),
+    _Opt('quote', '인용', Icons.format_quote_rounded, '>',
+        '텍스트를 인용 형식으로', '기본 블록'),
+    // 목록
+    _Opt('bullet', '글머리 기호', Icons.format_list_bulleted_rounded, '-',
+        '글머리 기호 목록 작성', '목록'),
+    _Opt('number', '번호 목록', Icons.format_list_numbered_rounded, '1.',
+        '번호가 매겨진 목록', '목록'),
+    _Opt('todo', '할 일 목록', Icons.check_box_outlined, '[]',
+        '할 일을 추적하는 체크리스트', '목록'),
+    // 특수
+    _Opt('code', '코드', Icons.code_rounded, '```',
+        '코드 스니펫 삽입', '특수'),
+    _Opt('table', '표', Icons.table_chart_rounded, '',
+        '마크다운 표 삽입', '특수'),
+    _Opt('div', '구분선', Icons.horizontal_rule_rounded, '---',
+        '섹션을 나누는 수평선', '특수'),
   ];
 
   @override
@@ -331,7 +345,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
       // 빈 리스트 → 탈출 (text로 전환)
       if (text.isEmpty &&
-          (bt == BlockType.bullet || bt == BlockType.checkbox)) {
+          (bt == BlockType.bullet || bt == BlockType.checkbox ||
+           bt == BlockType.number || bt == BlockType.quote)) {
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
         return KeyEventResult.handled;
       }
@@ -346,7 +361,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         final upd = ref.read(fileEditorProvider).blocks;
         if (i + 1 < upd.length) {
           // ✅ 리스트 타입 유지 (연속 작성)
-          if (bt == BlockType.bullet || bt == BlockType.checkbox) {
+          if (bt == BlockType.bullet || bt == BlockType.checkbox ||
+              bt == BlockType.number || bt == BlockType.quote) {
             ref.read(fileEditorProvider.notifier).setType(i + 1, bt);
             if (bt == BlockType.checkbox) {
               ref.read(fileEditorProvider.notifier).toggleCheck(i + 1, false);
@@ -422,35 +438,38 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     }
 
     // 마크다운 단축키
+    BlockType? _nt;
+    String _nc = text;
     if (text.endsWith(' ')) {
-      BlockType? nt;
-      String nc = text;
       if (text == '# ') {
-        nt = BlockType.h1;
-        nc = '';
+        _nt = BlockType.h1; _nc = '';
       } else if (text == '## ') {
-        nt = BlockType.h2;
-        nc = '';
+        _nt = BlockType.h2; _nc = '';
       } else if (text == '### ') {
-        nt = BlockType.h3;
-        nc = '';
+        _nt = BlockType.h3; _nc = '';
       } else if (text == '- ' || text == '* ') {
-        nt = BlockType.bullet;
-        nc = '';
+        _nt = BlockType.bullet; _nc = '';
+      } else if (text == '> ') {
+        _nt = BlockType.quote; _nc = '';
+      } else if (text == '1. ') {
+        _nt = BlockType.number; _nc = '';
       } else if (text == '[] ') {
-        nt = BlockType.checkbox;
-        nc = '';
+        _nt = BlockType.checkbox; _nc = '';
       }
-      if (nt != null) {
-        final c = ref.read(fileEditorProvider).blocks[i].controller;
-        c.text = nc;
-        ref.read(fileEditorProvider.notifier).setType(i, nt);
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => c.selection = TextSelection.collapsed(offset: nc.length),
-        );
-        _chg(ft: nc);
-        return;
-      }
+    }
+    // 백틱 3개 → 코드 블록
+    if (text.trimRight() == '```') {
+      _nt = BlockType.code; _nc = '';
+    }
+    if (_nt != null) {
+      final c = ref.read(fileEditorProvider).blocks[i].controller;
+      c.text = _nc;
+      ref.read(fileEditorProvider.notifier).setType(i, _nt);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => c.selection = TextSelection.collapsed(offset: _nc.length),
+      );
+      _chg(ft: _nc);
+      return;
     }
 
     // 슬래시 메뉴
@@ -500,6 +519,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           child: _SlashMenu(
             opts: _slashOpts,
             sel: _slashIdx,
+            isSearching: q.isNotEmpty,
             onSel: (o) => _applyOpt(i, o),
           ),
         ),
@@ -526,6 +546,12 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         break;
       case 'bullet':
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.bullet);
+        break;
+      case 'number':
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.number);
+        break;
+      case 'quote':
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.quote);
         break;
       case 'todo':
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.checkbox);
@@ -945,6 +971,16 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                 block: blocks[i],
                 prevType: i > 0 ? blocks[i - 1].type : null,
                 isSelected: _selectedBlocks.contains(i),
+                listNumber: blocks[i].type == BlockType.number
+                    ? () {
+                        int n = 1;
+                        for (int j = i - 1; j >= 0; j--) {
+                          if (blocks[j].type == BlockType.number) n++;
+                          else break;
+                        }
+                        return n;
+                      }()
+                    : 0,
                 onKey: _key,
                 onText: _onText,
                 onDel: () {
@@ -1850,6 +1886,7 @@ class _NBlock extends StatefulWidget {
   final Block block;
   final BlockType? prevType;
   final bool isSelected;
+  final int listNumber;
   final KeyEventResult Function(FocusNode, KeyEvent, int) onKey;
   final Function(String, int) onText;
   final VoidCallback onDel, onDup, onFocus, onSelect;
@@ -1863,6 +1900,7 @@ class _NBlock extends StatefulWidget {
     required this.block,
     this.prevType,
     this.isSelected = false,
+    this.listNumber = 0,
     required this.onKey,
     required this.onText,
     required this.onDel,
@@ -1973,6 +2011,20 @@ class _NBState extends State<_NBlock> {
       height: 1.75,
       letterSpacing: 0.2,
     ),
+    BlockType.quote => GoogleFonts.inter(
+      fontSize: 15,
+      color: _txt1,
+      height: 1.8,
+      fontStyle: FontStyle.italic,
+      fontWeight: FontWeight.w400,
+    ),
+    BlockType.number => GoogleFonts.inter(
+      fontSize: 15,
+      color: _txt0.withOpacity(0.85),
+      height: 1.85,
+      letterSpacing: 0.0,
+      fontWeight: FontWeight.w400,
+    ),
     _ => GoogleFonts.inter(
       fontSize: 15,
       color: _txt0.withOpacity(0.85),
@@ -2012,14 +2064,16 @@ class _NBState extends State<_NBlock> {
           padding: EdgeInsets.only(
             top: (isBul && isPrevBul) ? 1 : (isBul ? 3 : 2),
             bottom: isBul ? 1 : 2,
-            left: 8,
+            left: widget.block.type == BlockType.quote ? 4 : 8,
             right: 8,
           ),
           decoration: BoxDecoration(
             color: widget.isSelected
                 ? _acc.withOpacity(0.07)
                 : widget.block.type == BlockType.code
-                ? const Color(0xFF0E0E1C)
+                ? const Color(0xFF161616)
+                : widget.block.type == BlockType.quote
+                ? Colors.white.withOpacity(0.025)
                 : _foc
                 ? Colors.white.withOpacity(0.012)
                 : null,
@@ -2097,11 +2151,40 @@ class _NBState extends State<_NBlock> {
                     width: 5,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: _acc.withOpacity(0.7),
+                      color: _txt1.withOpacity(0.5),
                       shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: _acc.withOpacity(0.4), blurRadius: 4),
-                      ],
+                    ),
+                  ),
+                ),
+
+              // 번호 목록
+              if (widget.block.type == BlockType.number)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 10),
+                  child: SizedBox(
+                    width: 22,
+                    child: Text(
+                      '${widget.listNumber}.',
+                      style: GoogleFonts.inter(
+                        color: _txt2,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        height: 1.85,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ),
+
+              // 인용 좌측 바
+              if (widget.block.type == BlockType.quote)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Container(
+                    width: 3,
+                    decoration: BoxDecoration(
+                      color: _txt2.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
@@ -2262,6 +2345,8 @@ class _NBState extends State<_NBlock> {
     BlockType.bullet => '항목 입력...',
     BlockType.checkbox => '할 일 추가...',
     BlockType.code => '코드 또는 표 입력...',
+    BlockType.number => '항목 입력...',
+    BlockType.quote => '인용 입력...',
     _ => "내용을 입력하거나  /  로 블록 추가",
   };
 
@@ -2281,72 +2366,110 @@ class _NBState extends State<_NBlock> {
 
 // ══════════════════ SLASH MENU ══════════════════════
 class _Opt {
-  final String id, label, hint;
+  final String id, label, hint, desc, group;
   final IconData icon;
-  const _Opt(this.id, this.label, this.icon, this.hint);
+  const _Opt(this.id, this.label, this.icon, this.hint,
+      [this.desc = '', this.group = '']);
 }
 
 class _SlashMenu extends StatelessWidget {
   final List<_Opt> opts;
   final int sel;
+  final bool isSearching;
   final void Function(_Opt) onSel;
   const _SlashMenu({
     required this.opts,
     required this.sel,
     required this.onSel,
+    this.isSearching = false,
   });
+
+  // 그룹 순서 정의
+  static const _groupOrder = ['기본 블록', '목록', '특수'];
+
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(14),
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-      child: Container(
-        decoration: BoxDecoration(
-          color: _bg3.withOpacity(0.92),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _bdr2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.4),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+
+    if (isSearching || opts.length <= 4) {
+      // 검색 모드: 플랫 리스트
+      for (int i = 0; i < opts.length; i++) {
+        children.add(_SI(opt: opts[i], sel: i == sel, onTap: () => onSel(opts[i])));
+      }
+    } else {
+      // 브라우즈 모드: 카테고리별 그룹
+      final groups = <String, List<_Opt>>{};
+      for (final o in opts) {
+        groups.putIfAbsent(o.group, () => []).add(o);
+      }
+      int globalIdx = 0;
+      final orderedKeys = [
+        ..._groupOrder.where((g) => groups.containsKey(g)),
+        ...groups.keys.where((g) => !_groupOrder.contains(g)),
+      ];
+      for (final groupName in orderedKeys) {
+        final groupOpts = groups[groupName]!;
+        // 그룹 헤더
+        children.add(Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+          child: Text(
+            groupName,
+            style: GoogleFonts.inter(
+              color: _txt2,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.6,
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-              child: Row(
+          ),
+        ));
+        for (final opt in groupOpts) {
+          final idx = globalIdx;
+          children.add(_SI(
+            opt: opt,
+            sel: idx == sel,
+            onTap: () => onSel(opt),
+          ));
+          globalIdx++;
+        }
+      }
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 400),
+            decoration: BoxDecoration(
+              color: _bg2.withOpacity(0.96),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _bdr2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.45),
+                  blurRadius: 28,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.add_circle_outline_rounded, size: 11, color: _acc),
-                  const SizedBox(width: 6),
-                  const Text(
-                    '블록 삽입',
-                    style: TextStyle(
-                      color: _txt2,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
+                  const SizedBox(height: 6),
+                  ...children,
+                  const SizedBox(height: 6),
                 ],
               ),
             ),
-            ...opts.asMap().entries.map(
-              (e) => _SI(
-                opt: e.value,
-                sel: e.key == sel,
-                onTap: () => onSel(e.value),
-              ),
-            ),
-            const SizedBox(height: 6),
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 // ══════════════════ 인라인 선택 툴바 (노션 스타일) ══════════════════
@@ -2873,67 +2996,90 @@ class _SI extends StatefulWidget {
 class _SIS extends State<_SI> {
   bool _h = false;
   @override
-  Widget build(BuildContext context) => MouseRegion(
-    onEnter: (_) => setState(() => _h = true),
-    onExit: (_) => setState(() => _h = false),
-    child: GestureDetector(
-      onTap: widget.onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 80),
-        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: (widget.sel || _h) ? _bg4 : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(
-            color: (widget.sel || _h) ? _bdr2 : Colors.transparent,
+  Widget build(BuildContext context) {
+    final active = widget.sel || _h;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _h = true),
+      onExit: (_) => setState(() => _h = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 80),
+          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: active ? _bg4 : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              // 아이콘 컨테이너
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: active ? _accD : _bg3,
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: active ? _acc.withOpacity(0.35) : _bdr,
+                  ),
+                ),
+                child: Icon(
+                  widget.opt.icon,
+                  size: 14,
+                  color: active ? _acc : _txt1,
+                ),
+              ),
+              const SizedBox(width: 10),
+              // 라벨 + 설명
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.opt.label,
+                      style: GoogleFonts.inter(
+                        color: active ? _txt0 : _txt0.withOpacity(0.8),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (widget.opt.desc.isNotEmpty)
+                      Text(
+                        widget.opt.desc,
+                        style: GoogleFonts.inter(
+                          color: _txt2,
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // 단축키 힌트
+              if (widget.opt.hint.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _bg3,
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: _bdr2),
+                  ),
+                  child: Text(
+                    widget.opt.hint,
+                    style: GoogleFonts.jetBrainsMono(
+                      color: _txt2,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                color: (widget.sel || _h)
-                    ? _accD
-                    : const Color(0xFF18182A),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: (widget.sel || _h)
-                      ? _acc.withOpacity(0.3)
-                      : _bdr,
-                ),
-              ),
-              child: Icon(
-                widget.opt.icon,
-                size: 13,
-                color: (widget.sel || _h) ? _acc : _txt2,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              widget.opt.label,
-              style: GoogleFonts.inter(
-                color: (widget.sel || _h) ? _txt0 : _txt1,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const Spacer(),
-            if (widget.opt.hint.isNotEmpty)
-              Text(
-                widget.opt.hint,
-                style: GoogleFonts.jetBrainsMono(
-                  color: _txt2.withOpacity(0.5),
-                  fontSize: 10,
-                ),
-              ),
-          ],
-        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 // ══════════════════ TABS ════════════════════════════

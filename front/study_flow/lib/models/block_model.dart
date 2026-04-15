@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum BlockType { text, h1, h2, h3, bullet, checkbox, code }
+enum BlockType { text, h1, h2, h3, bullet, checkbox, code, number, quote }
 
 class Block {
   String id;
