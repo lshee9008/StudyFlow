@@ -667,18 +667,91 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   void insertBlocks(int index, List<String> lines) {
     final blocks = [...state.blocks];
-    for (int i = 0; i < lines.length; i++) {
-      String text = lines[i];
-      BlockType type = BlockType.text;
-      if (i == 0 && index > 0) {
-        final prevType = blocks[index - 1].type;
-        if (prevType == BlockType.bullet || prevType == BlockType.checkbox) {
-          type = prevType;
-        }
-      }
-      blocks.insert(index + i, _newBlock(index + i, type: type, content: text));
+    final parsed = _parseLines(lines);
+    for (int i = 0; i < parsed.length; i++) {
+      blocks.insert(index + i, parsed[i]);
     }
     state = state.copyWith(blocks: blocks);
+  }
+
+  /// 붙여넣기 텍스트를 블록으로 파싱 (노션 복붙 호환)
+  List<Block> _parseLines(List<String> lines) {
+    final result = <Block>[];
+    bool inCode = false;
+    final codeBuf = StringBuffer();
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmed = line.trim();
+
+      // 코드 블록 시작/끝 감지
+      if (trimmed.startsWith('```') && !inCode) {
+        inCode = true;
+        final lang = trimmed.substring(3).trim();
+        if (lang.isNotEmpty) codeBuf.writeln('// $lang');
+        continue;
+      }
+      if (trimmed == '```' && inCode) {
+        inCode = false;
+        result.add(_newBlock(
+          result.length,
+          type: BlockType.code,
+          content: codeBuf.toString().trimRight(),
+        ));
+        codeBuf.clear();
+        continue;
+      }
+      if (inCode) {
+        codeBuf.writeln(line);
+        continue;
+      }
+
+      // 빈 줄 스킵
+      if (trimmed.isEmpty) continue;
+
+      // 마크다운 타입 감지
+      BlockType type = BlockType.text;
+      String content = trimmed;
+
+      if (trimmed.startsWith('### ')) {
+        type = BlockType.h3;
+        content = trimmed.substring(4);
+      } else if (trimmed.startsWith('## ')) {
+        type = BlockType.h2;
+        content = trimmed.substring(3);
+      } else if (trimmed.startsWith('# ')) {
+        type = BlockType.h1;
+        content = trimmed.substring(2);
+      } else if (trimmed.startsWith('> ')) {
+        type = BlockType.quote;
+        content = trimmed.substring(2);
+      } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        type = BlockType.bullet;
+        content = trimmed.substring(2);
+      } else if (RegExp(r'^\d+\. ').hasMatch(trimmed)) {
+        type = BlockType.number;
+        content = trimmed.replaceFirst(RegExp(r'^\d+\. '), '');
+      } else if (trimmed.startsWith('[ ] ') || trimmed.startsWith('[] ')) {
+        type = BlockType.checkbox;
+        content = trimmed.replaceFirst(RegExp(r'^\[.?\] '), '');
+      } else if (trimmed.startsWith('[x] ') || trimmed.startsWith('[X] ')) {
+        type = BlockType.checkbox;
+        content = trimmed.substring(4);
+      }
+
+      result.add(_newBlock(result.length, type: type, content: content));
+    }
+
+    // 코드 블록이 닫히지 않은 경우 처리
+    if (inCode && codeBuf.isNotEmpty) {
+      result.add(_newBlock(
+        result.length,
+        type: BlockType.code,
+        content: codeBuf.toString().trimRight(),
+      ));
+    }
+
+    return result.isEmpty ? [_newBlock(0)] : result;
   }
 
   void removeBlock(int index) {

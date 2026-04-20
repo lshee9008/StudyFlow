@@ -68,6 +68,14 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   bool _isDragging = false;
   int? _dragStart;
 
+  // Pomodoro
+  Timer? _pomT;
+  int _pomSecs = 25 * 60; // 25분
+  bool _pomRunning = false;
+  bool _pomIsWork = true; // true=집중, false=휴식
+  static const _pomWork = 25 * 60;
+  static const _pomRest = 5 * 60;
+
   // Proofread
   bool _proofreadMode = false;
   String _proofreadResult = '';
@@ -114,6 +122,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         '마크다운 표 삽입', '특수'),
     _Opt('div', '구분선', Icons.horizontal_rule_rounded, '---',
         '섹션을 나누는 수평선', '특수'),
+    _Opt('image', '이미지', Icons.image_outlined, '',
+        '이미지 파일 삽입', '특수'),
   ];
 
   @override
@@ -183,6 +193,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     _sumT?.cancel();
     _focTextT?.cancel();
     _syncT?.cancel();
+    _pomT?.cancel();
     _tCtrl.dispose();
     _gCtrl.dispose();
     _pCtrl.dispose();
@@ -568,10 +579,91 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         c.text = '────────────────────────────────────';
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.code);
         break;
+      case 'image':
+        _pickImage(i);
+        break;
       default:
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
     }
     _foc(i);
+  }
+
+  Future<void> _pickImage(int blockIdx) async {
+    if (!kIsWeb) {
+      _snack('이미지 삽입은 웹에서만 지원됩니다.');
+      return;
+    }
+    // URL 입력 방식 (가장 범용적)
+    final ctrl = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _bg3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: _bdr2),
+        ),
+        title: Text(
+          '이미지 URL 입력',
+          style: GoogleFonts.inter(color: _txt0, fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              style: GoogleFonts.inter(color: _txt0, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'https://example.com/image.png',
+                hintStyle: GoogleFonts.inter(color: _txt2, fontSize: 13),
+                filled: true,
+                fillColor: _bg2,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: _bdr2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: _bdr2),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: _acc, width: 1.5),
+                ),
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('취소', style: GoogleFonts.inter(color: _txt2)),
+          ),
+          GestureDetector(
+            onTap: () => Navigator.pop(ctx, ctrl.text),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _acc,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('삽입', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      final blocks = ref.read(fileEditorProvider).blocks;
+      if (blockIdx < blocks.length) {
+        blocks[blockIdx].controller.text = result.trim();
+        ref.read(fileEditorProvider.notifier).setType(blockIdx, BlockType.image);
+        _chg();
+      }
+    }
   }
 
   void _removeSlash() {
@@ -715,6 +807,54 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     ),
   );
 
+  // ── 뽀모도로 ─────────────────────────────────────
+  void _pomToggle() {
+    if (_pomRunning) {
+      _pomT?.cancel();
+      setState(() => _pomRunning = false);
+    } else {
+      setState(() => _pomRunning = true);
+      _pomT = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {
+          if (_pomSecs > 0) {
+            _pomSecs--;
+          } else {
+            _pomT?.cancel();
+            _pomRunning = false;
+            _pomIsWork = !_pomIsWork;
+            _pomSecs = _pomIsWork ? _pomWork : _pomRest;
+            _snack(_pomIsWork
+                ? '🔔 휴식 종료! 집중 모드를 시작합니다.'
+                : '🔔 집중 완료! 5분 휴식하세요.');
+          }
+        });
+      });
+    }
+  }
+
+  void _pomReset() {
+    _pomT?.cancel();
+    setState(() {
+      _pomRunning = false;
+      _pomIsWork = true;
+      _pomSecs = _pomWork;
+    });
+  }
+
+  String get _pomLabel {
+    final m = (_pomSecs ~/ 60).toString().padLeft(2, '0');
+    final s = (_pomSecs % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  Color get _pomColor {
+    if (!_pomIsWork) return _blu;
+    if (_pomSecs < 5 * 60) return _red;
+    if (_pomSecs < 10 * 60) return _yel;
+    return _acc;
+  }
+
   // ══════════════════ BUILD ══════════════════════════
   @override
   Widget build(BuildContext context) {
@@ -723,6 +863,14 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
     return Scaffold(
       backgroundColor: _bg0,
+      floatingActionButton: _PomFAB(
+        label: _pomLabel,
+        color: _pomColor,
+        running: _pomRunning,
+        onTap: _pomToggle,
+        onLongPress: _pomReset,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: Stack(
         children: [
           RepaintBoundary(child: _AuroraBG(anim: _bgAnim)),
@@ -777,6 +925,16 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                         },
                 ),
               ),
+              // 뽀모도로 타이머
+              if (_pomRunning || _pomSecs != _pomWork)
+                _PomodoroBar(
+                  label: _pomLabel,
+                  color: _pomColor,
+                  running: _pomRunning,
+                  isWork: _pomIsWork,
+                  onToggle: _pomToggle,
+                  onReset: _pomReset,
+                ),
               // 교정 결과 배너
               if (_proofreadResult.isNotEmpty)
                 _ProofreadBanner(
@@ -1866,6 +2024,237 @@ class _PSChipState extends State<_PSChip> {
   );
 }
 
+// ══════════════════ POMODORO BAR ═══════════════════
+class _PomodoroBar extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool running, isWork;
+  final VoidCallback onToggle, onReset;
+  const _PomodoroBar({
+    required this.label,
+    required this.color,
+    required this.running,
+    required this.isWork,
+    required this.onToggle,
+    required this.onReset,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 36,
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: BoxDecoration(
+      color: _bg2,
+      border: Border(
+        bottom: BorderSide(color: _bdr.withOpacity(0.5)),
+      ),
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: running ? color : color.withOpacity(0.3),
+            shape: BoxShape.circle,
+            boxShadow: running
+                ? [BoxShadow(color: color.withOpacity(0.6), blurRadius: 6)]
+                : [],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          isWork ? '집중' : '휴식',
+          style: GoogleFonts.inter(
+            color: _txt2,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            fontFeatures: [const FontFeature.tabularFigures()],
+          ),
+        ),
+        const Spacer(),
+        GestureDetector(
+          onTap: onToggle,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: running ? _bg4 : color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: running ? _bdr2 : color.withOpacity(0.4),
+              ),
+            ),
+            child: Text(
+              running ? '일시정지' : '시작',
+              style: GoogleFonts.inter(
+                color: running ? _txt1 : color,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: onReset,
+          child: Icon(Icons.refresh_rounded, size: 14, color: _txt2.withOpacity(0.5)),
+        ),
+      ],
+    ),
+  );
+}
+
+// ══════════════════ POMODORO FAB ════════════════════
+class _PomFAB extends StatefulWidget {
+  final String label;
+  final Color color;
+  final bool running;
+  final VoidCallback onTap, onLongPress;
+  const _PomFAB({
+    required this.label,
+    required this.color,
+    required this.running,
+    required this.onTap,
+    required this.onLongPress,
+  });
+  @override
+  State<_PomFAB> createState() => _PomFABState();
+}
+
+class _PomFABState extends State<_PomFAB> {
+  bool _h = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _h = true),
+    onExit: (_) => setState(() => _h = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: widget.running
+              ? widget.color.withOpacity(0.15)
+              : _bg3,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: widget.running
+                ? widget.color.withOpacity(0.5)
+                : (_h ? _bdr2 : _bdr),
+            width: widget.running ? 1.5 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+            if (widget.running)
+              BoxShadow(
+                color: widget.color.withOpacity(0.15),
+                blurRadius: 16,
+              ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              widget.running
+                  ? Icons.pause_rounded
+                  : Icons.timer_outlined,
+              size: 13,
+              color: widget.running ? widget.color : _txt2,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              widget.label,
+              style: GoogleFonts.inter(
+                color: widget.running ? widget.color : _txt1,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                fontFeatures: [const FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+// ══════════════════ IMAGE BLOCK ═════════════════════
+class _ImageBlock extends StatefulWidget {
+  final String url;
+  const _ImageBlock({required this.url});
+  @override
+  State<_ImageBlock> createState() => _IBState();
+}
+
+class _IBState extends State<_ImageBlock> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    child: Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      constraints: const BoxConstraints(maxWidth: 680, maxHeight: 500),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _hover ? _bdr2 : _bdr.withOpacity(0.5),
+        ),
+        color: _bg3,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: widget.url.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.image_outlined, color: _txt2, size: 28),
+                    const SizedBox(height: 8),
+                    Text('이미지 URL이 없습니다', style: TextStyle(color: _txt2, fontSize: 12)),
+                  ],
+                ),
+              )
+            : Image.network(
+                widget.url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.broken_image_outlined, color: _txt2, size: 28),
+                      const SizedBox(height: 8),
+                      Text(
+                        '이미지를 불러올 수 없습니다',
+                        style: TextStyle(color: _txt2, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+      ),
+    ),
+  );
+}
+
 class _Div extends StatelessWidget {
   const _Div();
   @override
@@ -2025,6 +2414,7 @@ class _NBState extends State<_NBlock> {
       letterSpacing: 0.0,
       fontWeight: FontWeight.w400,
     ),
+    BlockType.image => GoogleFonts.inter(fontSize: 14, color: _txt2),
     _ => GoogleFonts.inter(
       fontSize: 15,
       color: _txt0.withOpacity(0.85),
@@ -2263,7 +2653,14 @@ class _NBState extends State<_NBlock> {
                   ),
                 ),
 
-              // 텍스트 입력
+              // 이미지 블록 (URL)
+              if (widget.block.type == BlockType.image)
+                Expanded(
+                  child: _ImageBlock(url: widget.block.controller.text),
+                ),
+
+              // 텍스트 입력 (이미지 제외)
+              if (widget.block.type != BlockType.image)
               Expanded(
                 child: Listener(
                   // ✅ onPointerUp: 브라우저 드래그 선택을 Flutter가 직접 감지
@@ -2347,6 +2744,7 @@ class _NBState extends State<_NBlock> {
     BlockType.code => '코드 또는 표 입력...',
     BlockType.number => '항목 입력...',
     BlockType.quote => '인용 입력...',
+    BlockType.image => 'https://... 이미지 URL',
     _ => "내용을 입력하거나  /  로 블록 추가",
   };
 
@@ -3616,46 +4014,375 @@ class _MemoPanel extends StatelessWidget {
   );
 }
 
-class _QuizPanel extends StatelessWidget {
+class _QuizPanel extends StatefulWidget {
   final FileEditorState st;
   final WidgetRef ref;
   const _QuizPanel({required this.st, required this.ref});
   @override
-  Widget build(BuildContext context) => Stack(
-    children: [
-      if (st.quizData == null && !st.isQuizLoading)
-        const _Empty(
-          icon: Icons.quiz_rounded,
-          title: '인터랙티브 퀴즈',
-          desc: '학습 내용으로 객관식\n퀴즈를 생성합니다.',
-        ),
-      if (st.quizData != null)
-        ListView.builder(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
-          itemCount: st.quizData!.length,
-          itemBuilder: (_, qi) => _QCard(
-            q: st.quizData![qi],
-            qi: qi,
-            answered: st.quizAnswers[qi],
-            onAns: (oi) =>
-                ref.read(fileEditorProvider.notifier).answerQuiz(qi, oi),
+  State<_QuizPanel> createState() => _QuizPanelState();
+}
+
+class _QuizPanelState extends State<_QuizPanel>
+    with SingleTickerProviderStateMixin {
+  bool _cardMode = false;
+  int _cardIdx = 0;
+  bool _flipped = false;
+  late AnimationController _flipAc;
+  late Animation<double> _flipAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _flipAc = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _flipAnim = Tween(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _flipAc, curve: Curves.easeInOutCubic),
+    );
+  }
+
+  @override
+  void dispose() {
+    _flipAc.dispose();
+    super.dispose();
+  }
+
+  void _flip() {
+    setState(() => _flipped = !_flipped);
+    _flipped ? _flipAc.forward() : _flipAc.reverse();
+  }
+
+  void _next() {
+    final quiz = widget.st.quizData ?? [];
+    if (_cardIdx < quiz.length - 1) {
+      setState(() {
+        _cardIdx++;
+        _flipped = false;
+      });
+      _flipAc.reverse();
+    }
+  }
+
+  void _prev() {
+    if (_cardIdx > 0) {
+      setState(() {
+        _cardIdx--;
+        _flipped = false;
+      });
+      _flipAc.reverse();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = widget.st;
+    final ref = widget.ref;
+
+    if (_cardMode && (st.quizData?.isNotEmpty ?? false)) {
+      return _buildCardMode(st);
+    }
+    return _buildListMode(st, ref);
+  }
+
+  Widget _buildCardMode(FileEditorState st) {
+    final quiz = st.quizData ?? [];
+    if (quiz.isEmpty) return const _Empty(icon: Icons.quiz_rounded, title: '퀴즈 없음', desc: '먼저 퀴즈를 생성하세요.');
+    final q = quiz[_cardIdx];
+    final question = q['question']?.toString() ?? '';
+    final answer = q['options'] != null && q['answer'] != null
+        ? (q['options'] as List)[q['answer']]?.toString() ?? ''
+        : '';
+    final explanation = q['explanation']?.toString() ?? '';
+
+    return Column(
+      children: [
+        // 헤더
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+          child: Row(
+            children: [
+              Text(
+                '${_cardIdx + 1} / ${quiz.length}',
+                style: GoogleFonts.inter(color: _txt2, fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() { _cardMode = false; _cardIdx = 0; _flipped = false; }),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _bg3,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: _bdr2),
+                  ),
+                  child: Text('목록 보기', style: GoogleFonts.inter(color: _txt2, fontSize: 10, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
           ),
         ),
-      _Fade(),
-      if (st.quizData == null || st.isQuizLoading)
-        Positioned(
-          bottom: 16,
-          left: 14,
-          right: 14,
-          child: _FABtn(
-            loading: st.isQuizLoading,
-            label: '퀴즈 생성',
+        // 진행 바
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: ((_cardIdx + 1) / quiz.length).clamp(0.0, 1.0),
+              backgroundColor: _bg4,
+              color: _acc,
+              minHeight: 3,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 플래시카드
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+            child: GestureDetector(
+              onTap: _flip,
+              child: AnimatedBuilder(
+                animation: _flipAnim,
+                builder: (_, __) {
+                  final isBack = _flipAnim.value > 0.5;
+                  final angle = _flipAnim.value * math.pi;
+                  return Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, 0.001)
+                      ..rotateY(angle),
+                    child: Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: isBack
+                            ? const Color(0xFF1A2508)
+                            : _bg3,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isBack ? _acc.withOpacity(0.4) : _bdr2,
+                          width: isBack ? 1.5 : 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                          if (isBack)
+                            BoxShadow(color: _acc.withOpacity(0.08), blurRadius: 30),
+                        ],
+                      ),
+                      child: isBack
+                          ? Transform(
+                              alignment: Alignment.center,
+                              transform: Matrix4.identity()..rotateY(math.pi),
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.check_circle_outline_rounded, color: _acc, size: 22),
+                                    const SizedBox(height: 14),
+                                    Text(
+                                      answer,
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.inter(
+                                        color: _acc,
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (explanation.isNotEmpty) ...[
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        height: 0.5,
+                                        color: _acc.withOpacity(0.2),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        explanation,
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.inter(
+                                          color: _txt1,
+                                          fontSize: 13,
+                                          height: 1.6,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            )
+                          : Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: _accD,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: _acc.withOpacity(0.3)),
+                                    ),
+                                    child: Text('Q', style: GoogleFonts.inter(color: _acc, fontSize: 11, fontWeight: FontWeight.w800)),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    question,
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.inter(
+                                      color: _txt0,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.6,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    '탭하여 답 확인',
+                                    style: GoogleFonts.inter(
+                                      color: _txt2,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+        // 이전/다음 버튼
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: _cardIdx > 0 ? _prev : null,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _cardIdx > 0 ? _bg3 : _bg2,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _bdr),
+                  ),
+                  child: Icon(
+                    Icons.arrow_back_rounded,
+                    size: 16,
+                    color: _cardIdx > 0 ? _txt1 : _txt2.withOpacity(0.3),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _flipped ? '다음 카드로 →' : '탭하여 뒤집기',
+                style: GoogleFonts.inter(color: _txt2, fontSize: 11),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _cardIdx < (st.quizData?.length ?? 1) - 1 ? _next : null,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _cardIdx < (st.quizData?.length ?? 1) - 1 ? _bg3 : _bg2,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _bdr),
+                  ),
+                  child: Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 16,
+                    color: _cardIdx < (st.quizData?.length ?? 1) - 1 ? _txt1 : _txt2.withOpacity(0.3),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildListMode(FileEditorState st, WidgetRef ref) {
+    return Stack(
+      children: [
+        if (st.quizData == null && !st.isQuizLoading)
+          const _Empty(
             icon: Icons.quiz_rounded,
-            onTap: () => ref.read(fileEditorProvider.notifier).generateQuiz(),
+            title: '인터랙티브 퀴즈',
+            desc: '학습 내용으로 객관식\n퀴즈를 생성합니다.',
           ),
-        ),
-    ],
-  );
+        if (st.quizData != null)
+          Column(
+            children: [
+              // 카드 모드 토글 버튼
+              if (st.quizData!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${st.quizData!.length}문제',
+                        style: GoogleFonts.inter(color: _txt2, fontSize: 11),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () => setState(() { _cardMode = true; _cardIdx = 0; _flipped = false; }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: _accD,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: _acc.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.style_rounded, size: 11, color: _acc),
+                              const SizedBox(width: 5),
+                              Text('카드 모드', style: GoogleFonts.inter(color: _acc, fontSize: 10, fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
+                  itemCount: st.quizData!.length,
+                  itemBuilder: (_, qi) => _QCard(
+                    q: st.quizData![qi],
+                    qi: qi,
+                    answered: st.quizAnswers[qi],
+                    onAns: (oi) =>
+                        ref.read(fileEditorProvider.notifier).answerQuiz(qi, oi),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        _Fade(),
+        if (st.quizData == null || st.isQuizLoading)
+          Positioned(
+            bottom: 16,
+            left: 14,
+            right: 14,
+            child: _FABtn(
+              loading: st.isQuizLoading,
+              label: '퀴즈 생성',
+              icon: Icons.quiz_rounded,
+              onTap: () => ref.read(fileEditorProvider.notifier).generateQuiz(),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _QCard extends StatelessWidget {

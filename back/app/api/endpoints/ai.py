@@ -434,3 +434,56 @@ async def cache_stats():
     import time
     valid = sum(1 for v in _llm_cache.values() if time.time() - v['ts'] < _CACHE_TTL)
     return {"total": len(_llm_cache), "valid": valid, "max": _CACHE_MAX}
+
+
+# ══════════════════════════════════════════════════════════
+# /ocr  — 이미지에서 텍스트 추출 (비전 LLM)
+# ══════════════════════════════════════════════════════════
+class OcrReq(BaseModel):
+    image_url: str  # URL 또는 data:image/...;base64,... 형식
+    language: str = "ko"  # ko or en
+
+
+@router.post("/ocr")
+async def ocr_image(req: OcrReq):
+    if not req.image_url.strip():
+        return {"text": ""}
+
+    # base64 이미지인 경우 직접 처리
+    if req.image_url.startswith("data:image"):
+        try:
+            # data:image/png;base64,XXXX 형식에서 base64 추출
+            b64 = req.image_url.split(",", 1)[1]
+        except Exception:
+            return {"text": ""}
+    else:
+        # URL인 경우 다운로드
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as c:
+                r = await c.get(req.image_url)
+                r.raise_for_status()
+                import base64 as b64lib
+                b64 = b64lib.b64encode(r.content).decode()
+        except Exception as e:
+            return {"text": f"이미지 다운로드 실패: {str(e)}"}
+
+    # Ollama 비전 모델로 OCR
+    ocr_prompt = """이 이미지에서 보이는 모든 텍스트를 정확하게 추출해주세요.
+텍스트만 출력하고, 설명이나 부연은 하지 마세요.
+줄바꿈과 구조는 원본과 최대한 유사하게 유지하세요."""
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as c:
+            r = await c.post(OLLAMA, json={
+                "model": MODEL,
+                "prompt": ocr_prompt,
+                "images": [b64],
+                "stream": False,
+                "options": {"temperature": 0.1, "num_predict": 2000}
+            })
+            r.raise_for_status()
+            text = r.json().get("response", "").strip()
+            return {"text": text if text else "텍스트를 찾을 수 없습니다."}
+    except Exception as e:
+        # 비전 모델 실패 시 간단한 응답
+        return {"text": "OCR 처리 중 오류가 발생했습니다. 비전 모델이 설치되어 있는지 확인하세요."}
