@@ -47,14 +47,36 @@ class HomeScreen extends ConsumerWidget {
     }
     final projects = ref.watch(projectProvider);
 
-    return Scaffold(
-      backgroundColor: AppTheme.bgPrimary,
-      body: Row(
-        children: [
-          _Sidebar(user: user),
-          Expanded(child: _MainContent(user: user, projects: projects)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final isMobile = w < 600;
+        final isTablet = w >= 600 && w < 1024;
+
+        if (isMobile) {
+          return Scaffold(
+            backgroundColor: AppTheme.bgPrimary,
+            drawer: Drawer(
+              width: 260,
+              backgroundColor: AppTheme.bgDeep,
+              child: _Sidebar(user: user, collapsed: false),
+            ),
+            body: _MainContent(user: user, projects: projects, showMenu: true),
+          );
+        }
+
+        return Scaffold(
+          backgroundColor: AppTheme.bgPrimary,
+          body: Row(
+            children: [
+              _Sidebar(user: user, collapsed: isTablet),
+              Expanded(
+                child: _MainContent(user: user, projects: projects),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -64,12 +86,13 @@ class HomeScreen extends ConsumerWidget {
 // ─────────────────────────────────────────────────────────
 class _Sidebar extends ConsumerWidget {
   final UserModel user;
-  const _Sidebar({required this.user});
+  final bool collapsed;
+  const _Sidebar({required this.user, this.collapsed = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      width: 240,
+      width: collapsed ? 64 : 240,
       decoration: BoxDecoration(
         color: AppTheme.bgDeep,
         border: Border(
@@ -80,24 +103,47 @@ class _Sidebar extends ConsumerWidget {
         children: [
           const SizedBox(height: 18),
           // 로고 영역
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                const SFLogo(size: 22),
-                const Spacer(),
-                SFBadge(label: 'Beta'),
-              ],
+          if (!collapsed) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const SFLogo(size: 22),
+                  const Spacer(),
+                  SFBadge(label: 'Beta'),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-
-          // 유저 프로필
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: _UserTile(user: user),
-          ),
-          const SizedBox(height: 8),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: _UserTile(user: user),
+            ),
+            const SizedBox(height: 8),
+          ] else ...[
+            const SizedBox(height: 16),
+            Center(
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppTheme.accent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Center(
+                  child: Text(
+                    'S',
+                    style: GoogleFonts.inter(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           Container(
             height: 1,
             margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -110,10 +156,12 @@ class _Sidebar extends ConsumerWidget {
             icon: Icons.home_rounded,
             label: '홈',
             selected: true,
+            collapsed: collapsed,
           ),
           _NavItem(
             icon: Icons.search_rounded,
             label: '검색',
+            collapsed: collapsed,
             onTap: () => Navigator.push(
               context,
               _fadeRoute(const SearchScreen()),
@@ -122,6 +170,7 @@ class _Sidebar extends ConsumerWidget {
           _NavItem(
             icon: Icons.settings_outlined,
             label: '설정',
+            collapsed: collapsed,
             onTap: () => Navigator.push(
               context,
               _fadeRoute(ProfileSettingsScreen(user: user)),
@@ -131,33 +180,34 @@ class _Sidebar extends ConsumerWidget {
           const Spacer(),
 
           // 하단 영역
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                Container(
-                  height: 1,
-                  color: AppTheme.borderSubtle,
-                  margin: const EdgeInsets.only(bottom: 8),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline_rounded,
-                        size: 12,
-                        color: AppTheme.textMuted,
-                      ),
-                      const SizedBox(width: 6),
-                      Text('v2.0 · StudyFlow', style: AppTheme.caption),
-                    ],
+          if (!collapsed)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  Container(
+                    height: 1,
+                    color: AppTheme.borderSubtle,
+                    margin: const EdgeInsets.only(bottom: 8),
                   ),
-                ),
-                _DevButton(ref: ref),
-              ],
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 12,
+                          color: AppTheme.textMuted,
+                        ),
+                        const SizedBox(width: 6),
+                        Text('v2.0 · StudyFlow', style: AppTheme.caption),
+                      ],
+                    ),
+                  ),
+                  _DevButton(ref: ref),
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 4),
         ],
       ),
@@ -331,11 +381,13 @@ class _NavItem extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool selected;
+  final bool collapsed;
   final VoidCallback? onTap;
   const _NavItem({
     required this.icon,
     required this.label,
     this.selected = false,
+    this.collapsed = false,
     this.onTap,
   });
   @override
@@ -353,8 +405,14 @@ class _NavItemState extends State<_NavItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 130),
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          margin: EdgeInsets.symmetric(
+            horizontal: widget.collapsed ? 6 : 8,
+            vertical: 1,
+          ),
+          padding: EdgeInsets.symmetric(
+            horizontal: widget.collapsed ? 0 : 10,
+            vertical: 8,
+          ),
           decoration: BoxDecoration(
             color: widget.selected
                 ? AppTheme.bgTertiary
@@ -366,43 +424,56 @@ class _NavItemState extends State<_NavItem> {
                 ? Border.all(color: AppTheme.borderSubtle)
                 : null,
           ),
-          child: Row(
-            children: [
-              Icon(
-                widget.icon,
-                size: 15,
-                color: widget.selected
-                    ? AppTheme.accent
-                    : _hover
-                    ? AppTheme.textPrimary
-                    : AppTheme.textSecondary,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                widget.label,
-                style: GoogleFonts.inter(
-                  color: widget.selected
-                      ? AppTheme.textPrimary
-                      : _hover
-                      ? AppTheme.textPrimary
-                      : AppTheme.textSecondary,
-                  fontSize: 13,
-                  fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
-              if (widget.selected) ...[
-                const Spacer(),
-                Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppTheme.accent,
-                    shape: BoxShape.circle,
+          child: widget.collapsed
+              ? Center(
+                  child: Icon(
+                    widget.icon,
+                    size: 18,
+                    color: widget.selected
+                        ? AppTheme.accent
+                        : _hover
+                        ? AppTheme.textPrimary
+                        : AppTheme.textSecondary,
                   ),
+                )
+              : Row(
+                  children: [
+                    Icon(
+                      widget.icon,
+                      size: 15,
+                      color: widget.selected
+                          ? AppTheme.accent
+                          : _hover
+                          ? AppTheme.textPrimary
+                          : AppTheme.textSecondary,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      widget.label,
+                      style: GoogleFonts.inter(
+                        color: widget.selected
+                            ? AppTheme.textPrimary
+                            : _hover
+                            ? AppTheme.textPrimary
+                            : AppTheme.textSecondary,
+                        fontSize: 13,
+                        fontWeight:
+                            widget.selected ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                    if (widget.selected) ...[
+                      const Spacer(),
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ],
-          ),
         ),
       ),
     );
@@ -415,7 +486,12 @@ class _NavItemState extends State<_NavItem> {
 class _MainContent extends ConsumerWidget {
   final UserModel user;
   final List<ProjectModel> projects;
-  const _MainContent({required this.user, required this.projects});
+  final bool showMenu;
+  const _MainContent({
+    required this.user,
+    required this.projects,
+    this.showMenu = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -446,6 +522,7 @@ class _MainContent extends ConsumerWidget {
           dateStr: DateFormat('yyyy년 M월 d일 (E)', 'ko_KR').format(now),
           onSearch: () => Navigator.push(context, _fadeRoute(const SearchScreen())),
           onAdd: () => _showAddDialog(context, ref, user),
+          showMenu: showMenu,
         ),
 
         // 통계 행
@@ -514,6 +591,7 @@ class _Header extends StatelessWidget {
   final String dateStr;
   final VoidCallback onSearch;
   final VoidCallback onAdd;
+  final bool showMenu;
 
   const _Header({
     required this.user,
@@ -521,6 +599,7 @@ class _Header extends StatelessWidget {
     required this.dateStr,
     required this.onSearch,
     required this.onAdd,
+    this.showMenu = false,
   });
 
   @override
@@ -532,6 +611,16 @@ class _Header extends StatelessWidget {
       ),
       child: Row(
         children: [
+          if (showMenu) ...[
+            IconButton(
+              icon: const Icon(Icons.menu_rounded),
+              color: AppTheme.textSecondary,
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -816,8 +905,12 @@ class _ProjectGrid extends ConsumerWidget {
               },
               childCount: projects.length + 1,
             ),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 280,
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: MediaQuery.of(context).size.width < 600
+                  ? MediaQuery.of(context).size.width * 0.9
+                  : MediaQuery.of(context).size.width < 1024
+                  ? 260
+                  : 280,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
               childAspectRatio: 1.25,

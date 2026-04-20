@@ -807,6 +807,50 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     ),
   );
 
+  void _showMobilePanel(BuildContext context, FileEditorState st) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        decoration: BoxDecoration(
+          color: _bg2,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border.all(color: _bdr2),
+        ),
+        child: Column(
+          children: [
+            // 핸들바
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 4),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _bdr2,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // 탭 + 패널
+            Container(
+              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: _bdr.withOpacity(0.6))),
+              ),
+              child: _Tabs(ctrl: _tab),
+            ),
+            Expanded(
+              child: Consumer(
+                builder: (_, r, __) => _buildPanel(r.watch(fileEditorProvider)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── 뽀모도로 ─────────────────────────────────────
   void _pomToggle() {
     if (_pomRunning) {
@@ -954,6 +998,60 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                       )
                     : _view == 1
                     ? _buildEditor()
+                    : MediaQuery.of(context).size.width < 700
+                    ? Stack(
+                        children: [
+                          _buildEditor(),
+                          // 모바일 AI 패널 버튼
+                          Positioned(
+                            bottom: 80,
+                            right: 16,
+                            child: Consumer(
+                              builder: (_, r, __) {
+                                final st = r.watch(fileEditorProvider);
+                                return GestureDetector(
+                                  onTap: () => _showMobilePanel(context, st),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: _accD,
+                                      borderRadius: BorderRadius.circular(24),
+                                      border: Border.all(
+                                        color: _acc.withOpacity(0.5), width: 1.5),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                        BoxShadow(
+                                          color: _acc.withOpacity(0.15),
+                                          blurRadius: 16,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.auto_awesome_rounded,
+                                            size: 13, color: _acc),
+                                        const SizedBox(width: 6),
+                                        Text('AI',
+                                          style: GoogleFonts.inter(
+                                            color: _acc,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          )),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      )
                     : _Split(
                         left: _buildEditor(),
                         right: Consumer(
@@ -1063,7 +1161,12 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(96, 80, 96, 0),
+              padding: EdgeInsets.fromLTRB(
+                MediaQuery.of(context).size.width < 600 ? 20 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+                MediaQuery.of(context).size.width < 600 ? 40 : 80,
+                MediaQuery.of(context).size.width < 600 ? 20 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+                0,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1116,7 +1219,12 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(96, 0, 96, 280),
+            padding: EdgeInsets.fromLTRB(
+              MediaQuery.of(context).size.width < 600 ? 20 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+              0,
+              MediaQuery.of(context).size.width < 600 ? 20 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+              280,
+            ),
             sliver: SliverReorderableList(
               itemCount: blocks.length,
               onReorder: (o, n) {
@@ -1646,11 +1754,14 @@ class _GTState extends State<_GlowTitle> {
 
   bool get _foc => _fn.hasFocus;
   @override
-  Widget build(BuildContext context) => TextField(
+  Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final titleSize = w < 600 ? 28.0 : w < 1024 ? 34.0 : 40.0;
+    return TextField(
     controller: widget.ctrl,
     focusNode: _fn,
     style: GoogleFonts.inter(
-      fontSize: 40,
+      fontSize: titleSize,
       fontWeight: FontWeight.w800,
       color: _txt0,
       height: 1.15,
@@ -1670,7 +1781,7 @@ class _GTState extends State<_GlowTitle> {
       contentPadding: EdgeInsets.zero,
       hintText: '제목 없음',
       hintStyle: GoogleFonts.inter(
-        fontSize: 40,
+        fontSize: titleSize,
         fontWeight: FontWeight.w800,
         color: const Color(0xFF1C1C30),
         height: 1.15,
@@ -1678,7 +1789,8 @@ class _GTState extends State<_GlowTitle> {
       ),
     ),
     onChanged: (_) => widget.onChange(),
-  );
+    );
+  }
 }
 
 // ══════════════════ ICON PICKER ═════════════════════

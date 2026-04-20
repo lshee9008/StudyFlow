@@ -367,8 +367,10 @@ class _ProjectHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final hPad = w < 600 ? 12.0 : 16.0;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 20, 14),
+      padding: EdgeInsets.fromLTRB(hPad, 16, hPad + 4, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
