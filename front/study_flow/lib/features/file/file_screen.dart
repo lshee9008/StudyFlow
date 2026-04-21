@@ -953,6 +953,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     final isMobile = MediaQuery.of(context).size.width < 700;
     return Scaffold(
       backgroundColor: _bg0,
+      resizeToAvoidBottomInset: true,
       // 데스크톱/태블릿에서만 포모도로 FAB 표시 (모바일은 하단바에 통합)
       floatingActionButton: isMobile ? null : _PomFAB(
         label: _pomLabel,

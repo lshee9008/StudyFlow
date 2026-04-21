@@ -237,6 +237,15 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
       },
       child: Scaffold(
         backgroundColor: AppTheme.bgPrimary,
+        floatingActionButton: MediaQuery.of(context).size.width < 600
+            ? FloatingActionButton(
+                onPressed: _createNewFile,
+                backgroundColor: AppTheme.accent,
+                foregroundColor: Colors.black,
+                elevation: 4,
+                child: const Icon(Icons.add_rounded, size: 26),
+              )
+            : null,
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -503,7 +512,9 @@ class _FileList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).size.width < 600 ? 88 : 24,
+      ),
       itemCount: files.length + 1,
       itemBuilder: (_, i) {
         if (i == files.length) {
@@ -741,7 +752,10 @@ class _FileRowState extends State<_FileRow>
             onTap: widget.onTap,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 130),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+              padding: EdgeInsets.symmetric(
+                horizontal: MediaQuery.of(context).size.width < 600 ? 16 : 20,
+                vertical: MediaQuery.of(context).size.width < 600 ? 14 : 11,
+              ),
               decoration: BoxDecoration(
                 color: _hover ? AppTheme.bgSecondary : Colors.transparent,
                 border: const Border(
@@ -861,9 +875,11 @@ class _FileRowState extends State<_FileRow>
                       ),
                     ),
 
-                  // 더보기 메뉴
-                  AnimatedOpacity(
-                    opacity: _hover ? 1 : 0,
+                  // 더보기 메뉴 (모바일: 항상 표시, 데스크톱: hover 시 표시)
+                  Builder(builder: (ctx) {
+                    final isMobile = MediaQuery.of(ctx).size.width < 600;
+                    return AnimatedOpacity(
+                    opacity: isMobile ? 1.0 : (_hover ? 1 : 0),
                     duration: const Duration(milliseconds: 130),
                     child: PopupMenuButton<String>(
                       color: AppTheme.bgSecondary,
@@ -920,7 +936,8 @@ class _FileRowState extends State<_FileRow>
                         ),
                       ],
                     ),
-                  ),
+                  );
+                  }),
                 ],
               ),
             ),

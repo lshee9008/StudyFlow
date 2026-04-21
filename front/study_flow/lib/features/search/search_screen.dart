@@ -125,15 +125,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
         children: [
           // ── 검색 헤더 ──────────────────────────────────
           Container(
-            padding: const EdgeInsets.fromLTRB(24, 56, 24, 16),
-            decoration: const BoxDecoration(
-              color: AppTheme.bgPrimary,
-              border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
-            ),
-            child: Column(
-              children: [
-                // 뒤로가기 + 제목
-                Row(
+            color: AppTheme.bgPrimary,
+            child: SafeArea(
+              bottom: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
+                ),
+                child: Column(
+                  children: [
+                    // 뒤로가기 + 제목
+                    Row(
                   children: [
                     IconButton(
                       icon: const Icon(
@@ -272,6 +275,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
               ],
             ),
           ),
+        ),  // SafeArea 닫기
+      ),  // 바깥 Container 닫기
 
           // ── 결과 영역 ─────────────────────────────────
           Expanded(child: _buildBody()),

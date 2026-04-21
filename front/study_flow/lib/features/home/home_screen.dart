@@ -56,12 +56,20 @@ class HomeScreen extends ConsumerWidget {
         if (isMobile) {
           return Scaffold(
             backgroundColor: AppTheme.bgPrimary,
-            drawer: Drawer(
-              width: 260,
-              backgroundColor: AppTheme.bgDeep,
-              child: _Sidebar(user: user, collapsed: false),
+            bottomNavigationBar: _MobileNavBar(
+              onSearch: () => Navigator.push(context, _fadeRoute(const SearchScreen())),
+              onSettings: () => Navigator.push(context, _fadeRoute(ProfileSettingsScreen(user: user))),
+              onNewProject: () => showDialog(
+                context: context,
+                builder: (_) => _AddProjectDialog(userId: user.id!),
+              ).then((p) {
+                if (p != null) ref.read(projectProvider.notifier).addProject(p);
+              }),
             ),
-            body: _MainContent(user: user, projects: projects, showMenu: true),
+            body: SafeArea(
+              bottom: false,
+              child: _MainContent(user: user, projects: projects, showMenu: false),
+            ),
           );
         }
 
@@ -1368,4 +1376,124 @@ class _AddProjectDialogState extends State<_AddProjectDialog> {
       ),
     );
   }
+}
+
+// ─── 모바일 하단 네비게이션 ─────────────────────────────────
+class _MobileNavBar extends StatelessWidget {
+  final VoidCallback onSearch, onSettings, onNewProject;
+  const _MobileNavBar({
+    required this.onSearch,
+    required this.onSettings,
+    required this.onNewProject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.bgDeep,
+        border: const Border(top: BorderSide(color: AppTheme.borderSubtle, width: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 56,
+          child: Row(
+            children: [
+              // 홈 (항상 선택됨)
+              Expanded(
+                child: _MNavItem(
+                  icon: Icons.home_rounded,
+                  label: '홈',
+                  selected: true,
+                ),
+              ),
+              // 검색
+              Expanded(
+                child: _MNavItem(
+                  icon: Icons.search_rounded,
+                  label: '검색',
+                  onTap: onSearch,
+                ),
+              ),
+              // + 새 프로젝트 (중앙 강조 버튼)
+              GestureDetector(
+                onTap: onNewProject,
+                child: Container(
+                  width: 52,
+                  height: 40,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.accent.withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.add_rounded, color: Colors.black, size: 22),
+                ),
+              ),
+              // 설정
+              Expanded(
+                child: _MNavItem(
+                  icon: Icons.settings_outlined,
+                  label: '설정',
+                  onTap: onSettings,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MNavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+  const _MNavItem({
+    required this.icon,
+    required this.label,
+    this.selected = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    behavior: HitTestBehavior.opaque,
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          icon,
+          size: 22,
+          color: selected ? AppTheme.accent : AppTheme.textMuted,
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            color: selected ? AppTheme.accent : AppTheme.textMuted,
+            fontSize: 10,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+          ),
+        ),
+      ],
+    ),
+  );
 }
