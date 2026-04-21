@@ -30,7 +30,7 @@ class LocalDatabase {
     print("🍎 [DB Path] 파일 위치: $path");
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -77,7 +77,31 @@ class LocalDatabase {
     ''');
   }
 
-  Future _onUpgrade(dynamic db, int oldVersion, int newVersion) async {}
+  Future _onUpgrade(dynamic db, int oldVersion, int newVersion) async {
+    if (kIsWeb) return;
+    // v1→2 업그레이드 시 files 테이블이 누락된 경우 CREATE IF NOT EXISTS로 복구
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS files (
+        id TEXT NOT NULL PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        create_at TEXT NOT NULL,
+        update_at TEXT,
+        title TEXT,
+        tags TEXT,
+        icon TEXT,
+        prompt TEXT,
+        content TEXT,
+        summary TEXT,
+        FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+      )
+    ''');
+    // v2→3: projects 테이블에 is_sync 컬럼 보장
+    try {
+      await db.execute(
+        'ALTER TABLE projects ADD COLUMN is_sync INTEGER NOT NULL DEFAULT 0',
+      );
+    } catch (_) {}
+  }
 
   Future<void> debugPrintDatabase() async {
     if (kIsWeb) {

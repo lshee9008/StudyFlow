@@ -531,8 +531,10 @@ class _MainContent extends ConsumerWidget {
 
         // 섹션 헤더
         if (projects.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(32, 20, 32, 0),
+          LayoutBuilder(builder: (ctx, cons) {
+            final hPad = cons.maxWidth < 600 ? 16.0 : 32.0;
+            return Padding(
+            padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 0),
             child: Row(
               children: [
                 Text(
@@ -562,7 +564,8 @@ class _MainContent extends ConsumerWidget {
                 ),
               ],
             ),
-          ),
+          );
+          }),  // end LayoutBuilder
 
         // 프로젝트 그리드
         Expanded(
@@ -604,8 +607,10 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final hPad = isMobile ? 16.0 : 32.0;
     return Container(
-      padding: const EdgeInsets.fromLTRB(32, 28, 28, 22),
+      padding: EdgeInsets.fromLTRB(hPad, isMobile ? 18 : 28, hPad - 4, 18),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
       ),
@@ -628,23 +633,55 @@ class _Header extends StatelessWidget {
                 Text(
                   greeting,
                   style: AppTheme.headingMedium.copyWith(
-                    fontSize: 20,
+                    fontSize: isMobile ? 17 : 20,
                     fontWeight: FontWeight.w700,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(dateStr, style: AppTheme.bodySmall),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          _SearchBtn(onTap: onSearch),
           const SizedBox(width: 8),
-          SFButton(
-            label: '새 프로젝트',
-            icon: Icons.add_rounded,
-            onPressed: onAdd,
-          ),
+          // 모바일: 검색 아이콘만, 데스크톱: 전체 검색 버튼
+          if (isMobile)
+            GestureDetector(
+              onTap: onSearch,
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppTheme.bgSecondary,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.borderDefault),
+                ),
+                child: const Icon(Icons.search_rounded, size: 18, color: AppTheme.textSecondary),
+              ),
+            )
+          else
+            _SearchBtn(onTap: onSearch),
+          const SizedBox(width: 8),
+          // 모바일: + 아이콘만
+          if (isMobile)
+            GestureDetector(
+              onTap: onAdd,
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppTheme.accent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.add_rounded, size: 20, color: Colors.black),
+              ),
+            )
+          else
+            SFButton(
+              label: '새 프로젝트',
+              icon: Icons.add_rounded,
+              onPressed: onAdd,
+            ),
         ],
       ),
     );
@@ -723,8 +760,10 @@ class _StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final hPad = isMobile ? 16.0 : 32.0;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 18, 32, 0),
+      padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 0),
       child: Row(
         children: [
           _StatCard(
@@ -733,17 +772,17 @@ class _StatsRow extends StatelessWidget {
             value: '$projectCount',
             color: AppTheme.accent,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           _StatCard(
             icon: Icons.auto_awesome_rounded,
-            label: 'AI 노트',
+            label: isMobile ? 'AI' : 'AI 노트',
             value: '활성',
             color: AppTheme.blue,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           _StatCard(
             icon: Icons.local_fire_department_rounded,
-            label: '계속 학습 중',
+            label: isMobile ? '학습 중' : '계속 학습 중',
             value: '🔥',
             color: AppTheme.yellow,
           ),
@@ -877,7 +916,12 @@ class _ProjectGrid extends ConsumerWidget {
     return CustomScrollView(
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(32, 14, 32, 32),
+          padding: EdgeInsets.fromLTRB(
+            MediaQuery.of(context).size.width < 600 ? 16 : 32,
+            12,
+            MediaQuery.of(context).size.width < 600 ? 16 : 32,
+            32,
+          ),
           sliver: SliverGrid(
             delegate: SliverChildBuilderDelegate(
               (ctx, i) {

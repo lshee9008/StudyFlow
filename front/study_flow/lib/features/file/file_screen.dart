@@ -812,42 +812,87 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        height: MediaQuery.of(context).size.height * 0.75,
-        decoration: BoxDecoration(
-          color: _bg2,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border.all(color: _bdr2),
-        ),
-        child: Column(
-          children: [
-            // 핸들바
-            Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 4),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: _bdr2,
-                borderRadius: BorderRadius.circular(2),
+      useSafeArea: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        minChildSize: 0.35,
+        maxChildSize: 0.95,
+        snap: true,
+        snapSizes: const [0.35, 0.65, 0.95],
+        builder: (_, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: _bg2,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: Column(
+            children: [
+              // 핸들바 + 드래그 영역
+              GestureDetector(
+                onTap: () {},
+                child: Container(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  child: Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _bdr2,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            // 탭 + 패널
-            Container(
-              height: 50,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: _bdr.withOpacity(0.6))),
+              // 탭 바
+              Container(
+                height: 46,
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: _bg3,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: _MobileTabs(ctrl: _tab),
               ),
-              child: _Tabs(ctrl: _tab),
-            ),
-            Expanded(
-              child: Consumer(
-                builder: (_, r, __) => _buildPanel(r.watch(fileEditorProvider)),
+              const SizedBox(height: 8),
+              // 패널 본체
+              Expanded(
+                child: Consumer(
+                  builder: (_, r, __) => _buildMobilePanel(r.watch(fileEditorProvider)),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  // 모바일용 패널 (BackdropFilter 없이 가볍게)
+  Widget _buildMobilePanel(FileEditorState st) {
+    return TabBarView(
+      controller: _tab,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        _SumPanel(
+          st: st,
+          ref: ref,
+          tCtrl: _tCtrl,
+          gCtrl: _gCtrl,
+          snack: _snack,
+          pulse: _sumPulse,
+        ),
+        Consumer(
+          builder: (_, r, __) => _AnaPanel(st: r.watch(fileEditorProvider)),
+        ),
+        _MemoPanel(st: st, ref: ref, tCtrl: _tCtrl),
+        _QuizPanel(st: st, ref: ref),
+        _AskPanel(
+          st: st,
+          ctrl: _qaCtrl,
+          onAsk: (q) =>
+              ref.read(fileEditorProvider.notifier).askAI(q, widget.projectId),
+        ),
+      ],
     );
   }
 
@@ -905,9 +950,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     final charCount = ref.watch(fileEditorProvider.select((s) => s.charCount));
     final savedAt = ref.watch(fileEditorProvider.select((s) => s.lastSavedAt));
 
+    final isMobile = MediaQuery.of(context).size.width < 700;
     return Scaffold(
       backgroundColor: _bg0,
-      floatingActionButton: _PomFAB(
+      // 데스크톱/태블릿에서만 포모도로 FAB 표시 (모바일은 하단바에 통합)
+      floatingActionButton: isMobile ? null : _PomFAB(
         label: _pomLabel,
         color: _pomColor,
         running: _pomRunning,
@@ -999,58 +1046,17 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                     : _view == 1
                     ? _buildEditor()
                     : MediaQuery.of(context).size.width < 700
-                    ? Stack(
-                        children: [
-                          _buildEditor(),
-                          // 모바일 AI 패널 버튼
-                          Positioned(
-                            bottom: 80,
-                            right: 16,
-                            child: Consumer(
-                              builder: (_, r, __) {
-                                final st = r.watch(fileEditorProvider);
-                                return GestureDetector(
-                                  onTap: () => _showMobilePanel(context, st),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: _accD,
-                                      borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(
-                                        color: _acc.withOpacity(0.5), width: 1.5),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                        BoxShadow(
-                                          color: _acc.withOpacity(0.15),
-                                          blurRadius: 16,
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.auto_awesome_rounded,
-                                            size: 13, color: _acc),
-                                        const SizedBox(width: 6),
-                                        Text('AI',
-                                          style: GoogleFonts.inter(
-                                            color: _acc,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                          )),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
+                    ? _MobileEditorView(
+                        editor: _buildEditor(),
+                        pomLabel: _pomLabel,
+                        pomColor: _pomColor,
+                        pomRunning: _pomRunning,
+                        onPomTap: _pomToggle,
+                        onPomReset: _pomReset,
+                        onAiTap: () {
+                          final st = ref.read(fileEditorProvider);
+                          _showMobilePanel(context, st);
+                        },
                       )
                     : _Split(
                         left: _buildEditor(),
@@ -1162,9 +1168,9 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(
-                MediaQuery.of(context).size.width < 600 ? 20 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
-                MediaQuery.of(context).size.width < 600 ? 40 : 80,
-                MediaQuery.of(context).size.width < 600 ? 20 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+                MediaQuery.of(context).size.width < 600 ? 16 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+                MediaQuery.of(context).size.width < 600 ? 28 : 80,
+                MediaQuery.of(context).size.width < 600 ? 16 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
                 0,
               ),
               child: Column(
@@ -1220,10 +1226,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           ),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(
-              MediaQuery.of(context).size.width < 600 ? 20 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+              MediaQuery.of(context).size.width < 600 ? 16 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
               0,
-              MediaQuery.of(context).size.width < 600 ? 20 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
-              280,
+              MediaQuery.of(context).size.width < 600 ? 16 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+              // 모바일: 하단 바 60 + 여유, 데스크톱: 280
+              MediaQuery.of(context).size.width < 700 ? 120 : 280,
             ),
             sliver: SliverReorderableList(
               itemCount: blocks.length,
@@ -1404,89 +1411,95 @@ class _AppBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 50,
-    decoration: BoxDecoration(
-      border: Border(
-        bottom: BorderSide(
-          color: const Color(0xFF1C1C2C).withOpacity(0.8),
-          width: 0.5,
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    return Container(
+      height: 50,
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: const Color(0xFF1C1C2C).withOpacity(0.8),
+            width: 0.5,
+          ),
         ),
       ),
-    ),
-    child: Row(
-      children: [
-        const SizedBox(width: 6),
-        _CBtn(Icons.arrow_back_rounded, onBack),
-        const SizedBox(width: 10),
-        // 저장 상태
-        _SaveChip(saving: saving, savedAt: savedAt, anim: saveAnim),
-        const Spacer(),
-        // 다중 선택 시 삭제 버튼
-        if (selectedCount > 0) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: _red.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _red.withOpacity(0.3)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$selectedCount개 선택',
-                  style: const TextStyle(
-                    color: _red,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
+      child: Row(
+        children: [
+          const SizedBox(width: 6),
+          _CBtn(Icons.arrow_back_rounded, onBack),
+          const SizedBox(width: 8),
+          _SaveChip(saving: saving, savedAt: savedAt, anim: saveAnim),
+          const Spacer(),
+          // 다중 선택 시 삭제 버튼
+          if (selectedCount > 0) ...[
+            GestureDetector(
+              onTap: onDeleteSel,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _red.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _red.withOpacity(0.3)),
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: onDeleteSel,
-                  child: const Icon(
-                    Icons.delete_outline_rounded,
-                    size: 14,
-                    color: _red,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.delete_outline_rounded, size: 13, color: _red),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$selectedCount개',
+                      style: const TextStyle(color: _red, fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+          ],
+          // 글자 수
+          if (!isMobile)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161622),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _bdr.withOpacity(0.6)),
+                ),
+                child: Text(
+                  '$charCount자',
+                  style: GoogleFonts.inter(color: _txt2, fontSize: 10, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
+          // 모바일: 더보기 메뉴
+          if (isMobile)
+            _MobileMoreBtn(
+              view: view,
+              onProofread: onProofread,
+              onCopy: onCopy,
+              onMdCopy: onMdCopy,
+              onView: onView,
+              onMindmap: onMindmap,
+              charCount: charCount,
+            )
+          else ...[
+            _TBtn(Icons.spellcheck_rounded, '글 교정', onProofread),
+            _TBtn(Icons.copy_rounded, '복사', onCopy),
+            _TBtn(Icons.download_outlined, 'MD', onMdCopy),
+            _TBtn(
+              view == 0 ? Icons.crop_square_rounded : Icons.view_column_rounded,
+              view == 0 ? '전체' : '분할',
+              onView,
+            ),
+            _TBtn(Icons.account_tree_outlined, '마인드맵', onMindmap),
+          ],
           const SizedBox(width: 8),
         ],
-        // 글자 수
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          decoration: BoxDecoration(
-            color: const Color(0xFF161622),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: _bdr.withOpacity(0.6)),
-          ),
-          child: Text(
-            '$charCount자',
-            style: GoogleFonts.inter(
-              color: _txt2,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        _TBtn(Icons.spellcheck_rounded, '글 교정', onProofread),
-        _TBtn(Icons.copy_rounded, '복사', onCopy),
-        _TBtn(Icons.download_outlined, 'MD', onMdCopy),
-        _TBtn(
-          view == 0 ? Icons.crop_square_rounded : Icons.view_column_rounded,
-          view == 0 ? '전체' : '분할',
-          onView,
-        ),
-        _TBtn(Icons.account_tree_outlined, '마인드맵', onMindmap),
-        const SizedBox(width: 8),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 class _CBtn extends StatefulWidget {
@@ -1590,6 +1603,76 @@ class _TBtn extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
     ),
   );
+}
+
+// ══════════════════ 모바일 더보기 버튼 ══════════════════
+class _MobileMoreBtn extends StatelessWidget {
+  final int view, charCount;
+  final VoidCallback onProofread, onCopy, onMdCopy, onView, onMindmap;
+  const _MobileMoreBtn({
+    required this.view,
+    required this.charCount,
+    required this.onProofread,
+    required this.onCopy,
+    required this.onMdCopy,
+    required this.onView,
+    required this.onMindmap,
+  });
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<int>(
+    icon: const Icon(Icons.more_horiz_rounded, size: 18, color: _txt2),
+    color: _bg3,
+    elevation: 8,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(color: _bdr2),
+    ),
+    padding: EdgeInsets.zero,
+    constraints: const BoxConstraints(minWidth: 180),
+    itemBuilder: (_) => [
+      PopupMenuItem<int>(
+        enabled: false,
+        height: 32,
+        child: Text(
+          '$charCount자',
+          style: GoogleFonts.inter(color: _txt2, fontSize: 11),
+        ),
+      ),
+      const PopupMenuDivider(height: 1),
+      _mi(context, 0, Icons.spellcheck_rounded, '글 교정'),
+      _mi(context, 1, Icons.copy_rounded, '복사'),
+      _mi(context, 2, Icons.download_outlined, 'MD 복사'),
+      _mi(context, 3,
+          view == 0 ? Icons.crop_square_rounded : Icons.view_column_rounded,
+          view == 0 ? '전체 화면' : '분할 화면'),
+      _mi(context, 4, Icons.account_tree_outlined, '마인드맵'),
+    ],
+    onSelected: (v) {
+      switch (v) {
+        case 0: onProofread(); break;
+        case 1: onCopy(); break;
+        case 2: onMdCopy(); break;
+        case 3: onView(); break;
+        case 4: onMindmap(); break;
+      }
+    },
+  );
+
+  PopupMenuItem<int> _mi(BuildContext ctx, int v, IconData ic, String label) =>
+      PopupMenuItem<int>(
+        value: v,
+        height: 44,
+        child: Row(
+          children: [
+            Icon(ic, size: 15, color: _txt1),
+            const SizedBox(width: 12),
+            Text(label,
+                style: GoogleFonts.inter(
+                    color: _txt0, fontSize: 13, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      );
 }
 
 // ══════════════════ 교정 배너 ════════════════════════
@@ -2303,6 +2386,232 @@ class _PomFABState extends State<_PomFAB> {
         ),
       ),
     ),
+  );
+}
+
+// ══════════════════ 모바일 에디터 뷰 ════════════════════
+// 에디터 + 하단 액션바 + AI 버튼 통합
+class _MobileEditorView extends StatefulWidget {
+  final Widget editor;
+  final String pomLabel;
+  final Color pomColor;
+  final bool pomRunning;
+  final VoidCallback onPomTap, onPomReset, onAiTap;
+  const _MobileEditorView({
+    required this.editor,
+    required this.pomLabel,
+    required this.pomColor,
+    required this.pomRunning,
+    required this.onPomTap,
+    required this.onPomReset,
+    required this.onAiTap,
+  });
+  @override
+  State<_MobileEditorView> createState() => _MEVState();
+}
+
+class _MEVState extends State<_MobileEditorView> {
+  bool _barVisible = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // 에디터 (전체 화면) - 탭하면 하단바 토글
+        GestureDetector(
+          onTap: () => setState(() => _barVisible = !_barVisible),
+          behavior: HitTestBehavior.translucent,
+          child: widget.editor,
+        ),
+        // 하단 액션 바
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          bottom: _barVisible ? 0 : -72,
+          left: 0,
+          right: 0,
+          child: _MobileBottomBar(
+            pomLabel: widget.pomLabel,
+            pomColor: widget.pomColor,
+            pomRunning: widget.pomRunning,
+            onPomTap: widget.onPomTap,
+            onPomReset: widget.onPomReset,
+            onAiTap: widget.onAiTap,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileBottomBar extends StatelessWidget {
+  final String pomLabel;
+  final Color pomColor;
+  final bool pomRunning;
+  final VoidCallback onPomTap, onPomReset, onAiTap;
+  const _MobileBottomBar({
+    required this.pomLabel,
+    required this.pomColor,
+    required this.pomRunning,
+    required this.onPomTap,
+    required this.onPomReset,
+    required this.onAiTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 60,
+    padding: EdgeInsets.only(
+      left: 16,
+      right: 16,
+      bottom: MediaQuery.of(context).padding.bottom > 0
+          ? MediaQuery.of(context).padding.bottom
+          : 8,
+    ),
+    decoration: BoxDecoration(
+      color: _bg2,
+      border: const Border(top: BorderSide(color: _bdr, width: 0.5)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.3),
+          blurRadius: 16,
+          offset: const Offset(0, -4),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        // 포모도로 버튼
+        GestureDetector(
+          onTap: onPomTap,
+          onLongPress: onPomReset,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: pomRunning ? pomColor.withOpacity(0.12) : _bg3,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: pomRunning ? pomColor.withOpacity(0.4) : _bdr2,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  pomRunning ? Icons.pause_rounded : Icons.timer_outlined,
+                  size: 14,
+                  color: pomRunning ? pomColor : _txt2,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  pomLabel,
+                  style: GoogleFonts.inter(
+                    color: pomRunning ? pomColor : _txt1,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: [const FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const Spacer(),
+        // AI 패널 버튼
+        GestureDetector(
+          onTap: onAiTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_accD, const Color(0xFF243010)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: _acc.withOpacity(0.45), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: _acc.withOpacity(0.12),
+                  blurRadius: 12,
+                  spreadRadius: 0,
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome_rounded, size: 15, color: _acc),
+                const SizedBox(width: 7),
+                Text(
+                  'AI 패널',
+                  style: GoogleFonts.inter(
+                    color: _acc,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// ══════════════════ 모바일 탭 ════════════════════════
+class _MobileTabs extends StatelessWidget {
+  final TabController ctrl;
+  const _MobileTabs({required this.ctrl});
+
+  static const _tabs = [
+    (Icons.auto_awesome_rounded, '요약'),
+    (Icons.manage_search_rounded, '분석'),
+    (Icons.psychology_rounded, '암기'),
+    (Icons.quiz_rounded, '퀴즈'),
+    (Icons.chat_bubble_outline_rounded, 'Ask'),
+  ];
+
+  @override
+  Widget build(BuildContext context) => TabBar(
+    controller: ctrl,
+    isScrollable: true,
+    tabAlignment: TabAlignment.start,
+    dividerColor: Colors.transparent,
+    indicator: BoxDecoration(
+      color: _accD,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _acc.withOpacity(0.3)),
+    ),
+    indicatorSize: TabBarIndicatorSize.tab,
+    labelColor: _acc,
+    unselectedLabelColor: _txt2,
+    labelStyle: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+    unselectedLabelStyle: GoogleFonts.inter(fontSize: 12),
+    labelPadding: const EdgeInsets.symmetric(horizontal: 10),
+    tabs: _tabs
+        .map(
+          (t) => Tab(
+            height: 38,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(t.$1, size: 13),
+                const SizedBox(width: 5),
+                Text(t.$2),
+              ],
+            ),
+          ),
+        )
+        .toList(),
   );
 }
 
