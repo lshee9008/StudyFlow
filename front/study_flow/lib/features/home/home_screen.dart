@@ -959,13 +959,16 @@ class _ProjectGrid extends ConsumerWidget {
             ),
             gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: MediaQuery.of(context).size.width < 600
-                  ? MediaQuery.of(context).size.width * 0.9
+                  ? MediaQuery.of(context).size.width // 모바일: 1열 (전체 너비)
                   : MediaQuery.of(context).size.width < 1024
                   ? 260
                   : 280,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.25,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              // 모바일: 세로로 더 짧게 (리스트형), 데스크톱: 정사각형에 가깝게
+              childAspectRatio: MediaQuery.of(context).size.width < 600
+                  ? 2.8
+                  : 1.25,
             ),
           ),
         ),

@@ -963,7 +963,9 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         onLongPress: _pomReset,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      body: Stack(
+      body: SafeArea(
+        bottom: false, // 하단은 _MobileBottomBar의 SafeArea가 처리
+        child: Stack(
         children: [
           RepaintBoundary(child: _AuroraBG(anim: _bgAnim)),
           Column(
@@ -1070,7 +1072,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
             ],
           ),
         ],
-      ),
+        ), // Stack 닫기
+      ), // SafeArea 닫기
     );
   }
 
@@ -2392,7 +2395,8 @@ class _PomFABState extends State<_PomFAB> {
 
 // ══════════════════ 모바일 에디터 뷰 ════════════════════
 // 에디터 + 하단 액션바 + AI 버튼 통합
-class _MobileEditorView extends StatefulWidget {
+// 키보드 표시 시 자동으로 bar 숨김 (tap-to-toggle 제거 → 텍스트 입력 방해 없음)
+class _MobileEditorView extends StatelessWidget {
   final Widget editor;
   final String pomLabel;
   final Color pomColor;
@@ -2407,37 +2411,31 @@ class _MobileEditorView extends StatefulWidget {
     required this.onPomReset,
     required this.onAiTap,
   });
-  @override
-  State<_MobileEditorView> createState() => _MEVState();
-}
-
-class _MEVState extends State<_MobileEditorView> {
-  bool _barVisible = true;
 
   @override
   Widget build(BuildContext context) {
+    // 키보드가 100px 이상 올라오면 bar 숨김
+    final keyboardUp = MediaQuery.of(context).viewInsets.bottom > 100;
+    // bar 높이 = 56px content + 홈 인디케이터
+    final barH = 56.0 + MediaQuery.of(context).padding.bottom;
     return Stack(
       children: [
-        // 에디터 (전체 화면) - 탭하면 하단바 토글
-        GestureDetector(
-          onTap: () => setState(() => _barVisible = !_barVisible),
-          behavior: HitTestBehavior.translucent,
-          child: widget.editor,
-        ),
-        // 하단 액션 바
+        // 에디터 (전체)
+        editor,
+        // 하단 액션 바 - 키보드 열리면 자동 hide
         AnimatedPositioned(
-          duration: const Duration(milliseconds: 220),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
-          bottom: _barVisible ? 0 : -72,
+          bottom: keyboardUp ? -barH : 0,
           left: 0,
           right: 0,
           child: _MobileBottomBar(
-            pomLabel: widget.pomLabel,
-            pomColor: widget.pomColor,
-            pomRunning: widget.pomRunning,
-            onPomTap: widget.onPomTap,
-            onPomReset: widget.onPomReset,
-            onAiTap: widget.onAiTap,
+            pomLabel: pomLabel,
+            pomColor: pomColor,
+            pomRunning: pomRunning,
+            onPomTap: onPomTap,
+            onPomReset: onPomReset,
+            onAiTap: onAiTap,
           ),
         ),
       ],
@@ -2460,112 +2458,104 @@ class _MobileBottomBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 60,
-    padding: EdgeInsets.only(
-      left: 16,
-      right: 16,
-      bottom: MediaQuery.of(context).padding.bottom > 0
-          ? MediaQuery.of(context).padding.bottom
-          : 8,
-    ),
-    decoration: BoxDecoration(
-      color: _bg2,
-      border: const Border(top: BorderSide(color: _bdr, width: 0.5)),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.3),
-          blurRadius: 16,
-          offset: const Offset(0, -4),
-        ),
-      ],
-    ),
-    child: Row(
-      children: [
-        // 포모도로 버튼
-        GestureDetector(
-          onTap: onPomTap,
-          onLongPress: onPomReset,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: pomRunning ? pomColor.withOpacity(0.12) : _bg3,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: pomRunning ? pomColor.withOpacity(0.4) : _bdr2,
-              ),
-            ),
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _bg2,
+        border: const Border(top: BorderSide(color: _bdr, width: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 56, // 고정 56px (SafeArea가 홈 인디케이터 처리)
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  pomRunning ? Icons.pause_rounded : Icons.timer_outlined,
-                  size: 14,
-                  color: pomRunning ? pomColor : _txt2,
+                // 포모도로 버튼
+                GestureDetector(
+                  onTap: onPomTap,
+                  onLongPress: onPomReset,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: pomRunning ? pomColor.withOpacity(0.12) : _bg3,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: pomRunning ? pomColor.withOpacity(0.4) : _bdr2,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          pomRunning ? Icons.pause_rounded : Icons.timer_outlined,
+                          size: 15,
+                          color: pomRunning ? pomColor : _txt2,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          pomLabel,
+                          style: GoogleFonts.inter(
+                            color: pomRunning ? pomColor : _txt1,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: [const FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  pomLabel,
-                  style: GoogleFonts.inter(
-                    color: pomRunning ? pomColor : _txt1,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: [const FontFeature.tabularFigures()],
+                const Spacer(),
+                // AI 패널 버튼
+                GestureDetector(
+                  onTap: onAiTap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _accD,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: _acc.withOpacity(0.5), width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _acc.withOpacity(0.15),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome_rounded, size: 15, color: _acc),
+                        const SizedBox(width: 7),
+                        Text(
+                          'AI 패널',
+                          style: GoogleFonts.inter(
+                            color: _acc,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ),
-        const Spacer(),
-        // AI 패널 버튼
-        GestureDetector(
-          onTap: onAiTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [_accD, const Color(0xFF243010)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: _acc.withOpacity(0.45), width: 1.5),
-              boxShadow: [
-                BoxShadow(
-                  color: _acc.withOpacity(0.12),
-                  blurRadius: 12,
-                  spreadRadius: 0,
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.25),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.auto_awesome_rounded, size: 15, color: _acc),
-                const SizedBox(width: 7),
-                Text(
-                  'AI 패널',
-                  style: GoogleFonts.inter(
-                    color: _acc,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 // ══════════════════ 모바일 탭 ════════════════════════
