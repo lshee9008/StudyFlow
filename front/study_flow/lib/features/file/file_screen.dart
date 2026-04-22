@@ -3986,14 +3986,30 @@ class _SumPanel extends StatelessWidget {
             ),
             const Spacer(),
             if (st.isSummaryLoading)
-              SizedBox(
-                width: 13,
-                height: 13,
-                child: CircularProgressIndicator(
-                  color: _acc,
-                  strokeWidth: 1.5,
-                  strokeCap: StrokeCap.round,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 13,
+                    height: 13,
+                    child: CircularProgressIndicator(
+                      color: _acc,
+                      strokeWidth: 1.5,
+                      strokeCap: StrokeCap.round,
+                    ),
+                  ),
+                  if (st.summaryProgress.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      st.summaryProgress,
+                      style: GoogleFonts.inter(
+                        color: _txt2.withOpacity(0.5),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ],
               )
             else
               InkWell(

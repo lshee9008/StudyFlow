@@ -57,6 +57,9 @@ class FileEditorState {
   final String fileTitle;
   final String fileTags;
 
+  // 요약 스트리밍 진행 메시지 ("3개 섹션 분석 중..." 등)
+  final String summaryProgress;
+
   FileEditorState({
     required this.blocks,
     this.isLoading = false,
@@ -82,6 +85,7 @@ class FileEditorState {
     this.fileTags = '',
     this.proofreadResult,
     this.isProofreadLoading = false,
+    this.summaryProgress = '',
   });
 
   FileEditorState copyWith({
@@ -109,6 +113,7 @@ class FileEditorState {
     String? fileTags,
     String? proofreadResult,
     bool? isProofreadLoading,
+    String? summaryProgress,
   }) => FileEditorState(
     blocks: blocks ?? this.blocks,
     isLoading: isLoading ?? this.isLoading,
@@ -134,6 +139,7 @@ class FileEditorState {
     fileTags: fileTags ?? this.fileTags,
     proofreadResult: proofreadResult ?? this.proofreadResult,
     isProofreadLoading: isProofreadLoading ?? this.isProofreadLoading,
+    summaryProgress: summaryProgress ?? this.summaryProgress,
   );
 
   String get fullContent => blocks.map((b) => b.controller.text).join('\n');
@@ -167,6 +173,8 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   FileEditorNotifier() : super(FileEditorState(blocks: []));
 
   String _lastAnalyzedText = '';
+  // 마지막으로 요약에 사용된 콘텐츠 해시 (변경 없으면 skip)
+  int _lastSummaryHash = 0;
 
   // ─── 로드 ────────────────────────────────────────────
   Future<void> loadFileDetail(String fileId) async {
@@ -315,72 +323,204 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     state = state.copyWith(lastSavedAt: DateTime.now());
   }
 
-  // ─── 요약 (스마트 — 내용 없으면 건너뜀) ─────────────
+  // ─── 콘텐츠 해시 (변경 감지용) ─────────────────────
+  int _hashContent(String content) {
+    var h = 0;
+    for (var i = 0; i < content.length; i++) {
+      h = (h * 31 + content.codeUnitAt(i)) & 0x7FFFFFFF;
+    }
+    return h;
+  }
+
+  // ─── 요약 (SSE 스트리밍 — 메인) ──────────────────────
   Future<void> requestSummary({
     required String title,
     required String tags,
   }) async {
-    // 의미있는 내용이 50자 미만이면 무시
     if (state.meaningfulCharCount < 15) return;
 
-    state = state.copyWith(isSummaryLoading: true);
+    final full = state.fullContentForAI;
+    final hash = _hashContent(full);
+
+    // 저장된 블록 기준
+    final saved = state.summaryBlocks.where((b) => b.isSaved).toList();
+
+    // 내용 변경 없고 저장된 요약도 그대로면 skip
+    if (hash == _lastSummaryHash && saved.length == state.summaryBlocks.length) return;
+
+    state = state.copyWith(
+      isSummaryLoading: true,
+      summaryProgress: '요약 준비 중...',
+    );
+
+    final fp = state.filePrompt ?? '';
+    final savedText = saved.map((b) => b.content).join('\n\n');
+    String? customPrompt;
+    if (savedText.isNotEmpty) {
+      customPrompt =
+          '${fp.isNotEmpty ? "사용자 지시: $fp\n\n" : ""}'
+          '기존 요약:\n$savedText\n\n'
+          '위에 없는 새 내용만 추가로 요약하세요. 새 내용 없으면 빈 응답.';
+    } else if (fp.isNotEmpty) {
+      customPrompt = fp;
+    }
+
+    final body = jsonEncode({
+      'content': full,
+      'tags': tags,
+      'title': title,
+      'custom_prompt': customPrompt,
+    });
+
+    // ── SSE 스트리밍 시도 ───────────────────────────────
+    final client = http.Client();
     try {
-      final saved = state.summaryBlocks.where((b) => b.isSaved).toList();
-      final savedText = saved.map((b) => b.content).join('\n\n');
+      final request = http.Request(
+        'POST',
+        Uri.parse('$_api/api/ai/summarize-stream'),
+      );
+      request.headers['Content-Type'] = 'application/json';
+      request.headers['Accept'] = 'text/event-stream';
+      request.body = body;
 
-      // Delta: 변경된 부분만 전송
-      final full = state.fullContentForAI;
-      final last = state.lastSentContent;
-      String toSend = full;
-      if (last.isNotEmpty && full.length > last.length + 100) {
-        toSend = full.substring((last.length - 300).clamp(0, last.length));
+      final streamed = await client
+          .send(request)
+          .timeout(const Duration(seconds: 120));
+
+      // 스트리밍 중 실시간 업데이트용 빈 블록 추가
+      String streamText = '';
+      state = state.copyWith(
+        summaryBlocks: [...saved, SummaryBlock(content: '', isSaved: false)],
+      );
+
+      final lines = streamed.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in lines) {
+        if (!mounted) break;
+        if (!line.startsWith('data: ')) continue;
+        final data = line.substring(6).trim();
+        if (data == '[DONE]') break;
+        try {
+          final evt = jsonDecode(data) as Map<String, dynamic>;
+          switch (evt['type']) {
+            case 'progress':
+              state = state.copyWith(
+                summaryProgress: evt['message'] as String? ?? '',
+              );
+              break;
+            case 'token':
+              streamText += evt['text'] as String? ?? '';
+              // 실시간으로 마지막 블록 갱신
+              state = state.copyWith(
+                summaryBlocks: [
+                  ...saved,
+                  SummaryBlock(content: streamText, isSaved: false),
+                ],
+              );
+              break;
+            case 'done':
+              final finalText =
+                  (evt['text'] as String? ?? '').trim();
+              if (finalText.isNotEmpty) {
+                _lastSummaryHash = hash;
+                state = state.copyWith(
+                  summaryBlocks: [
+                    ...saved,
+                    SummaryBlock(content: finalText, isSaved: false),
+                  ],
+                  isSummaryLoading: false,
+                  summaryProgress: '',
+                  lastSentContent: full,
+                );
+              } else {
+                state = state.copyWith(
+                  summaryBlocks: saved,
+                  isSummaryLoading: false,
+                  summaryProgress: '',
+                );
+              }
+              break;
+            case 'error':
+              if (mounted) {
+                state = state.copyWith(
+                  summaryBlocks: saved,
+                  isSummaryLoading: false,
+                  summaryProgress: '',
+                );
+              }
+              break;
+          }
+        } catch (_) {}
       }
 
-      // 서버 단 프롬프트 우선 적용
-      String? customPrompt;
-      final fp = state.filePrompt ?? '';
-      if (savedText.isNotEmpty) {
-        customPrompt =
-            '${fp.isNotEmpty ? "사용자 지시: $fp\n\n" : ""}'
-            '기존 요약:\n$savedText\n\n'
-            '위에 없는 새 내용만 추가로 요약하세요. 새 내용 없으면 빈 응답.';
-      } else if (fp.isNotEmpty) {
-        customPrompt = fp;
+      // [DONE] 없이 스트림 끝난 경우 처리
+      if (mounted && state.isSummaryLoading) {
+        if (streamText.trim().isNotEmpty) {
+          _lastSummaryHash = hash;
+          state = state.copyWith(
+            summaryBlocks: [
+              ...saved,
+              SummaryBlock(content: streamText.trim(), isSaved: false),
+            ],
+            isSummaryLoading: false,
+            summaryProgress: '',
+            lastSentContent: full,
+          );
+        } else {
+          state = state.copyWith(
+            summaryBlocks: saved,
+            isSummaryLoading: false,
+            summaryProgress: '',
+          );
+        }
       }
-
-      final res = await http
-          .post(
-            Uri.parse('$_api/api/ai/summarize'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'content': toSend,
-              'tags': tags,
-              'title': title,
-              'custom_prompt': customPrompt,
-            }),
-          )
-          .timeout(const Duration(seconds: 90));
-
+    } catch (_) {
+      // ── SSE 실패 시 비스트리밍 폴백 ──────────────────
       if (!mounted) return;
-      if (res.statusCode == 200) {
-        final newText =
-            (jsonDecode(utf8.decode(res.bodyBytes))['summary'] ?? '')
-                .toString()
-                .trim();
-        final list = List<SummaryBlock>.from(saved);
-        if (newText.isNotEmpty)
-          list.add(SummaryBlock(content: newText, isSaved: false));
-        state = state.copyWith(
-          summaryBlocks: list,
-          isSummaryLoading: false,
-          lastSentContent: full,
-        );
-      } else {
-        state = state.copyWith(isSummaryLoading: false);
+      state = state.copyWith(summaryProgress: '요약 생성 중...');
+      try {
+        final res = await http
+            .post(
+              Uri.parse('$_api/api/ai/summarize'),
+              headers: {'Content-Type': 'application/json'},
+              body: body,
+            )
+            .timeout(const Duration(seconds: 90));
+        if (!mounted) return;
+        if (res.statusCode == 200) {
+          final newText =
+              (jsonDecode(utf8.decode(res.bodyBytes))['summary'] ?? '')
+                  .toString()
+                  .trim();
+          final list = List<SummaryBlock>.from(saved);
+          if (newText.isNotEmpty) {
+            _lastSummaryHash = hash;
+            list.add(SummaryBlock(content: newText, isSaved: false));
+          }
+          state = state.copyWith(
+            summaryBlocks: list,
+            isSummaryLoading: false,
+            summaryProgress: '',
+            lastSentContent: full,
+          );
+        } else {
+          state = state.copyWith(
+            isSummaryLoading: false,
+            summaryProgress: '',
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          state = state.copyWith(
+            isSummaryLoading: false,
+            summaryProgress: '',
+          );
+        }
       }
-    } catch (e) {
-      if (!mounted) return;
-      state = state.copyWith(isSummaryLoading: false);
+    } finally {
+      client.close();
     }
   }
 
