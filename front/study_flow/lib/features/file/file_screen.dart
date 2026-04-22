@@ -181,9 +181,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   // ── 실시간 동기화 ─────────────────────────────────
   Future<void> _syncFromServer() async {
     if (!kIsWeb || !mounted) return;
-    // 저장 중이면 건너뜀
     if (_savingN.value) return;
-    await ref.read(fileEditorProvider.notifier).loadFileDetail(widget.fileId);
+    // syncMode: 미저장 summaryBlocks 보존 (30초 동기화로 AI 요약 사라지는 버그 방지)
+    await ref
+        .read(fileEditorProvider.notifier)
+        .loadFileDetail(widget.fileId, syncMode: true);
   }
 
   @override

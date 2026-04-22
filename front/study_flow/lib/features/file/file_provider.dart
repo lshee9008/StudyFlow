@@ -177,8 +177,10 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   int _lastSummaryHash = 0;
 
   // ─── 로드 ────────────────────────────────────────────
-  Future<void> loadFileDetail(String fileId) async {
-    state = state.copyWith(isLoading: true);
+  /// [syncMode] = true 이면 30초 주기 서버 동기화 호출 —
+  /// 미저장 summaryBlocks가 있으면 덮어쓰지 않음
+  Future<void> loadFileDetail(String fileId, {bool syncMode = false}) async {
+    if (!syncMode) state = state.copyWith(isLoading: true);
     FileModel? file;
 
     if (!kIsWeb) {
@@ -198,19 +200,25 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     if (file != null) {
       final blocks = _parseBlocks(file.content);
       final summary = _parseSummary(file.summary);
+
+      // syncMode: 현재 summaryBlocks가 있으면 서버 값으로 덮어쓰지 않음
+      // (30초 동기화가 미저장 AI 요약을 날리는 버그 방지)
+      final summaryToUse = (syncMode && state.summaryBlocks.isNotEmpty)
+          ? state.summaryBlocks
+          : summary;
+
       state = state.copyWith(
         blocks: blocks.isEmpty ? [_newBlock(0)] : blocks,
         isLoading: false,
         icon: file.icon,
         filePrompt: file.prompt,
-        summaryBlocks: summary,
+        summaryBlocks: summaryToUse,
         lastSentContent: file.content,
-        // ✅ title/tags 저장 (웹에서 DB 접근 불가 시 여기서 읽음)
         fileTitle: file.title == '제목 없음' ? '' : file.title,
         fileTags: file.tags,
       );
     } else {
-      state = state.copyWith(blocks: [_newBlock(0)], isLoading: false);
+      if (!syncMode) state = state.copyWith(blocks: [_newBlock(0)], isLoading: false);
     }
   }
 
