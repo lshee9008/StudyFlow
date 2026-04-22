@@ -79,14 +79,17 @@ class _InitialScreenState extends State<InitialScreen>
 
           // 메인 콘텐츠
           SafeArea(
+            bottom: false, // 하단은 SingleChildScrollView가 처리
             child: FadeTransition(
               opacity: _fadeAnim,
               child: SlideTransition(
                 position: _slideAnim,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 24 : 80,
-                    vertical: 28,
+                  padding: EdgeInsets.only(
+                    left: isMobile ? 24 : 80,
+                    right: isMobile ? 24 : 80,
+                    top: isMobile ? 0 : 28,    // 모바일은 MobileLayout 내부에서 처리
+                    bottom: isMobile ? 0 : 28,
                   ),
                   child: isMobile
                       ? _MobileLayout(
@@ -257,49 +260,58 @@ class _MobileLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SFLogo(size: 24),
-        const Spacer(),
-        _StatusBadge(),
-        const SizedBox(height: 20),
-        Text(
-          '학습의 흐름을\n끊지 않는\nAI 노트',
-          style: GoogleFonts.inter(
-            fontSize: 44,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.textPrimary,
-            letterSpacing: -2.0,
-            height: 1.1,
+    final screenH = MediaQuery.of(context).size.height;
+    final topPad = screenH > 750 ? 24.0 : 12.0;
+    final heroSpacing = screenH > 750 ? 32.0 : 20.0;
+    final ctaSpacing = screenH > 750 ? 36.0 : 24.0;
+
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: topPad),
+          const SFLogo(size: 24),
+          SizedBox(height: heroSpacing),
+          _StatusBadge(),
+          const SizedBox(height: 20),
+          Text(
+            '학습의 흐름을\n끊지 않는\nAI 노트',
+            style: GoogleFonts.inter(
+              fontSize: 42,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.textPrimary,
+              letterSpacing: -2.0,
+              height: 1.1,
+            ),
           ),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          '강의를 들으며 동시에 요약하고,\n이해하고, 기억하세요.',
-          style: GoogleFonts.inter(
-            color: AppTheme.textSecondary,
-            fontSize: 15,
-            height: 1.65,
+          const SizedBox(height: 16),
+          Text(
+            '강의를 들으며 동시에 요약하고,\n이해하고, 기억하세요.',
+            style: GoogleFonts.inter(
+              color: AppTheme.textSecondary,
+              fontSize: 15,
+              height: 1.65,
+            ),
           ),
-        ),
-        const SizedBox(height: 36),
-        SFButton(
-          label: '무료로 시작하기',
-          icon: Icons.arrow_forward_rounded,
-          width: double.infinity,
-          onPressed: onStart,
-        ),
-        const SizedBox(height: 16),
-        _FeaturePill(),
-        const Spacer(),
-        _FeatureCards(
-          hoverFeature: hoverFeature,
-          onHover: onHoverFeature,
-          compact: true,
-        ),
-        const SizedBox(height: 24),
-      ],
+          SizedBox(height: ctaSpacing),
+          SFButton(
+            label: '무료로 시작하기',
+            icon: Icons.arrow_forward_rounded,
+            width: double.infinity,
+            onPressed: onStart,
+          ),
+          const SizedBox(height: 14),
+          _FeaturePill(),
+          const SizedBox(height: 28),
+          _FeatureCards(
+            hoverFeature: hoverFeature,
+            onHover: onHoverFeature,
+            compact: true,
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
     );
   }
 }
@@ -586,23 +598,25 @@ class _FeatureCard extends StatelessWidget {
               child: Icon(icon, size: 16, color: color),
             ),
             const SizedBox(width: 14),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.inter(
+                      color: AppTheme.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                    ),
                   ),
-                ),
-                Text(
-                  desc.replaceAll('\n', ' '),
-                  style: AppTheme.bodySmall,
-                ),
-              ],
+                  Text(
+                    desc.replaceAll('\n', ' '),
+                    style: AppTheme.bodySmall,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
