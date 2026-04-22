@@ -352,11 +352,11 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     // 저장된 블록만 기준으로 사용
     final saved = state.summaryBlocks.where((b) => b.isSaved).toList();
 
+    // ── 로딩 시작: summaryBlocks는 건드리지 않음 ────────
+    // 이전 요약이 있으면 새 요약 완료 전까지 계속 보여줌
     state = state.copyWith(
       isSummaryLoading: true,
       summaryProgress: '요약 준비 중...',
-      // 이전 미저장 요약 제거 후 새 요약 시작 (saved만 유지)
-      summaryBlocks: saved,
     );
 
     final fp = state.filePrompt ?? '';
@@ -393,11 +393,9 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .send(request)
           .timeout(const Duration(seconds: 120));
 
-      // 스트리밍용 빈 블록 추가 (토큰 도착마다 이 블록 갱신)
       String streamText = '';
-      state = state.copyWith(
-        summaryBlocks: [...saved, SummaryBlock(content: '', isSaved: false)],
-      );
+      // 첫 토큰 도착 전까지 이전 요약 유지 → 도착 시 교체
+      bool firstTokenReceived = false;
 
       final lines = streamed.stream
           .transform(utf8.decoder)
@@ -419,7 +417,10 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
             case 'token':
               streamText += evt['text'] as String? ?? '';
-              // 마지막 블록만 갱신 (saved 블록은 건드리지 않음)
+              if (!firstTokenReceived) {
+                // 첫 토큰 도착 시점에만 이전 요약 교체 (그 전까지는 유지)
+                firstTokenReceived = true;
+              }
               state = state.copyWith(
                 summaryBlocks: [
                   ...saved,
@@ -429,7 +430,6 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
               break;
 
             case 'done':
-              // ── 핵심 fix: finalText 비어도 streamText로 폴백 ──
               final finalText =
                   ((evt['text'] as String?) ?? streamText).trim();
               if (finalText.isNotEmpty) {
@@ -444,7 +444,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
                   lastSentContent: full,
                 );
               } else {
-                // 완전히 빈 경우만 로딩 종료 (블록은 건드리지 않음)
+                // 완전히 비어있으면 로딩만 종료, 블록은 현재 상태 유지
                 state = state.copyWith(
                   isSummaryLoading: false,
                   summaryProgress: '',
@@ -453,7 +453,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
               break;
 
             case 'error':
-              // ── 핵심 fix: error여도 이미 스트리밍된 내용은 보존 ──
+              // 에러여도 현재 보이는 블록은 그대로 유지
               if (mounted) {
                 state = state.copyWith(
                   isSummaryLoading: false,
@@ -503,17 +503,23 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
               (jsonDecode(utf8.decode(res.bodyBytes))['summary'] ?? '')
                   .toString()
                   .trim();
-          final list = List<SummaryBlock>.from(saved);
           if (newText.isNotEmpty) {
             _lastSummaryHash = hash;
-            list.add(SummaryBlock(content: newText, isSaved: false));
+            state = state.copyWith(
+              summaryBlocks: [
+                ...saved,
+                SummaryBlock(content: newText, isSaved: false),
+              ],
+              isSummaryLoading: false,
+              summaryProgress: '',
+              lastSentContent: full,
+            );
+          } else {
+            state = state.copyWith(
+              isSummaryLoading: false,
+              summaryProgress: '',
+            );
           }
-          state = state.copyWith(
-            summaryBlocks: list,
-            isSummaryLoading: false,
-            summaryProgress: '',
-            lastSentContent: full,
-          );
         } else {
           state = state.copyWith(
             isSummaryLoading: false,
