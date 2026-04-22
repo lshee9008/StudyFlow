@@ -333,24 +333,30 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   }
 
   // ─── 요약 (SSE 스트리밍 — 메인) ──────────────────────
+  /// [force] = true 이면 내용 미변경이어도 강제 재요약 (재요약 버튼)
   Future<void> requestSummary({
     required String title,
     required String tags,
+    bool force = false,
   }) async {
     if (state.meaningfulCharCount < 15) return;
+    if (state.isSummaryLoading) return; // 이미 실행 중이면 중복 방지
 
     final full = state.fullContentForAI;
     final hash = _hashContent(full);
 
-    // 저장된 블록 기준
-    final saved = state.summaryBlocks.where((b) => b.isSaved).toList();
+    // ── 핵심 fix: 내용 미변경 시 무조건 skip (force 제외) ──
+    // 이전: saved.length 비교로 미저장 블록 있으면 skip 안 됨 → 재호출 시 덮어써서 사라짐
+    if (!force && hash == _lastSummaryHash) return;
 
-    // 내용 변경 없고 저장된 요약도 그대로면 skip
-    if (hash == _lastSummaryHash && saved.length == state.summaryBlocks.length) return;
+    // 저장된 블록만 기준으로 사용
+    final saved = state.summaryBlocks.where((b) => b.isSaved).toList();
 
     state = state.copyWith(
       isSummaryLoading: true,
       summaryProgress: '요약 준비 중...',
+      // 이전 미저장 요약 제거 후 새 요약 시작 (saved만 유지)
+      summaryBlocks: saved,
     );
 
     final fp = state.filePrompt ?? '';
@@ -387,7 +393,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .send(request)
           .timeout(const Duration(seconds: 120));
 
-      // 스트리밍 중 실시간 업데이트용 빈 블록 추가
+      // 스트리밍용 빈 블록 추가 (토큰 도착마다 이 블록 갱신)
       String streamText = '';
       state = state.copyWith(
         summaryBlocks: [...saved, SummaryBlock(content: '', isSaved: false)],
@@ -410,9 +416,10 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
                 summaryProgress: evt['message'] as String? ?? '',
               );
               break;
+
             case 'token':
               streamText += evt['text'] as String? ?? '';
-              // 실시간으로 마지막 블록 갱신
+              // 마지막 블록만 갱신 (saved 블록은 건드리지 않음)
               state = state.copyWith(
                 summaryBlocks: [
                   ...saved,
@@ -420,9 +427,11 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
                 ],
               );
               break;
+
             case 'done':
+              // ── 핵심 fix: finalText 비어도 streamText로 폴백 ──
               final finalText =
-                  (evt['text'] as String? ?? '').trim();
+                  ((evt['text'] as String?) ?? streamText).trim();
               if (finalText.isNotEmpty) {
                 _lastSummaryHash = hash;
                 state = state.copyWith(
@@ -435,17 +444,18 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
                   lastSentContent: full,
                 );
               } else {
+                // 완전히 빈 경우만 로딩 종료 (블록은 건드리지 않음)
                 state = state.copyWith(
-                  summaryBlocks: saved,
                   isSummaryLoading: false,
                   summaryProgress: '',
                 );
               }
               break;
+
             case 'error':
+              // ── 핵심 fix: error여도 이미 스트리밍된 내용은 보존 ──
               if (mounted) {
                 state = state.copyWith(
-                  summaryBlocks: saved,
                   isSummaryLoading: false,
                   summaryProgress: '',
                 );
@@ -455,7 +465,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         } catch (_) {}
       }
 
-      // [DONE] 없이 스트림 끝난 경우 처리
+      // [DONE] 없이 스트림 끝난 경우
       if (mounted && state.isSummaryLoading) {
         if (streamText.trim().isNotEmpty) {
           _lastSummaryHash = hash;
@@ -470,14 +480,13 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           );
         } else {
           state = state.copyWith(
-            summaryBlocks: saved,
             isSummaryLoading: false,
             summaryProgress: '',
           );
         }
       }
     } catch (_) {
-      // ── SSE 실패 시 비스트리밍 폴백 ──────────────────
+      // ── SSE 실패 → 비스트리밍 폴백 ──────────────────
       if (!mounted) return;
       state = state.copyWith(summaryProgress: '요약 생성 중...');
       try {

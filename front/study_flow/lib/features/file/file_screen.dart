@@ -4015,7 +4015,7 @@ class _SumPanel extends StatelessWidget {
               InkWell(
                 onTap: () => ref
                     .read(fileEditorProvider.notifier)
-                    .requestSummary(title: tCtrl.text, tags: gCtrl.text),
+                    .requestSummary(title: tCtrl.text, tags: gCtrl.text, force: true),
                 borderRadius: BorderRadius.circular(6),
                 child: Padding(
                   padding: const EdgeInsets.all(6),
