@@ -3,38 +3,43 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // ── Color System ──────────────────────────────────
-  static const Color bgDeep = Color(0xFF111111);
-  static const Color bgPrimary = Color(0xFF191919);
-  static const Color bgSecondary = Color(0xFF222222);
-  static const Color bgTertiary = Color(0xFF2B2B2B);
-  static const Color bgQuaternary = Color(0xFF353535);
+  // 기존 flat 회색 → 블루/바이올렛 틴트 다크 (Linear/Vercel/VS Code 계열)
+  // 배경 레이어 간 명확한 구분, 더 풍부한 느낌
 
-  static const Color borderSubtle = Color(0xFF2E2E2E);
-  static const Color borderDefault = Color(0xFF3A3A3A);
-  static const Color borderStrong = Color(0xFF484848);
-  static const Color borderFocus = Color(0xFF606060);
+  static const Color bgDeep      = Color(0xFF0C0C11); // 앱 최하단 (near-black + blue)
+  static const Color bgPrimary   = Color(0xFF12121A); // scaffold 메인
+  static const Color bgSecondary = Color(0xFF1A1A26); // 카드 · 패널
+  static const Color bgTertiary  = Color(0xFF22222F); // 호버 · 드롭다운
+  static const Color bgQuaternary= Color(0xFF2C2C3C); // 선택 · 강조
 
-  static const Color textPrimary = Color(0xFFE8E8E8);
-  static const Color textSecondary = Color(0xFF9A9A9A);
-  static const Color textTertiary = Color(0xFF666666);
-  static const Color textMuted = Color(0xFF444444);
+  static const Color borderSubtle  = Color(0xFF252535);
+  static const Color borderDefault = Color(0xFF363650);
+  static const Color borderStrong  = Color(0xFF4E4E6A);
+  static const Color borderFocus   = Color(0xFF7070A0);
 
-  static const Color accent = Color(0xFFCCFF66);
-  static const Color accentDim = Color(0xFF1A2508);
-  static const Color accentMuted = Color(0xFF7ACC00);
-  static const Color accentHover = Color(0xFFBBEE55);
-  static const Color accentGlow = Color(0x1ACCFF66);
+  static const Color textPrimary   = Color(0xFFF0F0F8); // 약간 blue-white
+  static const Color textSecondary = Color(0xFF9898B8); // blue-gray
+  static const Color textTertiary  = Color(0xFF60607A); // muted
+  static const Color textMuted     = Color(0xFF3E3E52); // 거의 안 보임
 
-  static const Color blue = Color(0xFF5B8EFF);
-  static const Color blueDim = Color(0xFF0D1A3A);
-  static const Color purple = Color(0xFF9B6CF8);
-  static const Color purpleDim = Color(0xFF1A1030);
-  static const Color red = Color(0xFFFF5A7A);
-  static const Color redDim = Color(0xFF2A0A12);
-  static const Color green = Color(0xFF3AE0A0);
-  static const Color greenDim = Color(0xFF071A10);
-  static const Color yellow = Color(0xFFFFD166);
-  static const Color yellowDim = Color(0xFF221A05);
+  // 액센트 — 라임 그린 유지, dim 더 밝게
+  static const Color accent      = Color(0xFFCCFF66);
+  static const Color accentDim   = Color(0xFF1E2E07); // 이전보다 더 보임
+  static const Color accentMuted = Color(0xFF88CC00);
+  static const Color accentHover = Color(0xFFD6FF7A);
+  static const Color accentGlow  = Color(0x2ACCFF66); // 글로우 강화
+
+  // 서포팅 컬러 — 채도 +10~15%
+  static const Color blue       = Color(0xFF7AADFF);
+  static const Color blueDim    = Color(0xFF0E1C38);
+  static const Color purple     = Color(0xFFAA80FF);
+  static const Color purpleDim  = Color(0xFF1A1240);
+  static const Color red        = Color(0xFFFF6B8A);
+  static const Color redDim     = Color(0xFF2A0D16);
+  static const Color green      = Color(0xFF3DEAAA);
+  static const Color greenDim   = Color(0xFF081E14);
+  static const Color yellow     = Color(0xFFFFDA4D);
+  static const Color yellowDim  = Color(0xFF231A00);
 
   // ── Font Family ───────────────────────────────────
   static String get fontFamily => GoogleFonts.inter().fontFamily!;
@@ -141,10 +146,7 @@ class AppTheme {
         ),
         filled: true,
         fillColor: bgSecondary,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -155,10 +157,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
-          textStyle: GoogleFonts.inter(
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-          ),
+          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -166,16 +165,13 @@ class AppTheme {
           foregroundColor: textSecondary,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: GoogleFonts.inter(
-            fontWeight: FontWeight.w500,
-            fontSize: 14,
-          ),
+          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 14),
         ),
       ),
       popupMenuTheme: PopupMenuThemeData(
         color: bgSecondary,
-        elevation: 12,
-        shadowColor: Colors.black.withOpacity(0.4),
+        elevation: 16,
+        shadowColor: const Color(0x66000018),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: const BorderSide(color: borderDefault),
@@ -183,99 +179,62 @@ class AppTheme {
         textStyle: GoogleFonts.inter(color: textPrimary, fontSize: 13),
       ),
       scrollbarTheme: ScrollbarThemeData(
-        thumbColor: MaterialStateProperty.all(borderDefault),
-        thickness: MaterialStateProperty.all(4),
+        thumbColor: WidgetStateProperty.all(borderStrong),
+        thickness: WidgetStateProperty.all(4),
         radius: const Radius.circular(4),
       ),
     );
   }
 
-  // ── Static Text Styles (Inter 적용) ───────────────
+  // ── Text Styles ───────────────────────────────────
   static TextStyle get displayLarge => GoogleFonts.inter(
-    fontSize: 52,
-    fontWeight: FontWeight.w800,
-    color: textPrimary,
-    letterSpacing: -2.0,
-    height: 1.1,
+    fontSize: 52, fontWeight: FontWeight.w800,
+    color: textPrimary, letterSpacing: -2.0, height: 1.1,
   );
-
   static TextStyle get displayMedium => GoogleFonts.inter(
-    fontSize: 36,
-    fontWeight: FontWeight.w700,
-    color: textPrimary,
-    letterSpacing: -1.2,
-    height: 1.2,
+    fontSize: 36, fontWeight: FontWeight.w700,
+    color: textPrimary, letterSpacing: -1.2, height: 1.2,
   );
-
   static TextStyle get headingLarge => GoogleFonts.inter(
-    fontSize: 24,
-    fontWeight: FontWeight.w700,
-    color: textPrimary,
-    letterSpacing: -0.5,
-    height: 1.3,
+    fontSize: 24, fontWeight: FontWeight.w700,
+    color: textPrimary, letterSpacing: -0.5, height: 1.3,
   );
-
   static TextStyle get headingMedium => GoogleFonts.inter(
-    fontSize: 18,
-    fontWeight: FontWeight.w600,
-    color: textPrimary,
-    letterSpacing: -0.3,
-    height: 1.4,
+    fontSize: 18, fontWeight: FontWeight.w600,
+    color: textPrimary, letterSpacing: -0.3, height: 1.4,
   );
-
   static TextStyle get headingSmall => GoogleFonts.inter(
-    fontSize: 14,
-    fontWeight: FontWeight.w600,
-    color: textPrimary,
-    letterSpacing: -0.1,
+    fontSize: 14, fontWeight: FontWeight.w600,
+    color: textPrimary, letterSpacing: -0.1,
   );
-
   static TextStyle get bodyLarge => GoogleFonts.inter(
-    fontSize: 15,
-    fontWeight: FontWeight.w400,
-    color: textSecondary,
-    height: 1.65,
+    fontSize: 15, fontWeight: FontWeight.w400,
+    color: textSecondary, height: 1.65,
   );
-
   static TextStyle get bodyMedium => GoogleFonts.inter(
-    fontSize: 13,
-    fontWeight: FontWeight.w400,
-    color: textSecondary,
-    height: 1.55,
+    fontSize: 13, fontWeight: FontWeight.w400,
+    color: textSecondary, height: 1.55,
   );
-
   static TextStyle get bodySmall => GoogleFonts.inter(
-    fontSize: 12,
-    fontWeight: FontWeight.w400,
-    color: textTertiary,
-    height: 1.45,
+    fontSize: 12, fontWeight: FontWeight.w400,
+    color: textTertiary, height: 1.45,
   );
-
   static TextStyle get labelMedium => GoogleFonts.inter(
-    fontSize: 12,
-    fontWeight: FontWeight.w500,
-    color: textSecondary,
-    letterSpacing: 0.1,
+    fontSize: 12, fontWeight: FontWeight.w500,
+    color: textSecondary, letterSpacing: 0.1,
   );
-
   static TextStyle get labelSmall => GoogleFonts.inter(
-    fontSize: 11,
-    fontWeight: FontWeight.w500,
-    color: textTertiary,
-    letterSpacing: 0.2,
+    fontSize: 11, fontWeight: FontWeight.w500,
+    color: textTertiary, letterSpacing: 0.2,
   );
-
   static TextStyle get caption => GoogleFonts.inter(
-    fontSize: 11,
-    fontWeight: FontWeight.w400,
-    color: textMuted,
-    height: 1.4,
+    fontSize: 11, fontWeight: FontWeight.w400,
+    color: textMuted, height: 1.4,
   );
 }
 
 // ══════════════════ 공통 위젯 ════════════════════════
 
-/// 세련된 입력 필드
 class SFTextField extends StatefulWidget {
   final String hint;
   final TextEditingController controller;
@@ -349,8 +308,8 @@ class _SFTextFieldState extends State<SFTextField> {
             boxShadow: _focused
                 ? [
                     BoxShadow(
-                      color: AppTheme.accent.withOpacity(0.08),
-                      blurRadius: 12,
+                      color: AppTheme.accent.withValues(alpha: 0.10),
+                      blurRadius: 16,
                       spreadRadius: -2,
                     ),
                   ]
@@ -410,7 +369,6 @@ class _SFTextFieldState extends State<SFTextField> {
   }
 }
 
-/// 메인 액션 버튼
 class SFButton extends StatefulWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -447,12 +405,14 @@ class _SFButtonState extends State<SFButton> {
     Border? border;
 
     if (widget.danger) {
-      bg = widget.outlined ? Colors.transparent : AppTheme.red.withOpacity(0.15);
+      bg = widget.outlined
+          ? Colors.transparent
+          : AppTheme.red.withValues(alpha: 0.15);
       fg = AppTheme.red;
       border = Border.all(
-        color: widget.outlined
-            ? AppTheme.red.withOpacity(0.4)
-            : AppTheme.red.withOpacity(0.3),
+        color: AppTheme.red.withValues(
+          alpha: widget.outlined ? 0.45 : 0.3,
+        ),
       );
     } else if (widget.outlined) {
       bg = Colors.transparent;
@@ -485,7 +445,9 @@ class _SFButtonState extends State<SFButton> {
               : Matrix4.identity(),
           decoration: BoxDecoration(
             color: widget.danger
-                ? (_hovering ? AppTheme.red.withOpacity(0.2) : bg)
+                ? (_hovering
+                    ? AppTheme.red.withValues(alpha: 0.22)
+                    : bg)
                 : widget.outlined
                 ? (_hovering ? AppTheme.bgTertiary : Colors.transparent)
                 : (_hovering ? AppTheme.accentHover : AppTheme.accent),
@@ -494,8 +456,8 @@ class _SFButtonState extends State<SFButton> {
             boxShadow: !widget.outlined && !widget.danger && _hovering
                 ? [
                     BoxShadow(
-                      color: AppTheme.accent.withOpacity(0.2),
-                      blurRadius: 12,
+                      color: AppTheme.accent.withValues(alpha: 0.25),
+                      blurRadius: 16,
                       offset: const Offset(0, 4),
                     ),
                   ]
@@ -534,7 +496,6 @@ class _SFButtonState extends State<SFButton> {
   }
 }
 
-/// 로고 위젯
 class SFLogo extends StatelessWidget {
   final double size;
   const SFLogo({Key? key, this.size = 32}) : super(key: key);
@@ -548,13 +509,17 @@ class SFLogo extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: AppTheme.accent,
-            borderRadius: BorderRadius.circular(size * 0.25),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFD4FF77), Color(0xFF88FF00)],
+            ),
+            borderRadius: BorderRadius.circular(size * 0.26),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.accent.withOpacity(0.3),
-                blurRadius: size * 0.5,
-                offset: Offset(0, size * 0.1),
+                color: AppTheme.accent.withValues(alpha: 0.35),
+                blurRadius: size * 0.6,
+                offset: Offset(0, size * 0.12),
               ),
             ],
           ),
@@ -585,18 +550,13 @@ class SFLogo extends StatelessWidget {
   }
 }
 
-/// 배지 위젯
 class SFBadge extends StatelessWidget {
   final String label;
   final Color? color;
   final Color? bgColor;
 
-  const SFBadge({
-    Key? key,
-    required this.label,
-    this.color,
-    this.bgColor,
-  }) : super(key: key);
+  const SFBadge({Key? key, required this.label, this.color, this.bgColor})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -607,7 +567,7 @@ class SFBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: c.withOpacity(0.3)),
+        border: Border.all(color: c.withValues(alpha: 0.35)),
       ),
       child: Text(
         label,
@@ -622,7 +582,6 @@ class SFBadge extends StatelessWidget {
   }
 }
 
-/// 구분선
 class SFDivider extends StatelessWidget {
   final EdgeInsetsGeometry? margin;
   const SFDivider({Key? key, this.margin}) : super(key: key);
@@ -632,7 +591,7 @@ class SFDivider extends StatelessWidget {
     return Container(
       margin: margin ?? EdgeInsets.zero,
       height: 1,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
           colors: [
             Colors.transparent,
