@@ -16,26 +16,27 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/block_model.dart';
 import '../../core/db_helper/files_db_helper.dart';
+import '../../core/theme.dart';
 import 'file_provider.dart';
 
-// ══════════════════ TOKENS ════════════════════════════
-const _bg0 = Color(0xFF111111);
-const _bg1 = Color(0xFF191919);
-const _bg2 = Color(0xFF222222);
-const _bg3 = Color(0xFF2B2B2B);
-const _bg4 = Color(0xFF353535);
-const _bdr = Color(0xFF2E2E2E);
-const _bdr2 = Color(0xFF3A3A3A);
-const _txt0 = Color(0xFFE8E8E8);
-const _txt1 = Color(0xFF9A9A9A);
-const _txt2 = Color(0xFF666666);
-const _acc = Color(0xFFCCFF66);
-const _accD = Color(0xFF1A2508);
-const _grn = Color(0xFF4ADE80);
-const _red = Color(0xFFFF4F6A);
-const _blu = Color(0xFF5B8EFF);
-const _pur = Color(0xFFA78BFA);
-const _yel = Color(0xFFFFD166);
+// ══════════════════ TOKENS (AppTheme aliases) ════════════════
+const _bg0 = AppTheme.bgDeep;
+const _bg1 = AppTheme.bgPrimary;
+const _bg2 = AppTheme.bgSecondary;
+const _bg3 = AppTheme.bgTertiary;
+const _bg4 = AppTheme.bgQuaternary;
+const _bdr = AppTheme.borderSubtle;
+const _bdr2 = AppTheme.borderDefault;
+const _txt0 = AppTheme.textPrimary;
+const _txt1 = AppTheme.textSecondary;
+const _txt2 = AppTheme.textTertiary;
+const _acc = AppTheme.accent;
+const _accD = AppTheme.accentDim;
+const _grn = AppTheme.green;
+const _red = AppTheme.red;
+const _blu = AppTheme.blue;
+const _pur = AppTheme.purple;
+const _yel = AppTheme.yellow;
 
 // ══════════════════ BLOCK TYPES ═══════════════════════
 // 기존 BlockType + table 추가는 block_model.dart 수정 필요

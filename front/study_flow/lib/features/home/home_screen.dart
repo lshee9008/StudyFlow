@@ -31,13 +31,13 @@ class HomeScreen extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SFLogo(size: 36),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               SizedBox(
-                width: 20,
-                height: 20,
+                width: 18,
+                height: 18,
                 child: CircularProgressIndicator(
                   color: AppTheme.accent,
-                  strokeWidth: 2,
+                  strokeWidth: 1.5,
                 ),
               ),
             ],
@@ -106,11 +106,18 @@ class _Sidebar extends ConsumerWidget {
         border: Border(
           right: BorderSide(color: AppTheme.borderSubtle, width: 1),
         ),
+        // 사이드바 우측 subtle glow
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.accent.withValues(alpha: 0.02),
+            blurRadius: 32,
+            offset: const Offset(4, 0),
+          ),
+        ],
       ),
       child: Column(
         children: [
           const SizedBox(height: 18),
-          // 로고 영역
           if (!collapsed) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -129,14 +136,25 @@ class _Sidebar extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
           ] else ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Center(
               child: Container(
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: AppTheme.accent,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFD4FF77), Color(0xFF88FF00)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: BorderRadius.circular(9),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.accent.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Center(
                   child: Text(
@@ -155,11 +173,18 @@ class _Sidebar extends ConsumerWidget {
           Container(
             height: 1,
             margin: const EdgeInsets.symmetric(horizontal: 16),
-            color: AppTheme.borderSubtle,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  AppTheme.borderSubtle,
+                  Colors.transparent,
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 8),
 
-          // 네비게이션
           _NavItem(
             icon: Icons.home_rounded,
             label: '홈',
@@ -187,7 +212,6 @@ class _Sidebar extends ConsumerWidget {
 
           const Spacer(),
 
-          // 하단 영역
           if (!collapsed)
             Padding(
               padding: const EdgeInsets.all(12),
@@ -195,19 +219,36 @@ class _Sidebar extends ConsumerWidget {
                 children: [
                   Container(
                     height: 1,
-                    color: AppTheme.borderSubtle,
-                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          AppTheme.borderSubtle,
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                    margin: const EdgeInsets.only(bottom: 10),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.info_outline_rounded,
-                          size: 12,
-                          color: AppTheme.textMuted,
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: AppTheme.green,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.green.withValues(alpha: 0.5),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 7),
                         Text('v2.0 · StudyFlow', style: AppTheme.caption),
                       ],
                     ),
@@ -247,13 +288,13 @@ class _DevButton extends ConsumerWidget {
             Icon(
               Icons.delete_sweep_outlined,
               size: 12,
-              color: AppTheme.red.withOpacity(0.5),
+              color: AppTheme.red.withValues(alpha: 0.5),
             ),
             const SizedBox(width: 6),
             Text(
               'DB 초기화',
               style: AppTheme.caption.copyWith(
-                color: AppTheme.red.withOpacity(0.5),
+                color: AppTheme.red.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -277,14 +318,11 @@ class _UserTile extends ConsumerWidget {
         side: const BorderSide(color: AppTheme.borderDefault),
       ),
       offset: const Offset(0, 54),
-      elevation: 12,
-      shadowColor: Colors.black.withOpacity(0.4),
+      elevation: 16,
+      shadowColor: const Color(0x55000018),
       onSelected: (val) async {
         if (val == 'settings') {
-          Navigator.push(
-            context,
-            _fadeRoute(ProfileSettingsScreen(user: user)),
-          );
+          Navigator.push(context, _fadeRoute(ProfileSettingsScreen(user: user)));
         } else if (val == 'logout') {
           await ref.read(userProvider.notifier).logoutExistingUser(user.id!);
           if (context.mounted) {
@@ -314,7 +352,7 @@ class _UserTile extends ConsumerWidget {
           height: 38,
           child: Row(
             children: [
-              Icon(Icons.logout_rounded, size: 14, color: AppTheme.red.withOpacity(0.8)),
+              Icon(Icons.logout_rounded, size: 14, color: AppTheme.red.withValues(alpha: 0.8)),
               const SizedBox(width: 10),
               Text('로그아웃', style: GoogleFonts.inter(color: AppTheme.red, fontSize: 13)),
             ],
@@ -326,20 +364,26 @@ class _UserTile extends ConsumerWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppTheme.borderSubtle),
+          color: AppTheme.bgSecondary.withValues(alpha: 0.5),
         ),
         child: Row(
           children: [
-            // 아바타
             Container(
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   colors: [AppTheme.accent, AppTheme.accentMuted],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(7),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.accent.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                  ),
+                ],
               ),
               child: Center(
                 child: Text(
@@ -366,18 +410,11 @@ class _UserTile extends ConsumerWidget {
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  Text(
-                    '워크스페이스',
-                    style: AppTheme.caption,
-                  ),
+                  Text('워크스페이스', style: AppTheme.caption),
                 ],
               ),
             ),
-            Icon(
-              Icons.unfold_more_rounded,
-              size: 13,
-              color: AppTheme.textMuted,
-            ),
+            Icon(Icons.unfold_more_rounded, size: 13, color: AppTheme.textMuted),
           ],
         ),
       ),
@@ -423,9 +460,9 @@ class _NavItemState extends State<_NavItem> {
           ),
           decoration: BoxDecoration(
             color: widget.selected
-                ? AppTheme.bgTertiary
-                : _hover
                 ? AppTheme.bgSecondary
+                : _hover
+                ? AppTheme.bgSecondary.withValues(alpha: 0.6)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             border: widget.selected
@@ -446,6 +483,27 @@ class _NavItemState extends State<_NavItem> {
                 )
               : Row(
                   children: [
+                    // 왼쪽 액센트 바
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 3,
+                      height: 14,
+                      margin: const EdgeInsets.only(right: 9),
+                      decoration: BoxDecoration(
+                        color: widget.selected
+                            ? AppTheme.accent
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(2),
+                        boxShadow: widget.selected
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.accent.withValues(alpha: 0.5),
+                                  blurRadius: 6,
+                                ),
+                              ]
+                            : [],
+                      ),
+                    ),
                     Icon(
                       widget.icon,
                       size: 15,
@@ -465,21 +523,11 @@ class _NavItemState extends State<_NavItem> {
                             ? AppTheme.textPrimary
                             : AppTheme.textSecondary,
                         fontSize: 13,
-                        fontWeight:
-                            widget.selected ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: widget.selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                       ),
                     ),
-                    if (widget.selected) ...[
-                      const Spacer(),
-                      Container(
-                        width: 4,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
         ),
@@ -512,18 +560,11 @@ class _MainContent extends ConsumerWidget {
         : hour < 18
         ? '안녕하세요'
         : '좋은 저녁이에요';
-    final greetEmoji = hour < 6
-        ? '🌙'
-        : hour < 12
-        ? '☀️'
-        : hour < 18
-        ? '👋'
-        : '🌙';
+    final greetEmoji = hour < 6 ? '🌙' : hour < 12 ? '☀️' : hour < 18 ? '👋' : '🌙';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 헤더
         _Header(
           user: user,
           greeting: '$greeting, ${user.name} $greetEmoji',
@@ -533,49 +574,45 @@ class _MainContent extends ConsumerWidget {
           showMenu: showMenu,
         ),
 
-        // 통계 행
-        if (projects.isNotEmpty)
-          _StatsRow(projectCount: projects.length),
+        if (projects.isNotEmpty) _StatsRow(projectCount: projects.length),
 
-        // 섹션 헤더
         if (projects.isNotEmpty)
           LayoutBuilder(builder: (ctx, cons) {
             final hPad = cons.maxWidth < 600 ? 16.0 : 32.0;
             return Padding(
-            padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 0),
-            child: Row(
-              children: [
-                Text(
-                  '프로젝트',
-                  style: AppTheme.headingSmall.copyWith(
-                    color: AppTheme.textTertiary,
-                    letterSpacing: 0.5,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgTertiary,
-                    borderRadius: BorderRadius.circular(5),
-                    border: Border.all(color: AppTheme.borderSubtle),
-                  ),
-                  child: Text(
-                    '${projects.length}',
-                    style: AppTheme.caption.copyWith(
-                      color: AppTheme.textSecondary,
-                      fontWeight: FontWeight.w600,
+              padding: EdgeInsets.fromLTRB(hPad, 20, hPad, 0),
+              child: Row(
+                children: [
+                  Text(
+                    'PROJECTS',
+                    style: GoogleFonts.inter(
+                      color: AppTheme.textMuted,
+                      letterSpacing: 1.2,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ),
-              ],
-            ),
-          );
-          }),  // end LayoutBuilder
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgTertiary,
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(color: AppTheme.borderSubtle),
+                    ),
+                    child: Text(
+                      '${projects.length}',
+                      style: AppTheme.caption.copyWith(
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
 
-        // 프로젝트 그리드
         Expanded(
           child: projects.isEmpty
               ? _EmptyState(onAdd: () => _showAddDialog(context, ref, user))
@@ -595,7 +632,7 @@ class _MainContent extends ConsumerWidget {
   }
 }
 
-// 헤더
+// ─── 헤더 ─────────────────────────────────────────────────
 class _Header extends StatelessWidget {
   final UserModel user;
   final String greeting;
@@ -620,7 +657,9 @@ class _Header extends StatelessWidget {
     return Container(
       padding: EdgeInsets.fromLTRB(hPad, isMobile ? 18 : 28, hPad - 4, 18),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.borderSubtle)),
+        border: Border(
+          bottom: BorderSide(color: AppTheme.borderSubtle, width: 1),
+        ),
       ),
       child: Row(
         children: [
@@ -640,9 +679,11 @@ class _Header extends StatelessWidget {
               children: [
                 Text(
                   greeting,
-                  style: AppTheme.headingMedium.copyWith(
+                  style: GoogleFonts.inter(
+                    color: AppTheme.textPrimary,
                     fontSize: isMobile ? 17 : 20,
                     fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -652,25 +693,11 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // 모바일: 검색 아이콘만, 데스크톱: 전체 검색 버튼
           if (isMobile)
-            GestureDetector(
-              onTap: onSearch,
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppTheme.bgSecondary,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.borderDefault),
-                ),
-                child: const Icon(Icons.search_rounded, size: 18, color: AppTheme.textSecondary),
-              ),
-            )
+            _IconBtn(icon: Icons.search_rounded, onTap: onSearch)
           else
             _SearchBtn(onTap: onSearch),
           const SizedBox(width: 8),
-          // 모바일: + 아이콘만
           if (isMobile)
             GestureDetector(
               onTap: onAdd,
@@ -678,8 +705,19 @@ class _Header extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: AppTheme.accent,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFD4FF77), AppTheme.accent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.accent.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
                 child: const Icon(Icons.add_rounded, size: 20, color: Colors.black),
               ),
@@ -694,6 +732,39 @@ class _Header extends StatelessWidget {
       ),
     );
   }
+}
+
+class _IconBtn extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _IconBtn({required this.icon, required this.onTap});
+  @override
+  State<_IconBtn> createState() => _IconBtnState();
+}
+
+class _IconBtnState extends State<_IconBtn> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hover = true),
+    onExit: (_) => setState(() => _hover = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: _hover ? AppTheme.bgTertiary : AppTheme.bgSecondary,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: _hover ? AppTheme.borderStrong : AppTheme.borderDefault,
+          ),
+        ),
+        child: Icon(widget.icon, size: 18, color: AppTheme.textSecondary),
+      ),
+    ),
+  );
 }
 
 class _SearchBtn extends StatefulWidget {
@@ -761,7 +832,7 @@ class _SearchBtnState extends State<_SearchBtn> {
   );
 }
 
-// 통계 행
+// ─── 통계 행 ──────────────────────────────────────────────
 class _StatsRow extends StatelessWidget {
   final int projectCount;
   const _StatsRow({required this.projectCount});
@@ -771,7 +842,7 @@ class _StatsRow extends StatelessWidget {
     final isMobile = MediaQuery.of(context).size.width < 600;
     final hPad = isMobile ? 16.0 : 32.0;
     return Padding(
-      padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 0),
+      padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 0),
       child: Row(
         children: [
           _StatCard(
@@ -779,6 +850,10 @@ class _StatsRow extends StatelessWidget {
             label: '프로젝트',
             value: '$projectCount',
             color: AppTheme.accent,
+            gradientColors: [
+              AppTheme.accentDim,
+              const Color(0xFF0C0F05),
+            ],
           ),
           const SizedBox(width: 8),
           _StatCard(
@@ -786,6 +861,10 @@ class _StatsRow extends StatelessWidget {
             label: isMobile ? 'AI' : 'AI 노트',
             value: '활성',
             color: AppTheme.blue,
+            gradientColors: [
+              AppTheme.blueDim,
+              const Color(0xFF060810),
+            ],
           ),
           const SizedBox(width: 8),
           _StatCard(
@@ -793,6 +872,10 @@ class _StatsRow extends StatelessWidget {
             label: isMobile ? '학습 중' : '계속 학습 중',
             value: '🔥',
             color: AppTheme.yellow,
+            gradientColors: [
+              AppTheme.yellowDim,
+              const Color(0xFF0D0900),
+            ],
           ),
         ],
       ),
@@ -800,54 +883,106 @@ class _StatsRow extends StatelessWidget {
   }
 }
 
-class _StatCard extends StatelessWidget {
+class _StatCard extends StatefulWidget {
   final IconData icon;
   final String label;
   final String value;
   final Color color;
+  final List<Color> gradientColors;
   const _StatCard({
     required this.icon,
     required this.label,
     required this.value,
     required this.color,
+    required this.gradientColors,
   });
+
+  @override
+  State<_StatCard> createState() => _StatCardState();
+}
+
+class _StatCardState extends State<_StatCard> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.12)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 14, color: color.withOpacity(0.8)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                label,
-                style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
-              ),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: _hover
+                  ? [widget.gradientColors[0], widget.gradientColors[1]]
+                  : [
+                      widget.color.withValues(alpha: 0.04),
+                      Colors.transparent,
+                    ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            Text(
-              value,
-              style: GoogleFonts.inter(
-                color: color,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _hover
+                  ? widget.color.withValues(alpha: 0.2)
+                  : widget.color.withValues(alpha: 0.1),
+              width: _hover ? 1.5 : 1,
             ),
-          ],
+            boxShadow: _hover
+                ? [
+                    BoxShadow(
+                      color: widget.color.withValues(alpha: 0.06),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: widget.color.withValues(alpha: _hover ? 0.12 : 0.08),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(
+                  widget.icon,
+                  size: 14,
+                  color: widget.color.withValues(alpha: _hover ? 1.0 : 0.7),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  widget.label,
+                  style: AppTheme.bodySmall.copyWith(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              Text(
+                widget.value,
+                style: GoogleFonts.inter(
+                  color: widget.color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// 빈 상태
+// ─── 빈 상태 ───────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
   const _EmptyState({required this.onAdd});
@@ -859,30 +994,52 @@ class _EmptyState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: const EdgeInsets.all(36),
             decoration: BoxDecoration(
-              color: AppTheme.bgSecondary,
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.bgSecondary,
+                  AppTheme.bgPrimary,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: AppTheme.borderSubtle),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 40,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 아이콘 그라디언트
                 Container(
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppTheme.accent.withOpacity(0.15),
-                        AppTheme.blue.withOpacity(0.1),
+                        AppTheme.accent.withValues(alpha: 0.12),
+                        AppTheme.blue.withValues(alpha: 0.08),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.accent.withOpacity(0.2)),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: AppTheme.accent.withValues(alpha: 0.18),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.accent.withValues(alpha: 0.07),
+                        blurRadius: 24,
+                        spreadRadius: 4,
+                      ),
+                    ],
                   ),
                   child: const Icon(
                     Icons.folder_open_rounded,
@@ -913,7 +1070,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// 프로젝트 그리드
+// ─── 프로젝트 그리드 ──────────────────────────────────────
 class _ProjectGrid extends ConsumerWidget {
   final List<ProjectModel> projects;
   final UserModel user;
@@ -959,16 +1116,14 @@ class _ProjectGrid extends ConsumerWidget {
             ),
             gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: MediaQuery.of(context).size.width < 600
-                  ? MediaQuery.of(context).size.width // 모바일: 1열 (전체 너비)
+                  ? MediaQuery.of(context).size.width
                   : MediaQuery.of(context).size.width < 1024
                   ? 260
                   : 280,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
-              // 모바일: 세로로 더 짧게 (리스트형), 데스크톱: 정사각형에 가깝게
-              childAspectRatio: MediaQuery.of(context).size.width < 600
-                  ? 2.8
-                  : 1.25,
+              childAspectRatio:
+                  MediaQuery.of(context).size.width < 600 ? 2.8 : 1.25,
             ),
           ),
         ),
@@ -977,27 +1132,27 @@ class _ProjectGrid extends ConsumerWidget {
   }
 }
 
-// 프로젝트 색상 팔레트
+// ─── 프로젝트 색상 팔레트 ────────────────────────────────
 const _projectColors = [
-  Color(0xFFCCFF66), // lime
-  Color(0xFF5B8EFF), // blue
-  Color(0xFF9B6CF8), // purple
-  Color(0xFF3AE0A0), // green
-  Color(0xFFFFD166), // yellow
-  Color(0xFFFF6B6B), // red
+  AppTheme.accent,   // lime
+  AppTheme.blue,     // blue
+  AppTheme.purple,   // purple
+  AppTheme.green,    // green
+  AppTheme.yellow,   // yellow
+  AppTheme.red,      // red
   Color(0xFF60D4FA), // sky
   Color(0xFFF472B6), // pink
 ];
 
-const _projectGradients = [
-  [Color(0xFF1E2A0A), Color(0xFF13131C)],
-  [Color(0xFF0A1230), Color(0xFF13131C)],
-  [Color(0xFF140E28), Color(0xFF13131C)],
-  [Color(0xFF051A10), Color(0xFF13131C)],
-  [Color(0xFF1E1505), Color(0xFF13131C)],
-  [Color(0xFF1E0810), Color(0xFF13131C)],
-  [Color(0xFF051820), Color(0xFF13131C)],
-  [Color(0xFF200B18), Color(0xFF13131C)],
+const _projectGradBg = [
+  [Color(0xFF141D07), Color(0xFF0E0F14)],  // lime
+  [Color(0xFF0A1330), Color(0xFF0E0F14)],  // blue
+  [Color(0xFF13092A), Color(0xFF0E0F14)],  // purple
+  [Color(0xFF041912), Color(0xFF0E0F14)],  // green
+  [Color(0xFF1A1205), Color(0xFF0E0F14)],  // yellow
+  [Color(0xFF1E070F), Color(0xFF0E0F14)],  // red
+  [Color(0xFF041620), Color(0xFF0E0F14)],  // sky
+  [Color(0xFF1E0B16), Color(0xFF0E0F14)],  // pink
 ];
 
 class _AddCard extends StatefulWidget {
@@ -1007,48 +1162,98 @@ class _AddCard extends StatefulWidget {
   State<_AddCard> createState() => _AddCardState();
 }
 
-class _AddCardState extends State<_AddCard> {
+class _AddCardState extends State<_AddCard>
+    with SingleTickerProviderStateMixin {
   bool _hover = false;
+  late AnimationController _ac;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ac = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _scaleAnim = Tween(begin: 1.0, end: 1.08).animate(
+      CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => MouseRegion(
-    onEnter: (_) => setState(() => _hover = true),
-    onExit: (_) => setState(() => _hover = false),
+    onEnter: (_) {
+      setState(() => _hover = true);
+      _ac.forward();
+    },
+    onExit: (_) {
+      setState(() => _hover = false);
+      _ac.reverse();
+    },
     child: GestureDetector(
       onTap: widget.onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: _hover ? AppTheme.accentDim : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          color: _hover
+              ? AppTheme.accentDim.withValues(alpha: 0.8)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: _hover
-                ? AppTheme.accent.withOpacity(0.4)
-                : AppTheme.borderDefault,
+                ? AppTheme.accent.withValues(alpha: 0.35)
+                : AppTheme.borderSubtle,
             width: _hover ? 1.5 : 1,
           ),
+          boxShadow: _hover
+              ? [
+                  BoxShadow(
+                    color: AppTheme.accent.withValues(alpha: 0.06),
+                    blurRadius: 24,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : [],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: _hover
-                    ? AppTheme.accent.withOpacity(0.15)
-                    : AppTheme.bgTertiary,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _hover
-                      ? AppTheme.accent.withOpacity(0.3)
-                      : AppTheme.borderSubtle,
+            ScaleTransition(
+              scale: _scaleAnim,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: _hover
+                      ? LinearGradient(
+                          colors: [
+                            AppTheme.accent.withValues(alpha: 0.18),
+                            AppTheme.accent.withValues(alpha: 0.06),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  color: _hover ? null : AppTheme.bgTertiary,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _hover
+                        ? AppTheme.accent.withValues(alpha: 0.35)
+                        : AppTheme.borderSubtle,
+                  ),
                 ),
-              ),
-              child: Icon(
-                Icons.add_rounded,
-                size: 22,
-                color: _hover ? AppTheme.accent : AppTheme.textSecondary,
+                child: Icon(
+                  Icons.add_rounded,
+                  size: 22,
+                  color: _hover ? AppTheme.accent : AppTheme.textSecondary,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -1080,16 +1285,39 @@ class _ProjectCard extends StatefulWidget {
   State<_ProjectCard> createState() => _ProjectCardState();
 }
 
-class _ProjectCardState extends State<_ProjectCard> {
+class _ProjectCardState extends State<_ProjectCard>
+    with SingleTickerProviderStateMixin {
   bool _hover = false;
+  late AnimationController _ac;
+  late Animation<Offset> _slideAnim;
 
-  int get _colorIdx =>
-      widget.project.name.hashCode.abs() % _projectColors.length;
+  @override
+  void initState() {
+    super.initState();
+    _ac = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
+    _ac.forward();
+  }
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
+  }
+
+  int get _colorIdx => widget.project.name.hashCode.abs() % _projectColors.length;
   Color get _color => _projectColors[_colorIdx];
-  List<Color> get _gradient => _projectGradients[_colorIdx];
+  List<Color> get _gradient => _projectGradBg[_colorIdx];
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     final tags = widget.project.tags.isEmpty
         ? <String>[]
         : widget.project.tags
@@ -1097,127 +1325,254 @@ class _ProjectCardState extends State<_ProjectCard> {
               .where((t) => t.trim().isNotEmpty)
               .toList();
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: _hover
-                  ? [_gradient[0].withOpacity(1.0), _gradient[1]]
-                  : [AppTheme.bgSecondary, AppTheme.bgSecondary],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: _hover
-                  ? _color.withOpacity(0.25)
-                  : AppTheme.borderSubtle,
-              width: _hover ? 1.5 : 1,
-            ),
-            boxShadow: _hover
-                ? [
-                    BoxShadow(
-                      color: _color.withOpacity(0.06),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
-                : [],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  // 컬러 도트
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: _color.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: _color.withOpacity(0.2),
-                      ),
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: _color,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: _color.withOpacity(0.5),
-                              blurRadius: 6,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  _MoreMenu(onDelete: widget.onDelete),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                widget.project.name,
-                style: GoogleFonts.inter(
-                  color: AppTheme.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                  height: 1.3,
+    return FadeTransition(
+      opacity: _ac,
+      child: SlideTransition(
+        position: _slideAnim,
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() => _hover = false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: EdgeInsets.all(isMobile ? 14 : 18),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: _hover
+                      ? _gradient
+                      : [AppTheme.bgSecondary, AppTheme.bgSecondary],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 5),
-              Text(
-                DateFormat('MM.dd').format(widget.project.create_at),
-                style: AppTheme.caption,
-              ),
-              const SizedBox(height: 10),
-              if (tags.isNotEmpty)
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: tags.take(2).map(
-                    (t) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.bgPrimary,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppTheme.borderSubtle),
-                      ),
-                      child: Text(
-                        '#${t.trim()}',
-                        style: AppTheme.caption.copyWith(
-                          color: AppTheme.textTertiary,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: _hover
+                      ? _color.withValues(alpha: 0.28)
+                      : AppTheme.borderSubtle,
+                  width: _hover ? 1.5 : 1,
+                ),
+                boxShadow: _hover
+                    ? [
+                        BoxShadow(
+                          color: _color.withValues(alpha: 0.08),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
                         ),
-                      ),
+                      ]
+                    : [],
+              ),
+              child: isMobile
+                  ? _MobileCardContent(
+                      project: widget.project,
+                      color: _color,
+                      tags: tags,
+                      onDelete: widget.onDelete,
+                      hover: _hover,
+                    )
+                  : _DesktopCardContent(
+                      project: widget.project,
+                      color: _color,
+                      tags: tags,
+                      onDelete: widget.onDelete,
+                      hover: _hover,
                     ),
-                  ).toList(),
-                )
-              else
-                Text('태그 없음', style: AppTheme.caption),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _DesktopCardContent extends StatelessWidget {
+  final ProjectModel project;
+  final Color color;
+  final List<String> tags;
+  final VoidCallback onDelete;
+  final bool hover;
+  const _DesktopCardContent({
+    required this.project,
+    required this.color,
+    required this.tags,
+    required this.onDelete,
+    required this.hover,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            // 글로우 도트 아이콘
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: hover ? 0.15 : 0.08),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: color.withValues(alpha: 0.2)),
+                boxShadow: hover
+                    ? [
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.25),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : [],
+              ),
+              child: Center(
+                child: Container(
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: hover ? 0.7 : 0.4),
+                        blurRadius: hover ? 10 : 6,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Spacer(),
+            _MoreMenu(onDelete: onDelete),
+          ],
+        ),
+        const Spacer(),
+        Text(
+          project.name,
+          style: GoogleFonts.inter(
+            color: AppTheme.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
+            height: 1.3,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          DateFormat('MM.dd').format(project.create_at),
+          style: AppTheme.caption,
+        ),
+        const SizedBox(height: 10),
+        if (tags.isNotEmpty)
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: tags.take(2).map((t) => _TagPill(tag: t)).toList(),
+          )
+        else
+          Text('태그 없음', style: AppTheme.caption),
+      ],
+    );
+  }
+}
+
+class _MobileCardContent extends StatelessWidget {
+  final ProjectModel project;
+  final Color color;
+  final List<String> tags;
+  final VoidCallback onDelete;
+  final bool hover;
+  const _MobileCardContent({
+    required this.project,
+    required this.color,
+    required this.tags,
+    required this.onDelete,
+    required this.hover,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
+            boxShadow: hover
+                ? [BoxShadow(color: color.withValues(alpha: 0.2), blurRadius: 10)]
+                : [],
+          ),
+          child: Center(
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.5),
+                    blurRadius: 6,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                project.name,
+                style: GoogleFonts.inter(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                DateFormat('MM.dd').format(project.create_at),
+                style: AppTheme.caption,
+              ),
+            ],
+          ),
+        ),
+        if (tags.isNotEmpty)
+          _TagPill(tag: tags.first),
+        const SizedBox(width: 4),
+        _MoreMenu(onDelete: onDelete),
+      ],
+    );
+  }
+}
+
+class _TagPill extends StatelessWidget {
+  final String tag;
+  const _TagPill({required this.tag});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+    decoration: BoxDecoration(
+      color: AppTheme.bgTertiary,
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: AppTheme.borderSubtle),
+    ),
+    child: Text(
+      '#${tag.trim()}',
+      style: AppTheme.caption.copyWith(color: AppTheme.textTertiary),
+    ),
+  );
 }
 
 class _MoreMenu extends StatelessWidget {
@@ -1231,14 +1586,10 @@ class _MoreMenu extends StatelessWidget {
       side: const BorderSide(color: AppTheme.borderDefault),
     ),
     padding: EdgeInsets.zero,
-    icon: const Icon(
-      Icons.more_horiz_rounded,
-      size: 15,
-      color: AppTheme.textMuted,
-    ),
+    icon: const Icon(Icons.more_horiz_rounded, size: 15, color: AppTheme.textMuted),
     iconSize: 15,
     elevation: 12,
-    shadowColor: Colors.black.withOpacity(0.4),
+    shadowColor: const Color(0x55000018),
     onSelected: (val) {
       if (val == 'delete') onDelete();
     },
@@ -1250,10 +1601,7 @@ class _MoreMenu extends StatelessWidget {
           children: [
             Icon(Icons.delete_outline_rounded, size: 13, color: AppTheme.red),
             const SizedBox(width: 8),
-            Text(
-              '삭제',
-              style: GoogleFonts.inter(color: AppTheme.red, fontSize: 13),
-            ),
+            Text('삭제', style: GoogleFonts.inter(color: AppTheme.red, fontSize: 13)),
           ],
         ),
       ),
@@ -1261,7 +1609,7 @@ class _MoreMenu extends StatelessWidget {
   );
 }
 
-// 프로젝트 추가 다이얼로그
+// ─── 프로젝트 추가 다이얼로그 ─────────────────────────────
 class _AddProjectDialog extends StatefulWidget {
   final String userId;
   const _AddProjectDialog({required this.userId});
@@ -1283,14 +1631,27 @@ class _AddProjectDialogState extends State<_AddProjectDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: AppTheme.bgSecondary,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppTheme.borderDefault),
-      ),
-      elevation: 24,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       child: Container(
         width: 400,
+        decoration: BoxDecoration(
+          color: AppTheme.bgSecondary,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.borderDefault),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 40,
+              offset: const Offset(0, 12),
+            ),
+            BoxShadow(
+              color: AppTheme.accent.withValues(alpha: 0.04),
+              blurRadius: 60,
+              spreadRadius: 10,
+            ),
+          ],
+        ),
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1299,11 +1660,18 @@ class _AddProjectDialogState extends State<_AddProjectDialog> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(9),
                   decoration: BoxDecoration(
-                    color: AppTheme.accentDim,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.accent.withOpacity(0.2)),
+                    gradient: LinearGradient(
+                      colors: [
+                        AppTheme.accentDim,
+                        AppTheme.bgTertiary,
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: AppTheme.accent.withValues(alpha: 0.25),
+                    ),
                   ),
                   child: const Icon(
                     Icons.folder_outlined,
@@ -1381,7 +1749,7 @@ class _AddProjectDialogState extends State<_AddProjectDialog> {
   }
 }
 
-// ─── 모바일 하단 네비게이션 ─────────────────────────────────
+// ─── 모바일 하단 네비게이션 ───────────────────────────────
 class _MobileNavBar extends StatelessWidget {
   final VoidCallback onSearch, onSettings, onNewProject;
   const _MobileNavBar({
@@ -1395,11 +1763,13 @@ class _MobileNavBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.bgDeep,
-        border: const Border(top: BorderSide(color: AppTheme.borderSubtle, width: 0.5)),
+        border: const Border(
+          top: BorderSide(color: AppTheme.borderSubtle, width: 0.5),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 20,
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 24,
             offset: const Offset(0, -4),
           ),
         ],
@@ -1407,10 +1777,9 @@ class _MobileNavBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 56,
+          height: 58,
           child: Row(
             children: [
-              // 홈 (항상 선택됨)
               Expanded(
                 child: _MNavItem(
                   icon: Icons.home_rounded,
@@ -1418,7 +1787,6 @@ class _MobileNavBar extends StatelessWidget {
                   selected: true,
                 ),
               ),
-              // 검색
               Expanded(
                 child: _MNavItem(
                   icon: Icons.search_rounded,
@@ -1426,28 +1794,31 @@ class _MobileNavBar extends StatelessWidget {
                   onTap: onSearch,
                 ),
               ),
-              // + 새 프로젝트 (중앙 강조 버튼)
+              // 중앙 FAB 버튼
               GestureDetector(
                 onTap: onNewProject,
                 child: Container(
                   width: 52,
-                  height: 40,
+                  height: 42,
                   margin: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
-                    color: AppTheme.accent,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFD4FF77), AppTheme.accent],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.accent.withOpacity(0.3),
-                        blurRadius: 12,
-                        offset: const Offset(0, 2),
+                        color: AppTheme.accent.withValues(alpha: 0.35),
+                        blurRadius: 16,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
                   child: const Icon(Icons.add_rounded, color: Colors.black, size: 22),
                 ),
               ),
-              // 설정
               Expanded(
                 child: _MNavItem(
                   icon: Icons.settings_outlined,
@@ -1482,12 +1853,22 @@ class _MNavItem extends StatelessWidget {
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(
-          icon,
-          size: 22,
-          color: selected ? AppTheme.accent : AppTheme.textMuted,
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppTheme.accent.withValues(alpha: 0.1)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 22,
+            color: selected ? AppTheme.accent : AppTheme.textMuted,
+          ),
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: 2),
         Text(
           label,
           style: GoogleFonts.inter(
