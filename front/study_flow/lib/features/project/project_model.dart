@@ -1,3 +1,5 @@
+// ignore_for_file: non_constant_identifier_names
+
 class ProjectModel {
   final String id;
   String user_id;
@@ -25,8 +27,8 @@ class ProjectModel {
       create_at: json['create_at'] != null
           ? DateTime.tryParse(json['create_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
-      update_at: json['create_at'] != null
-          ? DateTime.tryParse(json['create_at'].toString()) ?? DateTime.now()
+      update_at: json['update_at'] != null
+          ? DateTime.tryParse(json['update_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
       name: json['name']?.toString() ?? '제목 없음',
       tags: json['tags']?.toString() ?? '',
@@ -39,7 +41,7 @@ class ProjectModel {
       'id': id,
       'user_id': user_id,
       'create_at': create_at.toIso8601String(),
-      'update_at': create_at.toIso8601String(),
+      'update_at': update_at.toIso8601String(),
       'name': name,
       'tags': tags,
       'is_sync': is_sync,
@@ -54,13 +56,13 @@ class ProjectModel {
     int? is_sync,
   }) {
     return ProjectModel(
-      id: this.id,
-      user_id: this.user_id,
-      create_at: this.create_at,
+      id: id,
+      user_id: user_id,
+      create_at: create_at,
       update_at: update_at ?? this.update_at,
       name: name ?? this.name,
       tags: tags ?? this.tags,
-      is_sync: this.is_sync,
+      is_sync: is_sync ?? this.is_sync,
     );
   }
 }

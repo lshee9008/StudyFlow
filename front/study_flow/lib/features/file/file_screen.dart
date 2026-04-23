@@ -52,6 +52,10 @@ class FileScreen extends ConsumerStatefulWidget {
 }
 
 class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
+  static const Duration _autoSaveDelay = Duration(milliseconds: 1500);
+  static const Duration _summaryDelay = Duration(seconds: 8);
+  static const Duration _webSyncInterval = Duration(minutes: 3);
+
   final _tCtrl = TextEditingController();
   final _gCtrl = TextEditingController();
   final _pCtrl = TextEditingController();
@@ -93,62 +97,71 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   int _slashIdx = 0;
   List<_Opt> _slashOpts = [];
 
-  // Animations
-  late AnimationController _bgAc, _saveAc, _sumAc;
-  late Animation<double> _bgAnim, _saveAnim, _sumPulse;
+  late AnimationController _saveAc;
+  late Animation<double> _saveAnim;
 
   static const _opts = [
     // 기본 텍스트
-    _Opt('p', '텍스트', Icons.short_text_rounded, '',
-        '일반 텍스트를 작성하세요', '기본 블록'),
-    _Opt('h1', '제목 1', Icons.looks_one_rounded, '#',
-        '큰 섹션 제목', '기본 블록'),
-    _Opt('h2', '제목 2', Icons.looks_two_rounded, '##',
-        '중간 섹션 제목', '기본 블록'),
-    _Opt('h3', '제목 3', Icons.looks_3_rounded, '###',
-        '작은 섹션 제목', '기본 블록'),
-    _Opt('quote', '인용', Icons.format_quote_rounded, '>',
-        '텍스트를 인용 형식으로', '기본 블록'),
+    _Opt('p', '텍스트', Icons.short_text_rounded, '', '일반 텍스트를 작성하세요', '기본 블록'),
+    _Opt('h1', '제목 1', Icons.looks_one_rounded, '#', '큰 섹션 제목', '기본 블록'),
+    _Opt('h2', '제목 2', Icons.looks_two_rounded, '##', '중간 섹션 제목', '기본 블록'),
+    _Opt('h3', '제목 3', Icons.looks_3_rounded, '###', '작은 섹션 제목', '기본 블록'),
+    _Opt(
+      'quote',
+      '인용',
+      Icons.format_quote_rounded,
+      '>',
+      '텍스트를 인용 형식으로',
+      '기본 블록',
+    ),
     // 목록
-    _Opt('bullet', '글머리 기호', Icons.format_list_bulleted_rounded, '-',
-        '글머리 기호 목록 작성', '목록'),
-    _Opt('number', '번호 목록', Icons.format_list_numbered_rounded, '1.',
-        '번호가 매겨진 목록', '목록'),
-    _Opt('todo', '할 일 목록', Icons.check_box_outlined, '[]',
-        '할 일을 추적하는 체크리스트', '목록'),
+    _Opt(
+      'bullet',
+      '글머리 기호',
+      Icons.format_list_bulleted_rounded,
+      '-',
+      '글머리 기호 목록 작성',
+      '목록',
+    ),
+    _Opt(
+      'number',
+      '번호 목록',
+      Icons.format_list_numbered_rounded,
+      '1.',
+      '번호가 매겨진 목록',
+      '목록',
+    ),
+    _Opt(
+      'todo',
+      '할 일 목록',
+      Icons.check_box_outlined,
+      '[]',
+      '할 일을 추적하는 체크리스트',
+      '목록',
+    ),
     // 특수
-    _Opt('code', '코드', Icons.code_rounded, '```',
-        '코드 스니펫 삽입', '특수'),
-    _Opt('table', '표', Icons.table_chart_rounded, '',
-        '마크다운 표 삽입', '특수'),
-    _Opt('div', '구분선', Icons.horizontal_rule_rounded, '---',
-        '섹션을 나누는 수평선', '특수'),
-    _Opt('image', '이미지', Icons.image_outlined, '',
-        '이미지 파일 삽입', '특수'),
+    _Opt('code', '코드', Icons.code_rounded, '```', '코드 스니펫 삽입', '특수'),
+    _Opt('table', '표', Icons.table_chart_rounded, '', '마크다운 표 삽입', '특수'),
+    _Opt(
+      'div',
+      '구분선',
+      Icons.horizontal_rule_rounded,
+      '---',
+      '섹션을 나누는 수평선',
+      '특수',
+    ),
+    _Opt('image', '이미지', Icons.image_outlined, '', '이미지 파일 삽입', '특수'),
   ];
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 5, vsync: this);
-    _bgAc = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 30),
-    )..repeat(reverse: true);
     _saveAc = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
-    _sumAc = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-    _bgAnim = CurvedAnimation(parent: _bgAc, curve: Curves.easeInOut);
     _saveAnim = CurvedAnimation(parent: _saveAc, curve: Curves.elasticOut);
-    _sumPulse = Tween(
-      begin: 0.6,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _sumAc, curve: Curves.easeInOut));
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -172,11 +185,9 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           });
       } catch (_) {}
     }
-    // 실시간 동기화 (30초마다 서버에서 최신 데이터 체크)
-    _syncT = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => _syncFromServer(),
-    );
+    if (kIsWeb) {
+      _syncT = Timer.periodic(_webSyncInterval, (_) => _syncFromServer());
+    }
   }
 
   // ── 실시간 동기화 ─────────────────────────────────
@@ -203,9 +214,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     _qaCtrl.dispose();
     _tab.dispose();
     _savingN.dispose();
-    _bgAc.dispose();
     _saveAc.dispose();
-    _sumAc.dispose();
     _selToolbarEntry?.remove();
     _removeSlash();
     super.dispose();
@@ -224,7 +233,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     }
     _savingN.value = true;
     _saveT?.cancel();
-    _saveT = Timer(const Duration(milliseconds: 1500), () async {
+    _saveT = Timer(_autoSaveDelay, () async {
       await ref
           .read(fileEditorProvider.notifier)
           .saveFile(
@@ -242,7 +251,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     final mc = ref.read(fileEditorProvider).meaningfulCharCount;
     if ((mc - _lastSumLen).abs() > 80) {
       _sumT?.cancel();
-      _sumT = Timer(const Duration(seconds: 8), _doSum);
+      _sumT = Timer(_summaryDelay, _doSum);
     }
   }
 
@@ -359,8 +368,10 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
       // 빈 리스트 → 탈출 (text로 전환)
       if (text.isEmpty &&
-          (bt == BlockType.bullet || bt == BlockType.checkbox ||
-           bt == BlockType.number || bt == BlockType.quote)) {
+          (bt == BlockType.bullet ||
+              bt == BlockType.checkbox ||
+              bt == BlockType.number ||
+              bt == BlockType.quote)) {
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
         return KeyEventResult.handled;
       }
@@ -375,8 +386,10 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         final upd = ref.read(fileEditorProvider).blocks;
         if (i + 1 < upd.length) {
           // ✅ 리스트 타입 유지 (연속 작성)
-          if (bt == BlockType.bullet || bt == BlockType.checkbox ||
-              bt == BlockType.number || bt == BlockType.quote) {
+          if (bt == BlockType.bullet ||
+              bt == BlockType.checkbox ||
+              bt == BlockType.number ||
+              bt == BlockType.quote) {
             ref.read(fileEditorProvider.notifier).setType(i + 1, bt);
             if (bt == BlockType.checkbox) {
               ref.read(fileEditorProvider.notifier).toggleCheck(i + 1, false);
@@ -456,24 +469,32 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     String _nc = text;
     if (text.endsWith(' ')) {
       if (text == '# ') {
-        _nt = BlockType.h1; _nc = '';
+        _nt = BlockType.h1;
+        _nc = '';
       } else if (text == '## ') {
-        _nt = BlockType.h2; _nc = '';
+        _nt = BlockType.h2;
+        _nc = '';
       } else if (text == '### ') {
-        _nt = BlockType.h3; _nc = '';
+        _nt = BlockType.h3;
+        _nc = '';
       } else if (text == '- ' || text == '* ') {
-        _nt = BlockType.bullet; _nc = '';
+        _nt = BlockType.bullet;
+        _nc = '';
       } else if (text == '> ') {
-        _nt = BlockType.quote; _nc = '';
+        _nt = BlockType.quote;
+        _nc = '';
       } else if (text == '1. ') {
-        _nt = BlockType.number; _nc = '';
+        _nt = BlockType.number;
+        _nc = '';
       } else if (text == '[] ') {
-        _nt = BlockType.checkbox; _nc = '';
+        _nt = BlockType.checkbox;
+        _nc = '';
       }
     }
     // 백틱 3개 → 코드 블록
     if (text.trimRight() == '```') {
-      _nt = BlockType.code; _nc = '';
+      _nt = BlockType.code;
+      _nc = '';
     }
     if (_nt != null) {
       final c = ref.read(fileEditorProvider).blocks[i].controller;
@@ -608,7 +629,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         ),
         title: Text(
           '이미지 URL 입력',
-          style: GoogleFonts.inter(color: _txt0, fontSize: 16, fontWeight: FontWeight.w700),
+          style: GoogleFonts.inter(
+            color: _txt0,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -652,7 +677,14 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                 color: _acc,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text('삽입', style: GoogleFonts.inter(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 13)),
+              child: Text(
+                '삽입',
+                style: GoogleFonts.inter(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -663,7 +695,9 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       final blocks = ref.read(fileEditorProvider).blocks;
       if (blockIdx < blocks.length) {
         blocks[blockIdx].controller.text = result.trim();
-        ref.read(fileEditorProvider.notifier).setType(blockIdx, BlockType.image);
+        ref
+            .read(fileEditorProvider.notifier)
+            .setType(blockIdx, BlockType.image);
         _chg();
       }
     }
@@ -860,7 +894,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
               // 패널 본체
               Expanded(
                 child: Consumer(
-                  builder: (_, r, __) => _buildMobilePanel(r.watch(fileEditorProvider)),
+                  builder: (_, r, __) =>
+                      _buildMobilePanel(r.watch(fileEditorProvider)),
                 ),
               ),
             ],
@@ -882,11 +917,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           tCtrl: _tCtrl,
           gCtrl: _gCtrl,
           snack: _snack,
-          pulse: _sumPulse,
         ),
-        Consumer(
-          builder: (_, r, __) => _AnaPanel(st: r.watch(fileEditorProvider)),
-        ),
+        _AnaPanel(st: st),
         _MemoPanel(st: st, ref: ref, tCtrl: _tCtrl),
         _QuizPanel(st: st, ref: ref),
         _AskPanel(
@@ -916,9 +948,9 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
             _pomRunning = false;
             _pomIsWork = !_pomIsWork;
             _pomSecs = _pomIsWork ? _pomWork : _pomRest;
-            _snack(_pomIsWork
-                ? '🔔 휴식 종료! 집중 모드를 시작합니다.'
-                : '🔔 집중 완료! 5분 휴식하세요.');
+            _snack(
+              _pomIsWork ? '🔔 휴식 종료! 집중 모드를 시작합니다.' : '🔔 집중 완료! 5분 휴식하세요.',
+            );
           }
         });
       });
@@ -952,129 +984,173 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final charCount = ref.watch(fileEditorProvider.select((s) => s.charCount));
     final savedAt = ref.watch(fileEditorProvider.select((s) => s.lastSavedAt));
+    final panelState = ref.watch(
+      fileEditorProvider.select(
+        (s) => (
+          isSummaryLoading: s.isSummaryLoading,
+          summaryBlocks: s.summaryBlocks,
+          summaryProgress: s.summaryProgress,
+          currentAnalysis: s.currentAnalysis,
+          isAnalysisLoading: s.isAnalysisLoading,
+          currentMemo: s.currentMemo,
+          isMemoLoading: s.isMemoLoading,
+          quizData: s.quizData,
+          quizAnswers: s.quizAnswers,
+          isQuizLoading: s.isQuizLoading,
+          qaAnswer: s.qaAnswer,
+          isQALoading: s.isQALoading,
+          graphData: s.graphData,
+          isGraphLoading: s.isGraphLoading,
+          proofreadResult: s.proofreadResult,
+          isProofreadLoading: s.isProofreadLoading,
+        ),
+      ),
+    );
 
     final isMobile = MediaQuery.of(context).size.width < 700;
     return Scaffold(
       backgroundColor: _bg0,
       resizeToAvoidBottomInset: true,
       // 데스크톱/태블릿에서만 포모도로 FAB 표시 (모바일은 하단바에 통합)
-      floatingActionButton: isMobile ? null : _PomFAB(
-        label: _pomLabel,
-        color: _pomColor,
-        running: _pomRunning,
-        onTap: _pomToggle,
-        onLongPress: _pomReset,
-      ),
+      floatingActionButton: isMobile
+          ? null
+          : _PomFAB(
+              label: _pomLabel,
+              color: _pomColor,
+              running: _pomRunning,
+              onTap: _pomToggle,
+              onLongPress: _pomReset,
+            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: SafeArea(
         bottom: false, // 하단은 _MobileBottomBar의 SafeArea가 처리
         child: Stack(
-        children: [
-          RepaintBoundary(child: _AuroraBG(anim: _bgAnim)),
-          Column(
-            children: [
-              ValueListenableBuilder<bool>(
-                valueListenable: _savingN,
-                builder: (_, saving, __) => _AppBar(
-                  saving: saving,
-                  savedAt: savedAt,
-                  saveAnim: _saveAnim,
-                  charCount: charCount,
-                  view: _view,
-                  selectedCount: _selectedBlocks.length,
-                  onBack: () => Navigator.pop(context),
-                  onCopy: () {
-                    Clipboard.setData(
-                      ClipboardData(
-                        text: ref
-                            .read(fileEditorProvider)
-                            .blocks
-                            .map((b) => b.controller.text)
-                            .join('\n'),
-                      ),
-                    );
-                    _snack('복사됨');
-                  },
-                  onMdCopy: () async {
-                    await ref
-                        .read(fileEditorProvider.notifier)
-                        .copyMarkdown(_tCtrl.text, _gCtrl.text);
-                    _snack('Markdown 복사됨');
-                  },
-                  onView: () => setState(() => _view = _view == 0 ? 1 : 0),
-                  onMindmap: () {
-                    setState(() => _view = _view == 2 ? 0 : 2);
-                    if (_view == 2)
-                      ref.read(fileEditorProvider.notifier).requestGraph();
-                  },
-                  onProofread: () => _showProofreadMenu(),
-                  onDeleteSel: _selectedBlocks.isEmpty
-                      ? null
-                      : () {
-                          final sorted = _selectedBlocks.toList()
-                            ..sort((a, b) => b.compareTo(a));
-                          for (final idx in sorted)
-                            ref
-                                .read(fileEditorProvider.notifier)
-                                .removeBlock(idx);
-                          setState(() => _selectedBlocks.clear());
-                          _chg();
-                        },
-                ),
-              ),
-              // 뽀모도로 타이머
-              if (_pomRunning || _pomSecs != _pomWork)
-                _PomodoroBar(
-                  label: _pomLabel,
-                  color: _pomColor,
-                  running: _pomRunning,
-                  isWork: _pomIsWork,
-                  onToggle: _pomToggle,
-                  onReset: _pomReset,
-                ),
-              // 교정 결과 배너
-              if (_proofreadResult.isNotEmpty)
-                _ProofreadBanner(
-                  result: _proofreadResult,
-                  onApply: _applyProofread,
-                  onDismiss: () => setState(() {
-                    _proofreadResult = '';
-                  }),
-                ),
-              Expanded(
-                child: _view == 2
-                    ? Consumer(
-                        builder: (_, r, __) => _MindmapView(
-                          st: r.watch(fileEditorProvider),
-                          ref: r,
+          children: [
+            const RepaintBoundary(child: _AuroraBG()),
+            Column(
+              children: [
+                ValueListenableBuilder<bool>(
+                  valueListenable: _savingN,
+                  builder: (_, saving, __) => _AppBar(
+                    saving: saving,
+                    savedAt: savedAt,
+                    saveAnim: _saveAnim,
+                    charCount: charCount,
+                    view: _view,
+                    selectedCount: _selectedBlocks.length,
+                    onBack: () => Navigator.pop(context),
+                    onCopy: () {
+                      Clipboard.setData(
+                        ClipboardData(
+                          text: ref
+                              .read(fileEditorProvider)
+                              .blocks
+                              .map((b) => b.controller.text)
+                              .join('\n'),
                         ),
-                      )
-                    : _view == 1
-                    ? _buildEditor()
-                    : MediaQuery.of(context).size.width < 700
-                    ? _MobileEditorView(
-                        editor: _buildEditor(),
-                        pomLabel: _pomLabel,
-                        pomColor: _pomColor,
-                        pomRunning: _pomRunning,
-                        onPomTap: _pomToggle,
-                        onPomReset: _pomReset,
-                        onAiTap: () {
-                          final st = ref.read(fileEditorProvider);
-                          _showMobilePanel(context, st);
-                        },
-                      )
-                    : _Split(
-                        left: _buildEditor(),
-                        right: Consumer(
-                          builder: (_, r, __) =>
-                              _buildPanel(r.watch(fileEditorProvider)),
+                      );
+                      _snack('복사됨');
+                    },
+                    onMdCopy: () async {
+                      await ref
+                          .read(fileEditorProvider.notifier)
+                          .copyMarkdown(_tCtrl.text, _gCtrl.text);
+                      _snack('Markdown 복사됨');
+                    },
+                    onView: () => setState(() => _view = _view == 0 ? 1 : 0),
+                    onMindmap: () {
+                      setState(() => _view = _view == 2 ? 0 : 2);
+                      if (_view == 2)
+                        ref.read(fileEditorProvider.notifier).requestGraph();
+                    },
+                    onProofread: () => _showProofreadMenu(),
+                    onDeleteSel: _selectedBlocks.isEmpty
+                        ? null
+                        : () {
+                            final sorted = _selectedBlocks.toList()
+                              ..sort((a, b) => b.compareTo(a));
+                            for (final idx in sorted)
+                              ref
+                                  .read(fileEditorProvider.notifier)
+                                  .removeBlock(idx);
+                            setState(() => _selectedBlocks.clear());
+                            _chg();
+                          },
+                  ),
+                ),
+                // 뽀모도로 타이머
+                if (_pomRunning || _pomSecs != _pomWork)
+                  _PomodoroBar(
+                    label: _pomLabel,
+                    color: _pomColor,
+                    running: _pomRunning,
+                    isWork: _pomIsWork,
+                    onToggle: _pomToggle,
+                    onReset: _pomReset,
+                  ),
+                // 교정 결과 배너
+                if (_proofreadResult.isNotEmpty)
+                  _ProofreadBanner(
+                    result: _proofreadResult,
+                    onApply: _applyProofread,
+                    onDismiss: () => setState(() {
+                      _proofreadResult = '';
+                    }),
+                  ),
+                Expanded(
+                  child: _view == 2
+                      ? Consumer(
+                          builder: (_, r, __) => _MindmapView(
+                            st: r.watch(fileEditorProvider),
+                            ref: r,
+                          ),
+                        )
+                      : _view == 1
+                      ? _buildEditor()
+                      : MediaQuery.of(context).size.width < 700
+                      ? _MobileEditorView(
+                          editor: _buildEditor(),
+                          pomLabel: _pomLabel,
+                          pomColor: _pomColor,
+                          pomRunning: _pomRunning,
+                          onPomTap: _pomToggle,
+                          onPomReset: _pomReset,
+                          onAiTap: () {
+                            final st = ref.read(fileEditorProvider);
+                            _showMobilePanel(context, st);
+                          },
+                        )
+                      : _Split(
+                          left: RepaintBoundary(child: _buildEditor()),
+                          right: RepaintBoundary(
+                            child: _buildPanel(
+                              FileEditorState(
+                                blocks: const [],
+                                isSummaryLoading: panelState.isSummaryLoading,
+                                summaryBlocks: panelState.summaryBlocks,
+                                summaryProgress: panelState.summaryProgress,
+                                currentAnalysis: panelState.currentAnalysis,
+                                isAnalysisLoading: panelState.isAnalysisLoading,
+                                currentMemo: panelState.currentMemo,
+                                isMemoLoading: panelState.isMemoLoading,
+                                quizData: panelState.quizData,
+                                quizAnswers: panelState.quizAnswers,
+                                isQuizLoading: panelState.isQuizLoading,
+                                qaAnswer: panelState.qaAnswer,
+                                isQALoading: panelState.isQALoading,
+                                graphData: panelState.graphData,
+                                isGraphLoading: panelState.isGraphLoading,
+                                proofreadResult: panelState.proofreadResult,
+                                isProofreadLoading:
+                                    panelState.isProofreadLoading,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-              ),
-            ],
-          ),
-        ],
+                ),
+              ],
+            ),
+          ],
         ), // Stack 닫기
       ), // SafeArea 닫기
     );
@@ -1158,7 +1234,24 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   // ── 에디터 ───────────────────────────────────────
   Widget _buildEditor() {
     final blocks = ref.watch(fileEditorProvider.select((s) => s.blocks));
-    final icon = ref.read(fileEditorProvider).icon ?? '';
+    final editorMeta = ref.watch(
+      fileEditorProvider.select(
+        (s) => (
+          icon: s.icon ?? '',
+          blockCount: s.blocks.length,
+          charCount: s.charCount,
+          wordCount: s.wordCount,
+        ),
+      ),
+    );
+    final width = MediaQuery.of(context).size.width;
+    final sidePadding = width < 600
+        ? 16.0
+        : width < 1024
+        ? 48.0
+        : 72.0;
+    final maxWidth = _view == 1 ? 940.0 : 860.0;
+    final isMobile = width < 700;
 
     return GestureDetector(
       // 드래그 블록 선택
@@ -1173,71 +1266,79 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                MediaQuery.of(context).size.width < 600 ? 16 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
-                MediaQuery.of(context).size.width < 600 ? 28 : 80,
-                MediaQuery.of(context).size.width < 600 ? 16 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
-                0,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _IconRow(
-                    current: icon,
-                    onChange: (e) {
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    sidePadding,
+                    isMobile ? 24 : 52,
+                    sidePadding,
+                    0,
+                  ),
+                  child: _DocumentHero(
+                    icon: editorMeta.icon,
+                    titleController: _tCtrl,
+                    tagsController: _gCtrl,
+                    promptController: _pCtrl,
+                    blockCount: editorMeta.blockCount,
+                    charCount: editorMeta.charCount,
+                    wordCount: editorMeta.wordCount,
+                    onIconChange: (e) {
                       ref.read(fileEditorProvider.notifier).setIcon(e);
                       _chg();
                     },
-                  ),
-                  const SizedBox(height: 28),
-                  _GlowTitle(ctrl: _tCtrl, onChange: () => _chg()),
-                  const SizedBox(height: 32),
-                  _PropRow(
-                    icon: Icons.tag_rounded,
-                    label: 'Tags',
-                    ctrl: _gCtrl,
-                    hint: '태그',
-                    onChange: (_) => _chg(),
-                  ),
-                  _PropRow(
-                    icon: Icons.auto_awesome_rounded,
-                    label: 'Prompt',
-                    ctrl: _pCtrl,
-                    hint: 'AI 지시사항',
-                    onChange: (v) {
+                    onTitleChange: () => _chg(),
+                    onTagsChange: (_) => _chg(),
+                    onPromptChange: (v) {
                       ref.read(fileEditorProvider.notifier).setPrompt(v);
                       _chg();
                     },
+                    onInsertTemplate: () {
+                      if (blocks.isEmpty) return;
+                      if (blocks.first.controller.text.trim().isEmpty) {
+                        blocks.first.controller.text = '핵심 개념';
+                        ref
+                            .read(fileEditorProvider.notifier)
+                            .setType(0, BlockType.h2);
+                        ref
+                            .read(fileEditorProvider.notifier)
+                            .insertAfter(
+                              0,
+                              type: BlockType.bullet,
+                              content: '개념 정의',
+                            );
+                        ref
+                            .read(fileEditorProvider.notifier)
+                            .insertAfter(
+                              1,
+                              type: BlockType.bullet,
+                              content: '중요 예시',
+                            );
+                        ref
+                            .read(fileEditorProvider.notifier)
+                            .insertAfter(
+                              2,
+                              type: BlockType.checkbox,
+                              content: '복습할 포인트',
+                            );
+                        _chg();
+                      }
+                    },
+                    onFocusMode: () =>
+                        setState(() => _view = _view == 1 ? 0 : 1),
+                    onGenerateSummary: _doSum,
                   ),
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _pCtrl,
-                    builder: (_, v, __) => v.text.isEmpty
-                        ? _PromptSugs(
-                            onTap: (s) {
-                              _pCtrl.text = s;
-                              ref
-                                  .read(fileEditorProvider.notifier)
-                                  .setPrompt(s);
-                              _chg();
-                            },
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  const SizedBox(height: 28),
-                  const _Div(),
-                  const SizedBox(height: 14),
-                ],
+                ),
               ),
             ),
           ),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(
-              MediaQuery.of(context).size.width < 600 ? 16 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
+              sidePadding,
               0,
-              MediaQuery.of(context).size.width < 600 ? 16 : MediaQuery.of(context).size.width < 1024 ? 48 : 96,
-              // 모바일: 하단 바 60 + 여유, 데스크톱: 280
-              MediaQuery.of(context).size.width < 700 ? 120 : 280,
+              sidePadding,
+              isMobile ? 120 : 280,
             ),
             sliver: SliverReorderableList(
               itemCount: blocks.length,
@@ -1245,53 +1346,90 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                 ref.read(fileEditorProvider.notifier).reorder(o, n);
                 _chg();
               },
-              itemBuilder: (ctx, i) => _NBlock(
+              itemBuilder: (ctx, i) => Align(
                 key: ValueKey(blocks[i].id),
-                idx: i,
-                block: blocks[i],
-                prevType: i > 0 ? blocks[i - 1].type : null,
-                isSelected: _selectedBlocks.contains(i),
-                listNumber: blocks[i].type == BlockType.number
-                    ? () {
-                        int n = 1;
-                        for (int j = i - 1; j >= 0; j--) {
-                          if (blocks[j].type == BlockType.number) n++;
-                          else break;
-                        }
-                        return n;
-                      }()
-                    : 0,
-                onKey: _key,
-                onText: _onText,
-                onDel: () {
-                  ref.read(fileEditorProvider.notifier).removeBlock(i);
-                  _chg();
-                },
-                onDup: () {
-                  ref.read(fileEditorProvider.notifier).duplicate(i);
-                  _chg();
-                },
-                onType: (t) {
-                  ref.read(fileEditorProvider.notifier).setType(i, t);
-                  _chg();
-                },
-                onCheck: (v) {
-                  ref.read(fileEditorProvider.notifier).toggleCheck(i, v);
-                  _chg();
-                },
-                onFocus: () {
-                  _chg(ft: blocks[i].controller.text);
-                  _onFocus(blocks[i].controller.text);
-                },
-                onSelect: () => setState(() {
-                  if (_selectedBlocks.contains(i))
-                    _selectedBlocks.remove(i);
-                  else
-                    _selectedBlocks.add(i);
-                }),
-                // ✅ 선택 변경 → _FS에서 툴바 처리
-                onSelChanged: _onBlockSelChanged,
-                blockKey: _blockKeys.putIfAbsent(i, () => GlobalKey()),
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxWidth),
+                  child: _NBlock(
+                    idx: i,
+                    block: blocks[i],
+                    prevType: i > 0 ? blocks[i - 1].type : null,
+                    isSelected: _selectedBlocks.contains(i),
+                    listNumber: blocks[i].type == BlockType.number
+                        ? () {
+                            int n = 1;
+                            for (int j = i - 1; j >= 0; j--) {
+                              if (blocks[j].type == BlockType.number) {
+                                n++;
+                              } else {
+                                break;
+                              }
+                            }
+                            return n;
+                          }()
+                        : 0,
+                    onKey: _key,
+                    onText: _onText,
+                    onDel: () {
+                      ref.read(fileEditorProvider.notifier).removeBlock(i);
+                      _chg();
+                    },
+                    onDup: () {
+                      ref.read(fileEditorProvider.notifier).duplicate(i);
+                      _chg();
+                    },
+                    onType: (t) {
+                      ref.read(fileEditorProvider.notifier).setType(i, t);
+                      _chg();
+                    },
+                    onCheck: (v) {
+                      ref.read(fileEditorProvider.notifier).toggleCheck(i, v);
+                      _chg();
+                    },
+                    onFocus: () {
+                      _chg(ft: blocks[i].controller.text);
+                      _onFocus(blocks[i].controller.text);
+                    },
+                    onSelect: () => setState(() {
+                      if (_selectedBlocks.contains(i)) {
+                        _selectedBlocks.remove(i);
+                      } else {
+                        _selectedBlocks.add(i);
+                      }
+                    }),
+                    onAddBelow: () {
+                      ref.read(fileEditorProvider.notifier).insertAfter(i);
+                      _chg();
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _foc(i + 1);
+                      });
+                    },
+                    onSelChanged: _onBlockSelChanged,
+                    blockKey: _blockKeys.putIfAbsent(i, () => GlobalKey()),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: sidePadding),
+                  child: _EditorAddBlock(
+                    onTap: () {
+                      ref
+                          .read(fileEditorProvider.notifier)
+                          .insertAfter(blocks.length - 1);
+                      _chg();
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _foc(blocks.length);
+                      });
+                    },
+                  ),
+                ),
               ),
             ),
           ),
@@ -1302,58 +1440,48 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   // ── AI 패널 ─────────────────────────────────────
   Widget _buildPanel(FileEditorState st) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          decoration: BoxDecoration(
-            color: _bg2.withOpacity(0.85),
-            border: const Border(left: BorderSide(color: _bdr)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                height: 50,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: _bdr.withOpacity(0.6)),
-                  ),
-                ),
-                child: _Tabs(ctrl: _tab),
+    return Container(
+      decoration: BoxDecoration(
+        color: _bg2.withValues(alpha: 0.94),
+        border: const Border(left: BorderSide(color: _bdr)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: 50,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: _bdr.withValues(alpha: 0.6)),
               ),
-              Expanded(
-                child: TabBarView(
-                  controller: _tab,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    _SumPanel(
-                      st: st,
-                      ref: ref,
-                      tCtrl: _tCtrl,
-                      gCtrl: _gCtrl,
-                      snack: _snack,
-                      pulse: _sumPulse,
-                    ),
-                    Consumer(
-                      builder: (_, r, __) =>
-                          _AnaPanel(st: r.watch(fileEditorProvider)),
-                    ),
-                    _MemoPanel(st: st, ref: ref, tCtrl: _tCtrl),
-                    _QuizPanel(st: st, ref: ref),
-                    _AskPanel(
-                      st: st,
-                      ctrl: _qaCtrl,
-                      onAsk: (q) => ref
-                          .read(fileEditorProvider.notifier)
-                          .askAI(q, widget.projectId),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
+            child: _Tabs(ctrl: _tab),
           ),
-        ),
+          Expanded(
+            child: TabBarView(
+              controller: _tab,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _SumPanel(
+                  st: st,
+                  ref: ref,
+                  tCtrl: _tCtrl,
+                  gCtrl: _gCtrl,
+                  snack: _snack,
+                ),
+                _AnaPanel(st: st),
+                _MemoPanel(st: st, ref: ref, tCtrl: _tCtrl),
+                _QuizPanel(st: st, ref: ref),
+                _AskPanel(
+                  st: st,
+                  ctrl: _qaCtrl,
+                  onAsk: (q) =>
+                      ref.read(fileEditorProvider.notifier).askAI(q, widget.projectId),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1361,14 +1489,10 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
 // ══════════════════ AURORA BG ═══════════════════════
 class _AuroraBG extends StatelessWidget {
-  final Animation<double> anim;
-  const _AuroraBG({required this.anim});
+  const _AuroraBG();
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: anim,
-    builder: (_, __) =>
-        SizedBox.expand(child: CustomPaint(painter: _AP(anim.value))),
-  );
+  Widget build(BuildContext context) =>
+      const SizedBox.expand(child: CustomPaint(painter: _AP(0.42)));
 }
 
 class _AP extends CustomPainter {
@@ -1442,7 +1566,10 @@ class _AppBar extends StatelessWidget {
             GestureDetector(
               onTap: onDeleteSel,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _red.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(8),
@@ -1451,11 +1578,19 @@ class _AppBar extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.delete_outline_rounded, size: 13, color: _red),
+                    const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 13,
+                      color: _red,
+                    ),
                     const SizedBox(width: 5),
                     Text(
                       '$selectedCount개',
-                      style: const TextStyle(color: _red, fontSize: 11, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: _red,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -1476,7 +1611,11 @@ class _AppBar extends StatelessWidget {
                 ),
                 child: Text(
                   '$charCount자',
-                  style: GoogleFonts.inter(color: _txt2, fontSize: 10, fontWeight: FontWeight.w500),
+                  style: GoogleFonts.inter(
+                    color: _txt2,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ),
@@ -1560,10 +1699,7 @@ class _SaveChip extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          Text(
-            '저장 중',
-            style: GoogleFonts.inter(color: _txt2, fontSize: 11),
-          ),
+          Text('저장 중', style: GoogleFonts.inter(color: _txt2, fontSize: 11)),
         ],
       );
     if (savedAt != null)
@@ -1580,10 +1716,7 @@ class _SaveChip extends StatelessWidget {
                 color: _grn.withOpacity(0.8),
               ),
               const SizedBox(width: 5),
-              Text(
-                '저장됨',
-                style: GoogleFonts.inter(color: _txt2, fontSize: 11),
-              ),
+              Text('저장됨', style: GoogleFonts.inter(color: _txt2, fontSize: 11)),
             ],
           ),
         ),
@@ -1650,18 +1783,31 @@ class _MobileMoreBtn extends StatelessWidget {
       _mi(context, 0, Icons.spellcheck_rounded, '글 교정'),
       _mi(context, 1, Icons.copy_rounded, '복사'),
       _mi(context, 2, Icons.download_outlined, 'MD 복사'),
-      _mi(context, 3,
-          view == 0 ? Icons.crop_square_rounded : Icons.view_column_rounded,
-          view == 0 ? '전체 화면' : '분할 화면'),
+      _mi(
+        context,
+        3,
+        view == 0 ? Icons.crop_square_rounded : Icons.view_column_rounded,
+        view == 0 ? '전체 화면' : '분할 화면',
+      ),
       _mi(context, 4, Icons.account_tree_outlined, '마인드맵'),
     ],
     onSelected: (v) {
       switch (v) {
-        case 0: onProofread(); break;
-        case 1: onCopy(); break;
-        case 2: onMdCopy(); break;
-        case 3: onView(); break;
-        case 4: onMindmap(); break;
+        case 0:
+          onProofread();
+          break;
+        case 1:
+          onCopy();
+          break;
+        case 2:
+          onMdCopy();
+          break;
+        case 3:
+          onView();
+          break;
+        case 4:
+          onMindmap();
+          break;
       }
     },
   );
@@ -1674,9 +1820,14 @@ class _MobileMoreBtn extends StatelessWidget {
           children: [
             Icon(ic, size: 15, color: _txt1),
             const SizedBox(width: 12),
-            Text(label,
-                style: GoogleFonts.inter(
-                    color: _txt0, fontSize: 13, fontWeight: FontWeight.w500)),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                color: _txt0,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       );
@@ -1780,6 +1931,314 @@ class _ProofreadBanner extends StatelessWidget {
   );
 }
 
+class _DocumentHero extends StatelessWidget {
+  final String icon;
+  final TextEditingController titleController;
+  final TextEditingController tagsController;
+  final TextEditingController promptController;
+  final int blockCount;
+  final int charCount;
+  final int wordCount;
+  final void Function(String) onIconChange;
+  final VoidCallback onTitleChange;
+  final void Function(String) onTagsChange;
+  final void Function(String) onPromptChange;
+  final VoidCallback onInsertTemplate;
+  final VoidCallback onFocusMode;
+  final VoidCallback onGenerateSummary;
+
+  const _DocumentHero({
+    required this.icon,
+    required this.titleController,
+    required this.tagsController,
+    required this.promptController,
+    required this.blockCount,
+    required this.charCount,
+    required this.wordCount,
+    required this.onIconChange,
+    required this.onTitleChange,
+    required this.onTagsChange,
+    required this.onPromptChange,
+    required this.onInsertTemplate,
+    required this.onFocusMode,
+    required this.onGenerateSummary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 700;
+    final stats = [
+      ('블록', '$blockCount'),
+      ('문자', '$charCount'),
+      ('단어', '$wordCount'),
+    ];
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(22, isMobile ? 20 : 26, 22, 18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        color: _bg1.withValues(alpha: 0.58),
+        border: Border.all(color: _bdr.withValues(alpha: 0.9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              const _HeroPill(
+                icon: Icons.article_outlined,
+                label: 'Notion-style editor',
+              ),
+              const _HeroPill(
+                icon: Icons.keyboard_command_key_rounded,
+                label: '/ 명령어 지원',
+              ),
+              ...stats.map((item) => _MetaStat(label: item.$1, value: item.$2)),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _IconRow(current: icon, onChange: onIconChange),
+          const SizedBox(height: 18),
+          _GlowTitle(ctrl: titleController, onChange: onTitleChange),
+          const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _bg0.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _bdr.withValues(alpha: 0.8)),
+            ),
+            child: Column(
+              children: [
+                _PropRow(
+                  icon: Icons.tag_rounded,
+                  label: 'Tags',
+                  ctrl: tagsController,
+                  hint: '태그',
+                  onChange: onTagsChange,
+                ),
+                _PropRow(
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'Prompt',
+                  ctrl: promptController,
+                  hint: 'AI 지시사항',
+                  onChange: onPromptChange,
+                ),
+              ],
+            ),
+          ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: promptController,
+            builder: (context, value, child) {
+              if (value.text.isNotEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: _PromptSugs(
+                  onTap: (suggestion) {
+                    promptController.text = suggestion;
+                    onPromptChange(suggestion);
+                  },
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _HeroAction(
+                icon: Icons.auto_awesome_motion_rounded,
+                label: '학습 템플릿',
+                onTap: onInsertTemplate,
+              ),
+              _HeroAction(
+                icon: Icons.summarize_outlined,
+                label: 'AI 요약 생성',
+                onTap: onGenerateSummary,
+              ),
+              _HeroAction(
+                icon: Icons.center_focus_strong_rounded,
+                label: '포커스 모드',
+                onTap: onFocusMode,
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const _Div(),
+          const SizedBox(height: 10),
+          Text(
+            '빈 줄에서 Enter로 새 블록을 만들고, `/`로 블록 타입을 바꾸세요. 좌측 `+` 버튼으로 바로 아래에 새 블록을 추가할 수 있습니다.',
+            style: GoogleFonts.inter(
+              color: _txt2.withValues(alpha: 0.88),
+              fontSize: 12,
+              height: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _HeroPill({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: _bg2.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _bdr.withValues(alpha: 0.8)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: _txt1),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              color: _txt1,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetaStat extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MetaStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: _bg2.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _bdr.withValues(alpha: 0.75)),
+      ),
+      child: RichText(
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: '$value ',
+              style: GoogleFonts.inter(
+                color: _txt0,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            TextSpan(
+              text: label,
+              style: GoogleFonts.inter(
+                color: _txt2,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _HeroAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: _bg2.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _bdr.withValues(alpha: 0.82)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: _acc),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                color: _txt0,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditorAddBlock extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _EditorAddBlock({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: _bg1.withValues(alpha: 0.38),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _bdr.withValues(alpha: 0.7)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.add_rounded, size: 18, color: _acc),
+              const SizedBox(width: 10),
+              Text(
+                '새 블록 추가',
+                style: GoogleFonts.inter(
+                  color: _txt1,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ══════════════════ 교정 스타일 버튼 ════════════════
 class _StyleBtn extends StatelessWidget {
   final String label;
@@ -1846,39 +2305,43 @@ class _GTState extends State<_GlowTitle> {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final titleSize = w < 600 ? 28.0 : w < 1024 ? 34.0 : 40.0;
+    final titleSize = w < 600
+        ? 28.0
+        : w < 1024
+        ? 34.0
+        : 40.0;
     return TextField(
-    controller: widget.ctrl,
-    focusNode: _fn,
-    style: GoogleFonts.inter(
-      fontSize: titleSize,
-      fontWeight: FontWeight.w800,
-      color: _txt0,
-      height: 1.15,
-      letterSpacing: -1.5,
-      shadows: const [
-        Shadow(color: Color(0x10CCFF66), blurRadius: 40),
-        Shadow(color: Color(0x06FFFFFF), blurRadius: 16),
-      ],
-    ),
-    decoration: InputDecoration(
-      border: InputBorder.none,
-      enabledBorder: InputBorder.none,
-      focusedBorder: InputBorder.none,
-      filled: true,
-      fillColor: Colors.transparent,
-      isDense: true,
-      contentPadding: EdgeInsets.zero,
-      hintText: '제목 없음',
-      hintStyle: GoogleFonts.inter(
+      controller: widget.ctrl,
+      focusNode: _fn,
+      style: GoogleFonts.inter(
         fontSize: titleSize,
         fontWeight: FontWeight.w800,
-        color: const Color(0xFF1C1C30),
+        color: _txt0,
         height: 1.15,
         letterSpacing: -1.5,
+        shadows: const [
+          Shadow(color: Color(0x10CCFF66), blurRadius: 40),
+          Shadow(color: Color(0x06FFFFFF), blurRadius: 16),
+        ],
       ),
-    ),
-    onChanged: (_) => widget.onChange(),
+      decoration: InputDecoration(
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        filled: true,
+        fillColor: Colors.transparent,
+        isDense: true,
+        contentPadding: EdgeInsets.zero,
+        hintText: '제목 없음',
+        hintStyle: GoogleFonts.inter(
+          fontSize: titleSize,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF1C1C30),
+          height: 1.15,
+          letterSpacing: -1.5,
+        ),
+      ),
+      onChanged: (_) => widget.onChange(),
     );
   }
 }
@@ -2083,10 +2546,7 @@ class _PRState extends State<_PropRow> {
           child: TextField(
             controller: widget.ctrl,
             focusNode: _fn,
-            style: GoogleFonts.inter(
-              color: _foc ? _txt0 : _txt1,
-              fontSize: 13,
-            ),
+            style: GoogleFonts.inter(color: _foc ? _txt0 : _txt1, fontSize: 13),
             decoration: InputDecoration(
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
@@ -2174,11 +2634,7 @@ class _PSChip extends StatefulWidget {
   final String label;
   final IconData icon;
   final VoidCallback onTap;
-  const _PSChip({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
+  const _PSChip({required this.label, required this.icon, required this.onTap});
   @override
   State<_PSChip> createState() => _PSChipState();
 }
@@ -2205,11 +2661,7 @@ class _PSChipState extends State<_PSChip> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              widget.icon,
-              size: 10,
-              color: _h ? _acc : _txt2,
-            ),
+            Icon(widget.icon, size: 10, color: _h ? _acc : _txt2),
             const SizedBox(width: 5),
             Text(
               widget.label,
@@ -2247,9 +2699,7 @@ class _PomodoroBar extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 16),
     decoration: BoxDecoration(
       color: _bg2,
-      border: Border(
-        bottom: BorderSide(color: _bdr.withOpacity(0.5)),
-      ),
+      border: Border(bottom: BorderSide(color: _bdr.withOpacity(0.5))),
     ),
     child: Row(
       children: [
@@ -2309,7 +2759,11 @@ class _PomodoroBar extends StatelessWidget {
         const SizedBox(width: 8),
         GestureDetector(
           onTap: onReset,
-          child: Icon(Icons.refresh_rounded, size: 14, color: _txt2.withOpacity(0.5)),
+          child: Icon(
+            Icons.refresh_rounded,
+            size: 14,
+            color: _txt2.withOpacity(0.5),
+          ),
         ),
       ],
     ),
@@ -2346,9 +2800,7 @@ class _PomFABState extends State<_PomFAB> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: widget.running
-              ? widget.color.withOpacity(0.15)
-              : _bg3,
+          color: widget.running ? widget.color.withOpacity(0.15) : _bg3,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color: widget.running
@@ -2363,19 +2815,14 @@ class _PomFABState extends State<_PomFAB> {
               offset: const Offset(0, 4),
             ),
             if (widget.running)
-              BoxShadow(
-                color: widget.color.withOpacity(0.15),
-                blurRadius: 16,
-              ),
+              BoxShadow(color: widget.color.withOpacity(0.15), blurRadius: 16),
           ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              widget.running
-                  ? Icons.pause_rounded
-                  : Icons.timer_outlined,
+              widget.running ? Icons.pause_rounded : Icons.timer_outlined,
               size: 13,
               color: widget.running ? widget.color : _txt2,
             ),
@@ -2488,7 +2935,10 @@ class _MobileBottomBar extends StatelessWidget {
                   onLongPress: onPomReset,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: pomRunning ? pomColor.withOpacity(0.12) : _bg3,
                       borderRadius: BorderRadius.circular(22),
@@ -2500,7 +2950,9 @@ class _MobileBottomBar extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          pomRunning ? Icons.pause_rounded : Icons.timer_outlined,
+                          pomRunning
+                              ? Icons.pause_rounded
+                              : Icons.timer_outlined,
                           size: 15,
                           color: pomRunning ? pomColor : _txt2,
                         ),
@@ -2523,11 +2975,17 @@ class _MobileBottomBar extends StatelessWidget {
                 GestureDetector(
                   onTap: onAiTap,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: _accD,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: _acc.withOpacity(0.5), width: 1.5),
+                      border: Border.all(
+                        color: _acc.withOpacity(0.5),
+                        width: 1.5,
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: _acc.withOpacity(0.15),
@@ -2628,9 +3086,7 @@ class _IBState extends State<_ImageBlock> {
       constraints: const BoxConstraints(maxWidth: 680, maxHeight: 500),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: _hover ? _bdr2 : _bdr.withOpacity(0.5),
-        ),
+        border: Border.all(color: _hover ? _bdr2 : _bdr.withOpacity(0.5)),
         color: _bg3,
       ),
       child: ClipRRect(
@@ -2643,7 +3099,10 @@ class _IBState extends State<_ImageBlock> {
                   children: [
                     Icon(Icons.image_outlined, color: _txt2, size: 28),
                     const SizedBox(height: 8),
-                    Text('이미지 URL이 없습니다', style: TextStyle(color: _txt2, fontSize: 12)),
+                    Text(
+                      '이미지 URL이 없습니다',
+                      style: TextStyle(color: _txt2, fontSize: 12),
+                    ),
                   ],
                 ),
               )
@@ -2693,7 +3152,7 @@ class _NBlock extends StatefulWidget {
   final int listNumber;
   final KeyEventResult Function(FocusNode, KeyEvent, int) onKey;
   final Function(String, int) onText;
-  final VoidCallback onDel, onDup, onFocus, onSelect;
+  final VoidCallback onDel, onDup, onFocus, onSelect, onAddBelow;
   final Function(BlockType) onType;
   final Function(bool) onCheck;
   final void Function(String, TextEditingController, GlobalKey)? onSelChanged;
@@ -2713,6 +3172,7 @@ class _NBlock extends StatefulWidget {
     required this.onCheck,
     required this.onFocus,
     required this.onSelect,
+    required this.onAddBelow,
     this.onSelChanged,
     this.blockKey,
   }) : super(key: key);
@@ -2722,6 +3182,7 @@ class _NBlock extends StatefulWidget {
 
 class _NBState extends State<_NBlock> {
   bool _foc = false;
+  bool _hover = false;
   Timer? _selTimer;
 
   @override
@@ -2824,7 +3285,7 @@ class _NBState extends State<_NBlock> {
     ),
     BlockType.number => GoogleFonts.inter(
       fontSize: 15,
-      color: _txt0.withOpacity(0.85),
+      color: _txt0.withValues(alpha: 0.85),
       height: 1.85,
       letterSpacing: 0.0,
       fontWeight: FontWeight.w400,
@@ -2832,7 +3293,7 @@ class _NBState extends State<_NBlock> {
     BlockType.image => GoogleFonts.inter(fontSize: 14, color: _txt2),
     _ => GoogleFonts.inter(
       fontSize: 15,
-      color: _txt0.withOpacity(0.85),
+      color: _txt0.withValues(alpha: 0.85),
       height: 1.85,
       letterSpacing: 0.0,
       fontWeight: FontWeight.w400,
@@ -2855,299 +3316,374 @@ class _NBState extends State<_NBlock> {
 
     return KeyedSubtree(
       key: widget.blockKey,
-      child: GestureDetector(
-        onTap: () {
-          // 공백 영역 클릭 시 TextField 포커스
-          widget.block.focusNode.requestFocus();
-          final c = widget.block.controller;
-          if (c.selection.isCollapsed && c.selection.baseOffset < 0) {
-            c.selection = TextSelection.collapsed(offset: c.text.length);
-          }
-        },
-        behavior: HitTestBehavior.translucent,
-        child: Container(
-          padding: EdgeInsets.only(
-            top: (isBul && isPrevBul) ? 1 : (isBul ? 3 : 2),
-            bottom: isBul ? 1 : 2,
-            left: widget.block.type == BlockType.quote ? 4 : 8,
-            right: 8,
-          ),
-          decoration: BoxDecoration(
-            color: widget.isSelected
-                ? _acc.withOpacity(0.07)
-                : widget.block.type == BlockType.code
-                ? const Color(0xFF161616)
-                : widget.block.type == BlockType.quote
-                ? Colors.white.withOpacity(0.025)
-                : _foc
-                ? Colors.white.withOpacity(0.012)
-                : null,
-            borderRadius: BorderRadius.circular(8),
-            border: widget.isSelected
-                ? Border.all(color: _acc.withOpacity(0.3))
-                : widget.block.type == BlockType.code
-                ? Border.all(color: _bdr.withOpacity(0.8))
-                : null,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 드래그 핸들 + 선택
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: Opacity(
-                  opacity: _foc ? 0.5 : 0,
-                  child: ReorderableDragStartListener(
-                    index: widget.idx,
-                    child: PopupMenuButton<String>(
-                      padding: EdgeInsets.zero,
-                      color: _bg3,
-                      offset: const Offset(0, 28),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: const BorderSide(color: _bdr2),
-                      ),
-                      icon: Icon(
-                        Icons.drag_indicator_rounded,
-                        size: 15,
-                        color: _txt2,
-                      ),
-                      iconSize: 15,
-                      onSelected: (v) {
-                        if (v == 'd')
-                          widget.onDel();
-                        else if (v == 'c')
-                          widget.onDup();
-                        else if (v == 's')
-                          widget.onSelect();
-                        else if (v == 'h1')
-                          widget.onType(BlockType.h1);
-                        else if (v == 'h2')
-                          widget.onType(BlockType.h2);
-                        else if (v == 't')
-                          widget.onType(BlockType.text);
-                        else if (v == 'b')
-                          widget.onType(BlockType.bullet);
-                        else if (v == 'cd')
-                          widget.onType(BlockType.code);
-                      },
-                      itemBuilder: (_) => [
-                        _mi('s', Icons.check_box_outlined, '선택', _acc),
-                        _mi('d', Icons.delete_outline_rounded, '삭제', _red),
-                        _mi('c', Icons.content_copy_rounded, '복제', _txt1),
-                        const PopupMenuDivider(height: 6),
-                        _mi('h1', Icons.looks_one_outlined, '제목 1', _txt1),
-                        _mi('h2', Icons.looks_two_outlined, '제목 2', _txt1),
-                        _mi('t', Icons.short_text_rounded, '텍스트', _txt1),
-                        _mi('b', Icons.format_list_bulleted, '글머리', _txt1),
-                        _mi('cd', Icons.code_rounded, '코드', _txt1),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: () {
+            widget.block.focusNode.requestFocus();
+            final c = widget.block.controller;
+            if (c.selection.isCollapsed && c.selection.baseOffset < 0) {
+              c.selection = TextSelection.collapsed(offset: c.text.length);
+            }
+          },
+          behavior: HitTestBehavior.translucent,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            padding: EdgeInsets.only(
+              top: (isBul && isPrevBul) ? 1 : (isBul ? 3 : 2),
+              bottom: isBul ? 1 : 2,
+              left: widget.block.type == BlockType.quote ? 4 : 8,
+              right: 8,
+            ),
+            decoration: BoxDecoration(
+              color: widget.isSelected
+                  ? _acc.withValues(alpha: 0.05)
+                  : widget.block.type == BlockType.code
+                  ? _bg2.withValues(alpha: 0.72)
+                  : widget.block.type == BlockType.quote
+                  ? Colors.white.withValues(alpha: 0.02)
+                  : (_foc || _hover)
+                  ? Colors.white.withValues(alpha: 0.014)
+                  : null,
+              borderRadius: BorderRadius.circular(12),
+              border: widget.isSelected
+                  ? Border.all(color: _acc.withValues(alpha: 0.22))
+                  : widget.block.type == BlockType.code
+                  ? Border.all(color: _bdr.withValues(alpha: 0.8))
+                  : (_foc || _hover)
+                  ? Border.all(color: _bdr.withValues(alpha: 0.26))
+                  : null,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 56,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 120),
+                    opacity: (_foc || _hover) ? 1 : 0,
+                    child: Row(
+                      children: [
+                        _HandleAction(
+                          icon: Icons.add_rounded,
+                          onTap: widget.onAddBelow,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: ReorderableDragStartListener(
+                            index: widget.idx,
+                            child: PopupMenuButton<String>(
+                              padding: EdgeInsets.zero,
+                              color: _bg3,
+                              offset: const Offset(0, 28),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: const BorderSide(color: _bdr2),
+                              ),
+                              icon: Icon(
+                                Icons.drag_indicator_rounded,
+                                size: 15,
+                                color: _txt2,
+                              ),
+                              iconSize: 15,
+                              onSelected: (v) {
+                                if (v == 'd') {
+                                  widget.onDel();
+                                } else if (v == 'c') {
+                                  widget.onDup();
+                                } else if (v == 's') {
+                                  widget.onSelect();
+                                } else if (v == 'h1') {
+                                  widget.onType(BlockType.h1);
+                                } else if (v == 'h2') {
+                                  widget.onType(BlockType.h2);
+                                } else if (v == 't') {
+                                  widget.onType(BlockType.text);
+                                } else if (v == 'b') {
+                                  widget.onType(BlockType.bullet);
+                                } else if (v == 'n') {
+                                  widget.onType(BlockType.number);
+                                } else if (v == 'q') {
+                                  widget.onType(BlockType.quote);
+                                } else if (v == 'td') {
+                                  widget.onType(BlockType.checkbox);
+                                } else if (v == 'cd') {
+                                  widget.onType(BlockType.code);
+                                }
+                              },
+                              itemBuilder: (_) => [
+                                _mi('s', Icons.check_box_outlined, '선택', _acc),
+                                _mi(
+                                  'c',
+                                  Icons.content_copy_rounded,
+                                  '복제',
+                                  _txt1,
+                                ),
+                                _mi(
+                                  'd',
+                                  Icons.delete_outline_rounded,
+                                  '삭제',
+                                  _red,
+                                ),
+                                const PopupMenuDivider(height: 6),
+                                _mi(
+                                  'h1',
+                                  Icons.looks_one_outlined,
+                                  '제목 1',
+                                  _txt1,
+                                ),
+                                _mi(
+                                  'h2',
+                                  Icons.looks_two_outlined,
+                                  '제목 2',
+                                  _txt1,
+                                ),
+                                _mi(
+                                  't',
+                                  Icons.short_text_rounded,
+                                  '텍스트',
+                                  _txt1,
+                                ),
+                                _mi(
+                                  'b',
+                                  Icons.format_list_bulleted,
+                                  '글머리',
+                                  _txt1,
+                                ),
+                                _mi(
+                                  'n',
+                                  Icons.format_list_numbered,
+                                  '번호 목록',
+                                  _txt1,
+                                ),
+                                _mi(
+                                  'td',
+                                  Icons.check_box_outlined,
+                                  '체크리스트',
+                                  _txt1,
+                                ),
+                                _mi(
+                                  'q',
+                                  Icons.format_quote_rounded,
+                                  '인용',
+                                  _txt1,
+                                ),
+                                _mi('cd', Icons.code_rounded, '코드', _txt1),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-              ),
 
-              // 불릿
-              if (widget.block.type == BlockType.bullet)
-                Padding(
-                  padding: const EdgeInsets.only(top: 13, right: 12),
-                  child: Container(
-                    width: 5,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: _txt1.withOpacity(0.5),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-
-              // 번호 목록
-              if (widget.block.type == BlockType.number)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2, right: 10),
-                  child: SizedBox(
-                    width: 22,
-                    child: Text(
-                      '${widget.listNumber}.',
-                      style: GoogleFonts.inter(
-                        color: _txt2,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        height: 1.85,
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ),
-
-              // 인용 좌측 바
-              if (widget.block.type == BlockType.quote)
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: Container(
-                    width: 3,
-                    decoration: BoxDecoration(
-                      color: _txt2.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-
-              // 체크박스
-              if (widget.block.type == BlockType.checkbox)
-                Padding(
-                  padding: const EdgeInsets.only(top: 5, right: 10),
-                  child: SizedBox(
-                    width: 17,
-                    height: 17,
-                    child: Checkbox(
-                      value: widget.block.isChecked,
-                      onChanged: (v) => widget.onCheck(v!),
-                      activeColor: _acc,
-                      checkColor: Colors.black,
-                      side: const BorderSide(color: _txt2, width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+                if (widget.block.type == BlockType.bullet)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 13, right: 12),
+                    child: Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: _txt1.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
                       ),
                     ),
                   ),
-                ),
 
-              // 코드 태그
-              if (widget.block.type == BlockType.code && !_isTable)
-                Padding(
-                  padding: const EdgeInsets.only(top: 3, right: 7),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A30),
-                      borderRadius: BorderRadius.circular(5),
-                      border: Border.all(
-                        color: const Color(0xFFD4BBFF).withOpacity(0.2),
-                      ),
-                    ),
-                    child: Text(
-                      'code',
-                      style: GoogleFonts.jetBrainsMono(
-                        color: const Color(0xFFD4BBFF),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.3,
+                // 번호 목록
+                if (widget.block.type == BlockType.number)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, right: 10),
+                    child: SizedBox(
+                      width: 22,
+                      child: Text(
+                        '${widget.listNumber}.',
+                        style: GoogleFonts.inter(
+                          color: _txt2,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          height: 1.85,
+                        ),
+                        textAlign: TextAlign.right,
                       ),
                     ),
                   ),
-                ),
 
-              // 테이블 태그
-              if (_isTable)
-                Padding(
-                  padding: const EdgeInsets.only(top: 3, right: 7),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _accD,
-                      borderRadius: BorderRadius.circular(5),
-                      border: Border.all(color: _acc.withOpacity(0.25)),
-                    ),
-                    child: Text(
-                      'table',
-                      style: GoogleFonts.inter(
-                        color: _acc,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.3,
+                // 인용 좌측 바
+                if (widget.block.type == BlockType.quote)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Container(
+                      width: 3,
+                      decoration: BoxDecoration(
+                        color: _txt2.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
-                ),
 
-              // 이미지 블록 (URL)
-              if (widget.block.type == BlockType.image)
-                Expanded(
-                  child: _ImageBlock(url: widget.block.controller.text),
-                ),
-
-              // 텍스트 입력 (이미지 제외)
-              if (widget.block.type != BlockType.image)
-              Expanded(
-                child: Listener(
-                  // ✅ onPointerUp: 브라우저 드래그 선택을 Flutter가 직접 감지
-                  onPointerUp: (_) {
-                    _selTimer?.cancel();
-                    _selTimer = Timer(const Duration(milliseconds: 200), () {
-                      if (!mounted) return;
-                      final ctrl = widget.block.controller;
-                      final sel = ctrl.selection;
-                      if (!sel.isValid || sel.isCollapsed) {
-                        widget.onSelChanged?.call('', ctrl, GlobalKey());
-                        return;
-                      }
-                      final txt = ctrl.text;
-                      final selected = txt.substring(
-                        sel.start.clamp(0, txt.length),
-                        sel.end.clamp(0, txt.length),
-                      );
-                      if (selected.trim().isNotEmpty) {
-                        widget.onSelChanged?.call(
-                          selected,
-                          ctrl,
-                          widget.blockKey ?? GlobalKey(),
-                        );
-                      }
-                    });
-                  },
-                  child: CompositedTransformTarget(
-                    link: widget.block.layerLink,
-                    child: TextField(
-                      controller: widget.block.controller,
-                      focusNode: widget.block.focusNode,
-                      maxLines: null,
-                      style: _style().copyWith(
-                        decoration:
-                            (widget.block.type == BlockType.checkbox &&
-                                widget.block.isChecked)
-                            ? TextDecoration.lineThrough
-                            : null,
-                        color:
-                            (widget.block.type == BlockType.checkbox &&
-                                widget.block.isChecked)
-                            ? _txt2
-                            : null,
-                      ),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        filled: true,
-                        fillColor: Colors.transparent,
-                        hoverColor: Colors.transparent,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                        hintText: (_foc && widget.block.controller.text.isEmpty)
-                            ? _hint(widget.block.type)
-                            : '',
-                        hintStyle: TextStyle(
-                          color: _txt2.withOpacity(0.4),
-                          fontSize: 16,
+                // 체크박스
+                if (widget.block.type == BlockType.checkbox)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5, right: 10),
+                    child: SizedBox(
+                      width: 17,
+                      height: 17,
+                      child: Checkbox(
+                        value: widget.block.isChecked,
+                        onChanged: (v) => widget.onCheck(v!),
+                        activeColor: _acc,
+                        checkColor: Colors.black,
+                        side: const BorderSide(color: _txt2, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
                         ),
                       ),
-                      onChanged: (t) => widget.onText(t, widget.idx),
                     ),
                   ),
-                ),
-              ),
-            ],
+
+                // 코드 태그
+                if (widget.block.type == BlockType.code && !_isTable)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3, right: 7),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A30),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                          color: const Color(0xFFD4BBFF).withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Text(
+                        'code',
+                        style: GoogleFonts.jetBrainsMono(
+                          color: const Color(0xFFD4BBFF),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // 테이블 태그
+                if (_isTable)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3, right: 7),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _accD,
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: _acc.withValues(alpha: 0.25)),
+                      ),
+                      child: Text(
+                        'table',
+                        style: GoogleFonts.inter(
+                          color: _acc,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // 이미지 블록 (URL)
+                if (widget.block.type == BlockType.image)
+                  Expanded(
+                    child: _ImageBlock(url: widget.block.controller.text),
+                  ),
+
+                // 텍스트 입력 (이미지 제외)
+                if (widget.block.type != BlockType.image)
+                  Expanded(
+                    child: Listener(
+                      // ✅ onPointerUp: 브라우저 드래그 선택을 Flutter가 직접 감지
+                      onPointerUp: (_) {
+                        _selTimer?.cancel();
+                        _selTimer = Timer(
+                          const Duration(milliseconds: 200),
+                          () {
+                            if (!mounted) return;
+                            final ctrl = widget.block.controller;
+                            final sel = ctrl.selection;
+                            if (!sel.isValid || sel.isCollapsed) {
+                              widget.onSelChanged?.call('', ctrl, GlobalKey());
+                              return;
+                            }
+                            final txt = ctrl.text;
+                            final selected = txt.substring(
+                              sel.start.clamp(0, txt.length),
+                              sel.end.clamp(0, txt.length),
+                            );
+                            if (selected.trim().isNotEmpty) {
+                              widget.onSelChanged?.call(
+                                selected,
+                                ctrl,
+                                widget.blockKey ?? GlobalKey(),
+                              );
+                            }
+                          },
+                        );
+                      },
+                      child: CompositedTransformTarget(
+                        link: widget.block.layerLink,
+                        child: TextField(
+                          controller: widget.block.controller,
+                          focusNode: widget.block.focusNode,
+                          maxLines: null,
+                          style: _style().copyWith(
+                            decoration:
+                                (widget.block.type == BlockType.checkbox &&
+                                    widget.block.isChecked)
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color:
+                                (widget.block.type == BlockType.checkbox &&
+                                    widget.block.isChecked)
+                                ? _txt2
+                                : null,
+                          ),
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            filled: true,
+                            fillColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                            hintText:
+                                (_foc && widget.block.controller.text.isEmpty)
+                                ? _hint(widget.block.type)
+                                : '',
+                            hintStyle: TextStyle(
+                              color: _txt2.withValues(alpha: 0.4),
+                              fontSize: 16,
+                            ),
+                          ),
+                          onChanged: (t) => widget.onText(t, widget.idx),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
-    ); // KeyedSubtree > GestureDetector > Container
+    ); // KeyedSubtree > MouseRegion > GestureDetector > Container
   }
 
   String _hint(BlockType t) => switch (t) {
@@ -3162,6 +3698,21 @@ class _NBState extends State<_NBlock> {
     BlockType.image => 'https://... 이미지 URL',
     _ => "내용을 입력하거나  /  로 블록 추가",
   };
+
+  Widget _HandleAction({required IconData icon, required VoidCallback onTap}) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: _bg3.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: _bdr.withOpacity(0.8)),
+          ),
+          child: Icon(icon, size: 14, color: _txt1),
+        ),
+      );
 
   PopupMenuItem<String> _mi(String v, IconData icon, String txt, Color c) =>
       PopupMenuItem(
@@ -3181,8 +3732,14 @@ class _NBState extends State<_NBlock> {
 class _Opt {
   final String id, label, hint, desc, group;
   final IconData icon;
-  const _Opt(this.id, this.label, this.icon, this.hint,
-      [this.desc = '', this.group = '']);
+  const _Opt(
+    this.id,
+    this.label,
+    this.icon,
+    this.hint, [
+    this.desc = '',
+    this.group = '',
+  ]);
 }
 
 class _SlashMenu extends StatelessWidget {
@@ -3207,7 +3764,9 @@ class _SlashMenu extends StatelessWidget {
     if (isSearching || opts.length <= 4) {
       // 검색 모드: 플랫 리스트
       for (int i = 0; i < opts.length; i++) {
-        children.add(_SI(opt: opts[i], sel: i == sel, onTap: () => onSel(opts[i])));
+        children.add(
+          _SI(opt: opts[i], sel: i == sel, onTap: () => onSel(opts[i])),
+        );
       }
     } else {
       // 브라우즈 모드: 카테고리별 그룹
@@ -3223,25 +3782,23 @@ class _SlashMenu extends StatelessWidget {
       for (final groupName in orderedKeys) {
         final groupOpts = groups[groupName]!;
         // 그룹 헤더
-        children.add(Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-          child: Text(
-            groupName,
-            style: GoogleFonts.inter(
-              color: _txt2,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.6,
+        children.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+            child: Text(
+              groupName,
+              style: GoogleFonts.inter(
+                color: _txt2,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.6,
+              ),
             ),
           ),
-        ));
+        );
         for (final opt in groupOpts) {
           final idx = globalIdx;
-          children.add(_SI(
-            opt: opt,
-            sel: idx == sel,
-            onTap: () => onSel(opt),
-          ));
+          children.add(_SI(opt: opt, sel: idx == sel, onTap: () => onSel(opt)));
           globalIdx++;
         }
       }
@@ -3861,10 +4418,7 @@ class _SIS extends State<_SI> {
                     if (widget.opt.desc.isNotEmpty)
                       Text(
                         widget.opt.desc,
-                        style: GoogleFonts.inter(
-                          color: _txt2,
-                          fontSize: 11,
-                        ),
+                        style: GoogleFonts.inter(color: _txt2, fontSize: 11),
                       ),
                   ],
                 ),
@@ -3873,7 +4427,9 @@ class _SIS extends State<_SI> {
               if (widget.opt.hint.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 6, vertical: 2),
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: _bg3,
                     borderRadius: BorderRadius.circular(5),
@@ -3945,14 +4501,12 @@ class _SumPanel extends StatelessWidget {
   final WidgetRef ref;
   final TextEditingController tCtrl, gCtrl;
   final void Function(String) snack;
-  final Animation<double> pulse;
   const _SumPanel({
     required this.st,
     required this.ref,
     required this.tCtrl,
     required this.gCtrl,
     required this.snack,
-    required this.pulse,
   });
   @override
   Widget build(BuildContext context) => Column(
@@ -4018,14 +4572,22 @@ class _SumPanel extends StatelessWidget {
               InkWell(
                 onTap: () => ref
                     .read(fileEditorProvider.notifier)
-                    .requestSummary(title: tCtrl.text, tags: gCtrl.text, force: true),
+                    .requestSummary(
+                      title: tCtrl.text,
+                      tags: gCtrl.text,
+                      force: true,
+                    ),
                 borderRadius: BorderRadius.circular(6),
                 child: Padding(
                   padding: const EdgeInsets.all(6),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.refresh_rounded, size: 12, color: _txt2.withOpacity(0.6)),
+                      Icon(
+                        Icons.refresh_rounded,
+                        size: 12,
+                        color: _txt2.withOpacity(0.6),
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '재요약',
@@ -4042,10 +4604,7 @@ class _SumPanel extends StatelessWidget {
           ],
         ),
       ),
-      Container(
-        height: 0.5,
-        color: _bdr.withOpacity(0.5),
-      ),
+      Container(height: 0.5, color: _bdr.withOpacity(0.5)),
       Expanded(
         child: Stack(
           children: [
@@ -4064,12 +4623,10 @@ class _SumPanel extends StatelessWidget {
                 key: ValueKey('sc$i'),
                 block: st.summaryBlocks[i],
                 index: i,
-                onPin: () => ref
-                    .read(fileEditorProvider.notifier)
-                    .toggleSummarySave(i),
-                onDel: () => ref
-                    .read(fileEditorProvider.notifier)
-                    .removeSummaryBlock(i),
+                onPin: () =>
+                    ref.read(fileEditorProvider.notifier).toggleSummarySave(i),
+                onDel: () =>
+                    ref.read(fileEditorProvider.notifier).removeSummaryBlock(i),
                 onCopy: () {
                   Clipboard.setData(
                     ClipboardData(text: st.summaryBlocks[i].content),
@@ -4078,9 +4635,7 @@ class _SumPanel extends StatelessWidget {
                 },
                 onExport: () async {
                   snack('확정 요약이 저장됩니다.');
-                  ref
-                      .read(fileEditorProvider.notifier)
-                      .toggleSummarySave(i);
+                  ref.read(fileEditorProvider.notifier).toggleSummarySave(i);
                 },
               ),
             ),
@@ -4091,7 +4646,10 @@ class _SumPanel extends StatelessWidget {
                 right: 0,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       color: _bg3,
                       borderRadius: BorderRadius.circular(20),
@@ -4112,10 +4670,7 @@ class _SumPanel extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           '업데이트 중...',
-                          style: GoogleFonts.inter(
-                            color: _txt1,
-                            fontSize: 11,
-                          ),
+                          style: GoogleFonts.inter(color: _txt1, fontSize: 11),
                         ),
                       ],
                     ),
@@ -4468,9 +5023,10 @@ class _QuizPanelState extends State<_QuizPanel>
       vsync: this,
       duration: const Duration(milliseconds: 350),
     );
-    _flipAnim = Tween(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _flipAc, curve: Curves.easeInOutCubic),
-    );
+    _flipAnim = Tween(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _flipAc, curve: Curves.easeInOutCubic));
   }
 
   @override
@@ -4518,7 +5074,12 @@ class _QuizPanelState extends State<_QuizPanel>
 
   Widget _buildCardMode(FileEditorState st) {
     final quiz = st.quizData ?? [];
-    if (quiz.isEmpty) return const _Empty(icon: Icons.quiz_rounded, title: '퀴즈 없음', desc: '먼저 퀴즈를 생성하세요.');
+    if (quiz.isEmpty)
+      return const _Empty(
+        icon: Icons.quiz_rounded,
+        title: '퀴즈 없음',
+        desc: '먼저 퀴즈를 생성하세요.',
+      );
     final q = quiz[_cardIdx];
     final question = q['question']?.toString() ?? '';
     final answer = q['options'] != null && q['answer'] != null
@@ -4535,19 +5096,37 @@ class _QuizPanelState extends State<_QuizPanel>
             children: [
               Text(
                 '${_cardIdx + 1} / ${quiz.length}',
-                style: GoogleFonts.inter(color: _txt2, fontSize: 11, fontWeight: FontWeight.w600),
+                style: GoogleFonts.inter(
+                  color: _txt2,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const Spacer(),
               GestureDetector(
-                onTap: () => setState(() { _cardMode = false; _cardIdx = 0; _flipped = false; }),
+                onTap: () => setState(() {
+                  _cardMode = false;
+                  _cardIdx = 0;
+                  _flipped = false;
+                }),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: _bg3,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: _bdr2),
                   ),
-                  child: Text('목록 보기', style: GoogleFonts.inter(color: _txt2, fontSize: 10, fontWeight: FontWeight.w600)),
+                  child: Text(
+                    '목록 보기',
+                    style: GoogleFonts.inter(
+                      color: _txt2,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -4586,9 +5165,7 @@ class _QuizPanelState extends State<_QuizPanel>
                     child: Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: isBack
-                            ? const Color(0xFF1A2508)
-                            : _bg3,
+                        color: isBack ? const Color(0xFF1A2508) : _bg3,
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
                           color: isBack ? _acc.withOpacity(0.4) : _bdr2,
@@ -4601,7 +5178,10 @@ class _QuizPanelState extends State<_QuizPanel>
                             offset: const Offset(0, 8),
                           ),
                           if (isBack)
-                            BoxShadow(color: _acc.withOpacity(0.08), blurRadius: 30),
+                            BoxShadow(
+                              color: _acc.withOpacity(0.08),
+                              blurRadius: 30,
+                            ),
                         ],
                       ),
                       child: isBack
@@ -4613,7 +5193,11 @@ class _QuizPanelState extends State<_QuizPanel>
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.check_circle_outline_rounded, color: _acc, size: 22),
+                                    Icon(
+                                      Icons.check_circle_outline_rounded,
+                                      color: _acc,
+                                      size: 22,
+                                    ),
                                     const SizedBox(height: 14),
                                     Text(
                                       answer,
@@ -4651,13 +5235,25 @@ class _QuizPanelState extends State<_QuizPanel>
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: _accD,
                                       borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: _acc.withOpacity(0.3)),
+                                      border: Border.all(
+                                        color: _acc.withOpacity(0.3),
+                                      ),
                                     ),
-                                    child: Text('Q', style: GoogleFonts.inter(color: _acc, fontSize: 11, fontWeight: FontWeight.w800)),
+                                    child: Text(
+                                      'Q',
+                                      style: GoogleFonts.inter(
+                                        color: _acc,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
@@ -4720,14 +5316,18 @@ class _QuizPanelState extends State<_QuizPanel>
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _cardIdx < (st.quizData?.length ?? 1) - 1 ? _bg3 : _bg2,
+                    color: _cardIdx < (st.quizData?.length ?? 1) - 1
+                        ? _bg3
+                        : _bg2,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: _bdr),
                   ),
                   child: Icon(
                     Icons.arrow_forward_rounded,
                     size: 16,
-                    color: _cardIdx < (st.quizData?.length ?? 1) - 1 ? _txt1 : _txt2.withOpacity(0.3),
+                    color: _cardIdx < (st.quizData?.length ?? 1) - 1
+                        ? _txt1
+                        : _txt2.withOpacity(0.3),
                   ),
                 ),
               ),
@@ -4762,9 +5362,16 @@ class _QuizPanelState extends State<_QuizPanel>
                       ),
                       const Spacer(),
                       GestureDetector(
-                        onTap: () => setState(() { _cardMode = true; _cardIdx = 0; _flipped = false; }),
+                        onTap: () => setState(() {
+                          _cardMode = true;
+                          _cardIdx = 0;
+                          _flipped = false;
+                        }),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: _accD,
                             borderRadius: BorderRadius.circular(6),
@@ -4775,7 +5382,14 @@ class _QuizPanelState extends State<_QuizPanel>
                             children: [
                               Icon(Icons.style_rounded, size: 11, color: _acc),
                               const SizedBox(width: 5),
-                              Text('카드 모드', style: GoogleFonts.inter(color: _acc, fontSize: 10, fontWeight: FontWeight.w700)),
+                              Text(
+                                '카드 모드',
+                                style: GoogleFonts.inter(
+                                  color: _acc,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -4791,8 +5405,9 @@ class _QuizPanelState extends State<_QuizPanel>
                     q: st.quizData![qi],
                     qi: qi,
                     answered: st.quizAnswers[qi],
-                    onAns: (oi) =>
-                        ref.read(fileEditorProvider.notifier).answerQuiz(qi, oi),
+                    onAns: (oi) => ref
+                        .read(fileEditorProvider.notifier)
+                        .answerQuiz(qi, oi),
                   ),
                 ),
               ),

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:study_flow/core/db_helper/files_db_helper.dart';
@@ -28,25 +27,18 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
   final _nameCtrl = TextEditingController();
   late Future<List<FileModel>> _filesFuture;
   List<String> _tags = [];
-  late AnimationController _animCtrl;
 
   @override
   void initState() {
     super.initState();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
     _nameCtrl.text = widget.project.name;
     _parseTags();
     _loadFiles();
-    _animCtrl.forward();
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _animCtrl.dispose();
     super.dispose();
   }
 
@@ -122,15 +114,14 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
     final ctrl = TextEditingController(text: file.title);
     await showDialog(
       context: context,
-      builder: (_) => _SFDialog(
+      builder: (dialogContext) => _SFDialog(
         title: '이름 변경',
         icon: Icons.edit_outlined,
-        child: SFTextField(hint: '새 이름 입력', controller: ctrl, autofocus: true),
         actions: [
           SFButton(
             label: '취소',
             outlined: true,
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
           ),
           SFButton(
             label: '확인',
@@ -155,11 +146,14 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
                   debugPrint('renameFile error: $e');
                 }
               }
-              if (context.mounted) Navigator.pop(context);
+              if (dialogContext.mounted) {
+                Navigator.pop(dialogContext);
+              }
               _loadFiles();
             },
           ),
         ],
+        child: SFTextField(hint: '새 이름 입력', controller: ctrl, autofocus: true),
       ),
     );
   }
@@ -209,12 +203,11 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
     await Navigator.push(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, a, __) => FileScreen(
-          fileId: newId,
-          projectId: widget.project.id,
-        ),
-        transitionsBuilder: (_, a, __, child) =>
-            FadeTransition(opacity: a, child: child),
+        pageBuilder: (routeContext, animation, secondaryAnimation) =>
+            FileScreen(fileId: newId, projectId: widget.project.id),
+        transitionsBuilder:
+            (routeContext, animation, secondaryAnimation, child) =>
+                FadeTransition(opacity: animation, child: child),
         transitionDuration: const Duration(milliseconds: 220),
       ),
     );
@@ -234,7 +227,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
         }
       },
       child: Scaffold(
-        backgroundColor: AppTheme.bgPrimary,
+        backgroundColor: AppTheme.bgDeep,
         floatingActionButton: MediaQuery.of(context).size.width < 600
             ? FloatingActionButton(
                 onPressed: _createNewFile,
@@ -251,6 +244,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _ProjectHeader(
+              project: widget.project,
               nameCtrl: _nameCtrl,
               tags: _tags,
               onBack: () {
@@ -302,18 +296,26 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
                   }
                   return _FileList(
                     files: files,
-                    animCtrl: _animCtrl,
-                    project: widget.project,
                     onOpenFile: (file) async {
                       await Navigator.push(
                         context,
                         PageRouteBuilder(
-                          pageBuilder: (_, a, __) => FileScreen(
-                            fileId: file.id,
-                            projectId: widget.project.id,
-                          ),
-                          transitionsBuilder: (_, a, __, child) =>
-                              FadeTransition(opacity: a, child: child),
+                          pageBuilder:
+                              (routeContext, animation, secondaryAnimation) =>
+                                  FileScreen(
+                                    fileId: file.id,
+                                    projectId: widget.project.id,
+                                  ),
+                          transitionsBuilder:
+                              (
+                                routeContext,
+                                animation,
+                                secondaryAnimation,
+                                child,
+                              ) => FadeTransition(
+                                opacity: animation,
+                                child: child,
+                              ),
                           transitionDuration: const Duration(milliseconds: 220),
                         ),
                       );
@@ -339,15 +341,6 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
       builder: (_) => _SFDialog(
         title: '태그 추가',
         icon: Icons.label_outline_rounded,
-        child: SFTextField(
-          hint: '태그 이름',
-          controller: ctrl,
-          autofocus: true,
-          onSubmitted: (v) {
-            _addTag(v);
-            Navigator.pop(context);
-          },
-        ),
         actions: [
           SFButton(
             label: '취소',
@@ -363,6 +356,15 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
             },
           ),
         ],
+        child: SFTextField(
+          hint: '태그 이름',
+          controller: ctrl,
+          autofocus: true,
+          onSubmitted: (v) {
+            _addTag(v);
+            Navigator.pop(context);
+          },
+        ),
       ),
     );
   }
@@ -370,6 +372,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
 
 // ─── 프로젝트 헤더 ─────────────────────────────────────────
 class _ProjectHeader extends StatelessWidget {
+  final ProjectModel project;
   final TextEditingController nameCtrl;
   final List<String> tags;
   final VoidCallback onBack;
@@ -378,6 +381,7 @@ class _ProjectHeader extends StatelessWidget {
   final VoidCallback onAddTag;
 
   const _ProjectHeader({
+    required this.project,
     required this.nameCtrl,
     required this.tags,
     required this.onBack,
@@ -389,81 +393,133 @@ class _ProjectHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final hPad = w < 600 ? 12.0 : 16.0;
+    final hPad = w < 600 ? 16.0 : 24.0;
     return SafeArea(
       bottom: false,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(hPad, 14, hPad + 4, 12),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(hPad, 18, hPad, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                _BackBtn(onTap: onBack),
-                const SizedBox(width: 10),
-                // 폴더 아이콘 (컬러)
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppTheme.accentDim, AppTheme.bgTertiary],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppTheme.accent.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.folder_rounded,
-                    size: 14,
-                    color: AppTheme.accent,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: nameCtrl,
-                    style: GoogleFonts.inter(
-                      color: AppTheme.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      filled: false,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                      hintText: '프로젝트 이름',
-                      hintStyle: GoogleFonts.inter(
-                        color: AppTheme.textMuted,
-                        fontSize: 15,
-                      ),
-                    ),
-                    onChanged: onUpdateName,
-                  ),
-                ),
-              ],
-            ),
-
-            if (tags.isNotEmpty || true)
-              Padding(
-                padding: const EdgeInsets.only(top: 10, left: 2),
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    ...tags.map(
-                      (t) => _TagChip(tag: t, onRemove: () => onRemoveTag(t)),
-                    ),
-                    _AddTagBtn(onAdd: onAddTag),
+            Container(
+              padding: EdgeInsets.all(w < 600 ? 18 : 24),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: AppTheme.borderSubtle),
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.bgSecondary.withValues(alpha: 0.96),
+                    const Color(0xFF10172D).withValues(alpha: 0.94),
+                    AppTheme.bgPrimary.withValues(alpha: 0.92),
                   ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.24),
+                    blurRadius: 34,
+                    offset: const Offset(0, 20),
+                  ),
+                ],
               ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _BackBtn(onTap: onBack),
+                      const SizedBox(width: 12),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          gradient: const LinearGradient(
+                            colors: [AppTheme.accent, AppTheme.blue],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.folder_copy_rounded,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'PROJECT SPACE',
+                              style: AppTheme.labelSmall.copyWith(
+                                color: AppTheme.textMuted,
+                                letterSpacing: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: nameCtrl,
+                              style: AppTheme.displayMedium.copyWith(
+                                fontSize: w < 600 ? 26 : 34,
+                                height: 1.05,
+                              ),
+                              decoration: InputDecoration(
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                filled: false,
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                                hintText: '프로젝트 이름',
+                                hintStyle: AppTheme.displayMedium.copyWith(
+                                  color: AppTheme.textMuted,
+                                  fontSize: w < 600 ? 26 : 34,
+                                ),
+                              ),
+                              onChanged: onUpdateName,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _MetaPill(
+                        icon: Icons.schedule_rounded,
+                        label:
+                            '생성 ${DateFormat('M.d').format(project.create_at)}',
+                      ),
+                      _MetaPill(
+                        icon: Icons.update_rounded,
+                        label:
+                            '최근 수정 ${DateFormat('M.d').format(project.update_at)}',
+                      ),
+                      _MetaPill(
+                        icon: Icons.label_rounded,
+                        label: tags.isEmpty ? '태그 없음' : '${tags.length} tags',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      for (final tag in tags)
+                        _TagChip(tag: tag, onRemove: () => onRemoveTag(tag)),
+                      _AddTagBtn(onAdd: onAddTag),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -488,17 +544,20 @@ class _BackBtnState extends State<_BackBtn> {
       onTap: widget.onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 130),
-        width: 32,
-        height: 32,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
-          color: _hover ? AppTheme.bgTertiary : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border:
-              _hover ? Border.all(color: AppTheme.borderSubtle) : null,
+          color: _hover
+              ? AppTheme.bgPrimary.withValues(alpha: 0.8)
+              : AppTheme.bgPrimary.withValues(alpha: 0.42),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _hover ? AppTheme.borderStrong : AppTheme.borderSubtle,
+          ),
         ),
         child: Icon(
           Icons.arrow_back_rounded,
-          size: 16,
+          size: 18,
           color: _hover ? AppTheme.textPrimary : AppTheme.textSecondary,
         ),
       ),
@@ -509,8 +568,6 @@ class _BackBtnState extends State<_BackBtn> {
 // ─── 파일 목록 ─────────────────────────────────────────────
 class _FileList extends StatelessWidget {
   final List<FileModel> files;
-  final AnimationController animCtrl;
-  final ProjectModel project;
   final void Function(FileModel) onOpenFile;
   final void Function(FileModel) onRename;
   final void Function(String) onDelete;
@@ -518,8 +575,6 @@ class _FileList extends StatelessWidget {
 
   const _FileList({
     required this.files,
-    required this.animCtrl,
-    required this.project,
     required this.onOpenFile,
     required this.onRename,
     required this.onDelete,
@@ -528,23 +583,44 @@ class _FileList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).size.width < 600 ? 88 : 24,
+    final aiCount = files
+        .where((file) => file.summary?.isNotEmpty == true)
+        .length;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        MediaQuery.of(context).size.width < 600 ? 16 : 24,
+        8,
+        MediaQuery.of(context).size.width < 600 ? 16 : 24,
+        MediaQuery.of(context).size.width < 600 ? 100 : 32,
       ),
-      itemCount: files.length + 1,
-      itemBuilder: (_, i) {
-        if (i == files.length) {
-          return _AddFileBtn(onCreate: onCreate);
-        }
-        return _FileRow(
-          file: files[i],
-          index: i,
-          onTap: () => onOpenFile(files[i]),
-          onRename: () => onRename(files[i]),
-          onDelete: () => onDelete(files[i].id),
-        );
-      },
+      children: [
+        _FilesOverviewCard(
+          fileCount: files.length,
+          aiCount: aiCount,
+          onCreate: onCreate,
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'NOTES',
+          style: AppTheme.labelSmall.copyWith(
+            color: AppTheme.textMuted,
+            letterSpacing: 1.4,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ...[
+          for (final file in files) ...[
+            _FileRow(
+              file: file,
+              onTap: () => onOpenFile(file),
+              onRename: () => onRename(file),
+              onDelete: () => onDelete(file.id),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ],
+        _AddFileBtn(onCreate: onCreate),
+      ],
     );
   }
 }
@@ -608,10 +684,12 @@ class _SFDialog extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: actions
-                .map((a) => Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: a,
-                    ))
+                .map(
+                  (a) => Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: a,
+                  ),
+                )
                 .toList(),
           ),
         ],
@@ -628,24 +706,23 @@ class _TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
     decoration: BoxDecoration(
-      color: AppTheme.bgTertiary,
-      borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: AppTheme.borderDefault),
+      color: AppTheme.bgPrimary.withValues(alpha: 0.6),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: AppTheme.borderSubtle),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          tag,
-          style: GoogleFonts.inter(
+          '#$tag',
+          style: AppTheme.labelSmall.copyWith(
             color: AppTheme.textSecondary,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(width: 5),
+        const SizedBox(width: 6),
         GestureDetector(
           onTap: onRemove,
           child: const Icon(
@@ -676,9 +753,10 @@ class _AddTagBtnState extends State<_AddTagBtn> {
       onTap: widget.onAdd,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 130),
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
+          color: AppTheme.bgPrimary.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: _hover ? AppTheme.borderStrong : AppTheme.borderSubtle,
           ),
@@ -694,10 +772,8 @@ class _AddTagBtnState extends State<_AddTagBtn> {
             const SizedBox(width: 4),
             Text(
               '태그 추가',
-              style: GoogleFonts.inter(
+              style: AppTheme.labelSmall.copyWith(
                 color: _hover ? AppTheme.textSecondary : AppTheme.textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -710,14 +786,12 @@ class _AddTagBtnState extends State<_AddTagBtn> {
 // ─── 파일 행 ─────────────────────────────────────────────
 class _FileRow extends StatefulWidget {
   final FileModel file;
-  final int index;
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
   const _FileRow({
     required this.file,
-    required this.index,
     required this.onTap,
     required this.onRename,
     required this.onDelete,
@@ -727,33 +801,8 @@ class _FileRow extends StatefulWidget {
   State<_FileRow> createState() => _FileRowState();
 }
 
-class _FileRowState extends State<_FileRow>
-    with SingleTickerProviderStateMixin {
+class _FileRowState extends State<_FileRow> {
   bool _hover = false;
-  late AnimationController _ac;
-  late Animation<Offset> _slide;
-  late Animation<double> _fade;
-
-  @override
-  void initState() {
-    super.initState();
-    _ac = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: 220 + widget.index * 30),
-    );
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
-    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
-    _ac.forward();
-  }
-
-  @override
-  void dispose() {
-    _ac.dispose();
-    super.dispose();
-  }
 
   String _formatDate(DateTime dt) {
     final now = DateTime.now();
@@ -766,232 +815,135 @@ class _FileRowState extends State<_FileRow>
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 600;
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(
-        position: _slide,
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _hover = true),
-          onExit: (_) => setState(() => _hover = false),
-          child: GestureDetector(
-            onTap: widget.onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              padding: EdgeInsets.symmetric(
-                horizontal: isMobile ? 16 : 20,
-                vertical: isMobile ? 14 : 11,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: _hover
+                  ? AppTheme.bgSecondary.withValues(alpha: 0.96)
+                  : AppTheme.bgSecondary.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: _hover ? AppTheme.borderStrong : AppTheme.borderSubtle,
               ),
-              decoration: BoxDecoration(
-                color: _hover
-                    ? AppTheme.bgSecondary.withValues(alpha: 0.8)
-                    : Colors.transparent,
-                border: Border(
-                  bottom: BorderSide(
-                    color: AppTheme.borderSubtle.withValues(alpha: 0.6),
-                    width: 0.5,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _hover ? AppTheme.accentDim : AppTheme.bgPrimary,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: _hover
+                          ? AppTheme.accent.withValues(alpha: 0.28)
+                          : AppTheme.borderSubtle,
+                    ),
+                  ),
+                  child: Center(
+                    child: widget.file.icon?.isNotEmpty == true
+                        ? Text(
+                            widget.file.icon!,
+                            style: const TextStyle(fontSize: 16),
+                          )
+                        : Icon(
+                            Icons.article_outlined,
+                            color: _hover
+                                ? AppTheme.accent
+                                : AppTheme.textTertiary,
+                          ),
                   ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  // 파일 아이콘
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    width: 36,
-                    height: 36,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.file.title.isEmpty ? '제목 없음' : widget.file.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTheme.headingSmall.copyWith(fontSize: 16),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        widget.file.tags.isEmpty
+                            ? _formatDate(widget.file.create_at)
+                            : '${_formatDate(widget.file.create_at)} · ${widget.file.tags}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.file.summary?.isNotEmpty == true) ...[
+                  Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
-                      color: _hover ? AppTheme.accentDim : AppTheme.bgTertiary,
-                      borderRadius: BorderRadius.circular(9),
+                      color: AppTheme.accentDim,
+                      borderRadius: BorderRadius.circular(999),
                       border: Border.all(
-                        color: _hover
-                            ? AppTheme.accent.withValues(alpha: 0.22)
-                            : AppTheme.borderSubtle,
+                        color: AppTheme.accent.withValues(alpha: 0.24),
                       ),
-                      boxShadow: _hover
-                          ? [
-                              BoxShadow(
-                                color: AppTheme.accent.withValues(alpha: 0.08),
-                                blurRadius: 10,
-                              ),
-                            ]
-                          : [],
                     ),
-                    child: Center(
-                      child: widget.file.icon?.isNotEmpty == true
-                          ? Text(
-                              widget.file.icon!,
-                              style: const TextStyle(fontSize: 15),
-                            )
-                          : Icon(
-                              Icons.article_outlined,
-                              size: 15,
-                              color: _hover
-                                  ? AppTheme.accent
-                                  : AppTheme.textTertiary,
-                            ),
+                    child: Text(
+                      'AI',
+                      style: AppTheme.labelSmall.copyWith(
+                        color: AppTheme.accent,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 13),
-
-                  // 제목 + 메타
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.file.title.isEmpty
-                              ? '제목 없음'
-                              : widget.file.title,
-                          style: GoogleFonts.inter(
-                            color: widget.file.title.isEmpty
-                                ? AppTheme.textTertiary
-                                : AppTheme.textPrimary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: -0.1,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Text(
-                              _formatDate(widget.file.create_at),
-                              style: AppTheme.caption,
-                            ),
-                            if (widget.file.tags.isNotEmpty) ...[
-                              Text(' · ', style: AppTheme.caption),
-                              Expanded(
-                                child: Text(
-                                  widget.file.tags,
-                                  style: AppTheme.caption.copyWith(
-                                    color: AppTheme.textTertiary,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // AI 요약 배지
-                  if (widget.file.summary?.isNotEmpty == true)
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [AppTheme.accentDim, AppTheme.bgTertiary],
-                        ),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: AppTheme.accent.withValues(alpha: 0.22),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.auto_awesome_rounded,
-                            size: 9,
-                            color: AppTheme.accent,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'AI',
-                            style: AppTheme.caption.copyWith(
-                              color: AppTheme.accent,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // 더보기 메뉴
-                  Builder(builder: (ctx) {
-                    final mbl = MediaQuery.of(ctx).size.width < 600;
-                    return AnimatedOpacity(
-                      opacity: mbl ? 1.0 : (_hover ? 1 : 0),
-                      duration: const Duration(milliseconds: 130),
-                      child: PopupMenuButton<String>(
-                        color: AppTheme.bgSecondary,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: const BorderSide(color: AppTheme.borderDefault),
-                        ),
-                        padding: EdgeInsets.zero,
-                        icon: Icon(
-                          Icons.more_horiz_rounded,
-                          size: 16,
-                          color: AppTheme.textSecondary,
-                        ),
-                        elevation: 12,
-                        shadowColor: const Color(0x55000018),
-                        onSelected: (v) {
-                          if (v == 'rename') widget.onRename();
-                          else if (v == 'delete') widget.onDelete();
-                        },
-                        itemBuilder: (_) => [
-                          PopupMenuItem(
-                            value: 'rename',
-                            height: 36,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.edit_outlined,
-                                  size: 13,
-                                  color: AppTheme.textSecondary,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '이름 변경',
-                                  style: GoogleFonts.inter(
-                                    color: AppTheme.textPrimary,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuDivider(height: 1),
-                          PopupMenuItem(
-                            value: 'delete',
-                            height: 36,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.delete_outline_rounded,
-                                  size: 13,
-                                  color: AppTheme.red,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '삭제',
-                                  style: GoogleFonts.inter(
-                                    color: AppTheme.red,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
                 ],
-              ),
+                PopupMenuButton<String>(
+                  color: AppTheme.bgSecondary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: AppTheme.borderDefault),
+                  ),
+                  onSelected: (value) {
+                    if (value == 'rename') {
+                      widget.onRename();
+                    } else if (value == 'delete') {
+                      widget.onDelete();
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem<String>(
+                      value: 'rename',
+                      child: Text('이름 변경'),
+                    ),
+                    PopupMenuItem<String>(value: 'delete', child: Text('삭제')),
+                  ],
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgPrimary.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.borderSubtle),
+                    ),
+                    child: const Icon(
+                      Icons.more_horiz_rounded,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1011,14 +963,18 @@ class _EmptyFiles extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [AppTheme.bgSecondary, AppTheme.bgTertiary],
+              colors: [
+                AppTheme.bgSecondary,
+                AppTheme.bgPrimary,
+                AppTheme.bgTertiary,
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(26),
             border: Border.all(color: AppTheme.borderSubtle),
             boxShadow: [
               BoxShadow(
@@ -1034,16 +990,16 @@ class _EmptyFiles extends StatelessWidget {
             color: AppTheme.textTertiary,
           ),
         ),
-        const SizedBox(height: 18),
-        Text('아직 노트가 없어요', style: AppTheme.headingSmall),
-        const SizedBox(height: 6),
-        Text('첫 번째 노트를 작성해보세요.', style: AppTheme.bodySmall),
-        const SizedBox(height: 24),
-        SFButton(
-          label: '노트 만들기',
-          icon: Icons.add_rounded,
-          onPressed: onCreate,
+        const SizedBox(height: 20),
+        Text('아직 노트가 없어요', style: AppTheme.headingLarge),
+        const SizedBox(height: 8),
+        Text(
+          '새 노트를 만들면 이 프로젝트가 하나의 작업 스튜디오처럼 움직이기 시작합니다.',
+          style: AppTheme.bodySmall,
+          textAlign: TextAlign.center,
         ),
+        const SizedBox(height: 24),
+        SFButton(label: '노트 만들기', icon: Icons.add_rounded, onPressed: onCreate),
       ],
     ),
   );
@@ -1066,43 +1022,143 @@ class _AddFileBtnState extends State<_AddFileBtn> {
       onTap: widget.onCreate,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        color: _hover
-            ? AppTheme.bgSecondary.withValues(alpha: 0.7)
-            : Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: _hover
+              ? AppTheme.bgSecondary.withValues(alpha: 0.92)
+              : AppTheme.bgSecondary.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: _hover ? AppTheme.borderStrong : AppTheme.borderSubtle,
+          ),
+        ),
         child: Row(
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 140),
-              width: 36,
-              height: 36,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
-                color: _hover ? AppTheme.accentDim : Colors.transparent,
-                borderRadius: BorderRadius.circular(9),
+                color: _hover ? AppTheme.accentDim : AppTheme.bgPrimary,
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: _hover
-                      ? AppTheme.accent.withValues(alpha: 0.22)
+                      ? AppTheme.accent.withValues(alpha: 0.24)
                       : AppTheme.borderSubtle,
                 ),
               ),
               child: Icon(
                 Icons.add_rounded,
-                size: 16,
                 color: _hover ? AppTheme.accent : AppTheme.textMuted,
               ),
             ),
-            const SizedBox(width: 13),
-            Text(
-              '새 페이지',
-              style: GoogleFonts.inter(
-                color: _hover ? AppTheme.accent : AppTheme.textMuted,
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                '새 페이지 만들기',
+                style: AppTheme.headingSmall.copyWith(
+                  color: _hover ? AppTheme.textPrimary : AppTheme.textSecondary,
+                ),
               ),
+            ),
+            Icon(
+              Icons.arrow_forward_rounded,
+              color: _hover ? AppTheme.textPrimary : AppTheme.textMuted,
             ),
           ],
         ),
       ),
     ),
   );
+}
+
+class _MetaPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MetaPill({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.bgPrimary.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppTheme.textSecondary),
+          const SizedBox(width: 6),
+          Text(label, style: AppTheme.labelSmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilesOverviewCard extends StatelessWidget {
+  final int fileCount;
+  final int aiCount;
+  final VoidCallback onCreate;
+
+  const _FilesOverviewCard({
+    required this.fileCount,
+    required this.aiCount,
+    required this.onCreate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppTheme.borderSubtle),
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.accent.withValues(alpha: 0.08),
+            AppTheme.blue.withValues(alpha: 0.05),
+            AppTheme.bgSecondary.withValues(alpha: 0.92),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Workspace pulse', style: AppTheme.headingSmall),
+          const SizedBox(height: 6),
+          Text(
+            '이 프로젝트의 노트 흐름을 한 번에 훑고 바로 새 페이지를 만들 수 있게 정리했습니다.',
+            style: AppTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _MetaPill(
+                icon: Icons.description_outlined,
+                label: '$fileCount notes',
+              ),
+              _MetaPill(
+                icon: Icons.auto_awesome_rounded,
+                label: '$aiCount AI summaries',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SFButton(
+            label: '새 노트 만들기',
+            icon: Icons.add_rounded,
+            onPressed: onCreate,
+          ),
+        ],
+      ),
+    );
+  }
 }
