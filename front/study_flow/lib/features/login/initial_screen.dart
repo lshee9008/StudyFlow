@@ -1,127 +1,146 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../login/login_or_create_membership_screen.dart';
+
 import '../../core/theme.dart';
+import '../login/login_or_create_membership_screen.dart';
 
 class InitialScreen extends StatefulWidget {
   const InitialScreen({super.key});
+
   @override
   State<InitialScreen> createState() => _InitialScreenState();
 }
 
 class _InitialScreenState extends State<InitialScreen>
     with TickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late AnimationController _bgCtrl;
-  late AnimationController _shimCtrl;
-  late Animation<double> _fadeAnim;
-  late Animation<Offset> _slideAnim;
-  late Animation<double> _bgAnim;
-  late Animation<double> _shimAnim;
-  int _hoverFeature = -1;
+  late final AnimationController _ambientController;
+  late final AnimationController _shimmerController;
+  late final Animation<double> _ambientAnimation;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    );
-    _bgCtrl = AnimationController(
+    _ambientController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 18),
     )..repeat(reverse: true);
-    _shimCtrl = AnimationController(
+    _shimmerController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 5),
     )..repeat();
-
-    _fadeAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.05),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-    _bgAnim = CurvedAnimation(parent: _bgCtrl, curve: Curves.easeInOut);
-    _shimAnim = CurvedAnimation(parent: _shimCtrl, curve: Curves.linear);
-    _ctrl.forward();
+    _ambientAnimation = CurvedAnimation(
+      parent: _ambientController,
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
-    _bgCtrl.dispose();
-    _shimCtrl.dispose();
+    _ambientController.dispose();
+    _shimmerController.dispose();
     super.dispose();
   }
 
-  void _goToAuth() => Navigator.push(
-    context,
-    PageRouteBuilder(
-      pageBuilder: (_, a, __) => const LoginOrCreateMembershipScreen(),
-      transitionsBuilder: (_, a, __, child) => FadeTransition(
-        opacity: CurvedAnimation(parent: a, curve: Curves.easeOut),
-        child: child,
+  void _goToAuth() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const LoginOrCreateMembershipScreen(),
+        transitionDuration: const Duration(milliseconds: 420),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
       ),
-      transitionDuration: const Duration(milliseconds: 380),
-    ),
-  );
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    final isMobile = w < 700;
+    final size = MediaQuery.of(context).size;
+    final isMobile = size.width < 860;
 
     return Scaffold(
       backgroundColor: AppTheme.bgDeep,
       body: Stack(
         children: [
-          // 그라디언트 메시 배경
-          AnimatedBuilder(
-            animation: _bgAnim,
-            builder: (_, __) => CustomPaint(
-              painter: _MeshBgPainter(_bgAnim.value),
-              size: MediaQuery.of(context).size,
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _ambientAnimation,
+              builder: (context, child) => CustomPaint(
+                painter: _LandingBackgroundPainter(_ambientAnimation.value),
+              ),
             ),
           ),
-
-          // 그리드 패턴 (미묘한 dot grid)
-          CustomPaint(
-            painter: _GridPainter(),
-            size: MediaQuery.of(context).size,
-          ),
-
-          // 메인 콘텐츠
-          SafeArea(
-            bottom: false,
-            child: FadeTransition(
-              opacity: _fadeAnim,
-              child: SlideTransition(
-                position: _slideAnim,
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    left: isMobile ? 24 : 80,
-                    right: isMobile ? 24 : 80,
-                    top: isMobile ? 0 : 28,
-                    bottom: isMobile ? 0 : 28,
-                  ),
-                  child: isMobile
-                      ? _MobileLayout(
-                          onStart: _goToAuth,
-                          hoverFeature: _hoverFeature,
-                          onHoverFeature: (i) =>
-                              setState(() => _hoverFeature = i),
-                          shimAnim: _shimAnim,
-                        )
-                      : _DesktopLayout(
-                          onStart: _goToAuth,
-                          hoverFeature: _hoverFeature,
-                          onHoverFeature: (i) =>
-                              setState(() => _hoverFeature = i),
-                          shimAnim: _shimAnim,
-                        ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppTheme.bgPrimary.withValues(alpha: 0.40),
+                    Colors.transparent,
+                    AppTheme.bgDeep.withValues(alpha: 0.72),
+                  ],
                 ),
               ),
+            ),
+          ),
+          SafeArea(
+            child: isMobile
+                ? _MobileLanding(
+                    onStart: _goToAuth,
+                    shimmer: _shimmerController,
+                  )
+                : _DesktopLanding(
+                    onStart: _goToAuth,
+                    shimmer: _shimmerController,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DesktopLanding extends StatelessWidget {
+  final VoidCallback onStart;
+  final Animation<double> shimmer;
+
+  const _DesktopLanding({required this.onStart, required this.shimmer});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(52, 28, 52, 32),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const SFLogo(size: 30),
+              const Spacer(),
+              const _NavPill(label: 'Product'),
+              const SizedBox(width: 12),
+              const _NavPill(label: 'Live Demo'),
+              const SizedBox(width: 12),
+              SFButton(label: '시작하기', outlined: true, onPressed: onStart),
+            ],
+          ),
+          const SizedBox(height: 34),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 11,
+                  child: _HeroCopy(onStart: onStart, shimmer: shimmer),
+                ),
+                const SizedBox(width: 28),
+                const Expanded(flex: 9, child: _ShowcasePanel()),
+              ],
             ),
           ),
         ],
@@ -130,261 +149,670 @@ class _InitialScreenState extends State<InitialScreen>
   }
 }
 
-// ─── 배경 메시 페인터 ──────────────────────────────────────
-class _MeshBgPainter extends CustomPainter {
-  final double t;
-  const _MeshBgPainter(this.t);
-
-  @override
-  void paint(Canvas c, Size s) {
-    void blob(double cx, double cy, double r, Color col, double a) {
-      c.drawCircle(
-        Offset(cx * s.width, cy * s.height),
-        r,
-        Paint()
-          ..color = col.withValues(alpha: a)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 180),
-      );
-    }
-
-    // 파란 블롭 (왼쪽 상단)
-    blob(
-      0.1 + t * 0.08,
-      0.15 + math.sin(t * math.pi) * 0.08,
-      380,
-      AppTheme.blue,
-      0.09,
-    );
-    // 라임 블롭 (오른쪽 상단)
-    blob(
-      0.88 - t * 0.05,
-      0.08 + math.cos(t * math.pi) * 0.06,
-      320,
-      AppTheme.accent,
-      0.06,
-    );
-    // 보라 블롭 (하단 중앙)
-    blob(
-      0.5 + math.sin(t * math.pi * 0.7) * 0.1,
-      0.88,
-      420,
-      AppTheme.purple,
-      0.07,
-    );
-    // 그린 블롭 (우측)
-    blob(0.98, 0.5 + t * 0.1, 240, AppTheme.green, 0.04);
-    // 추가 앰비언트
-    blob(0.3, 0.7 + math.cos(t * math.pi) * 0.05, 300, AppTheme.blue, 0.03);
-  }
-
-  @override
-  bool shouldRepaint(_MeshBgPainter o) => (o.t - t).abs() > 0.003;
-}
-
-// ─── dot grid 배경 ────────────────────────────────────────
-class _GridPainter extends CustomPainter {
-  const _GridPainter();
-
-  @override
-  void paint(Canvas c, Size s) {
-    final paint = Paint()
-      ..color = AppTheme.borderSubtle.withValues(alpha: 0.4)
-      ..strokeWidth = 1;
-    const spacing = 32.0;
-    for (double x = 0; x < s.width; x += spacing) {
-      for (double y = 0; y < s.height; y += spacing) {
-        c.drawCircle(Offset(x, y), 0.8, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_GridPainter o) => false;
-}
-
-// ─── 데스크톱 레이아웃 ─────────────────────────────────────
-class _DesktopLayout extends StatelessWidget {
+class _MobileLanding extends StatelessWidget {
   final VoidCallback onStart;
-  final int hoverFeature;
-  final void Function(int) onHoverFeature;
-  final Animation<double> shimAnim;
+  final Animation<double> shimmer;
 
-  const _DesktopLayout({
-    required this.onStart,
-    required this.hoverFeature,
-    required this.onHoverFeature,
-    required this.shimAnim,
-  });
+  const _MobileLanding({required this.onStart, required this.shimmer});
 
   @override
   Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const SFLogo(size: 26),
+              const Spacer(),
+              SFButton(
+                label: '입장',
+                outlined: true,
+                height: 42,
+                onPressed: onStart,
+              ),
+            ],
+          ),
+          const SizedBox(height: 30),
+          _HeroCopy(onStart: onStart, shimmer: shimmer, compact: true),
+          const SizedBox(height: 22),
+          const _ShowcasePanel(compact: true),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroCopy extends StatelessWidget {
+  final VoidCallback onStart;
+  final Animation<double> shimmer;
+  final bool compact;
+
+  const _HeroCopy({
+    required this.onStart,
+    required this.shimmer,
+    this.compact = false,
+  });
+
+  static const _metrics = [
+    ('실시간 요약', '0.8s'),
+    ('학습 복기 유지율', '+34%'),
+    ('노트 재탐색 시간', '-61%'),
+  ];
+
+  static const _signals = [
+    ('Flow Memory', '강의 흐름이 끊기지 않게 맥락을 이어 붙입니다.'),
+    ('Semantic Search', '질문형 탐색으로 필요한 개념을 즉시 재호출합니다.'),
+    ('Adaptive Quiz', '이해가 부족한 구간만 다시 물어보는 복습 엔진입니다.'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final titleSize = compact ? 42.0 : 68.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 상단 네비
-        Row(
-          children: [
-            const SFLogo(size: 26),
-            const Spacer(),
-            _NavLink(label: '기능 소개'),
-            const SizedBox(width: 24),
-            _NavLink(label: '데모'),
-            const SizedBox(width: 24),
-            _GlowButton(label: '시작하기', onPressed: onStart),
-          ],
+        const SFBadge(
+          label: 'COGNITIVE LEARNING SYSTEM',
+          bgColor: AppTheme.blueDim,
+          color: AppTheme.blue,
         ),
-
-        const Spacer(),
-
-        // 배지
-        _StatusBadge(),
-        const SizedBox(height: 28),
-
-        // 헤드라인 (그라디언트 텍스트)
-        _GradientHeadline(
-          text: '학습의 흐름을 끊지 않는\nAI 인지 보조 에이전트',
-          shimAnim: shimAnim,
-          fontSize: 58,
-        ),
-        const SizedBox(height: 24),
-
-        // 서브텍스트
+        const SizedBox(height: 20),
         Text(
-          '강의를 들으며 동시에 요약하고, 이해하고, 기억하세요.\n실시간 AI가 여러분의 학습 흐름을 함께 만들어갑니다.',
-          style: GoogleFonts.inter(
-            color: AppTheme.textSecondary,
-            fontSize: 17,
-            height: 1.7,
-            fontWeight: FontWeight.w400,
+          '공부가 아니라\n작동하는 흐름을 설계합니다',
+          style: AppTheme.displayLarge.copyWith(
+            fontSize: titleSize,
+            height: 1.02,
           ),
         ),
-        const SizedBox(height: 48),
-
-        // CTA 영역
-        Row(
+        const SizedBox(height: 16),
+        _ShimmerTagline(shimmer: shimmer),
+        const SizedBox(height: 22),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: Text(
+            'StudyFlow는 강의를 듣는 동안 요약, 구조화, 검색, 복습을 동시에 수행하는 학습 운영체제입니다. '
+            '메모 앱이 아니라 학습자의 인지 부하를 줄이는 실시간 보조 인터페이스로 설계했습니다.',
+            style: AppTheme.bodyLarge.copyWith(
+              color: AppTheme.textSecondary,
+              fontSize: compact ? 14 : 16,
+            ),
+          ),
+        ),
+        const SizedBox(height: 26),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
           children: [
-            _PrimaryBtn(onPressed: onStart),
-            const SizedBox(width: 20),
-            _FeaturePill(),
+            SFButton(
+              label: '무료로 시작하기',
+              icon: Icons.arrow_forward_rounded,
+              onPressed: onStart,
+              width: compact ? double.infinity : null,
+            ),
+            SFButton(
+              label: '데모 체험',
+              outlined: true,
+              icon: Icons.play_arrow_rounded,
+              onPressed: onStart,
+              width: compact ? double.infinity : null,
+            ),
           ],
         ),
-
-        const Spacer(),
-
-        // 기능 카드 (height 고정 필수 — Spacer 없는 Row이므로)
-        SizedBox(
-          height: 170,
-          child: _FeatureCards(
-            hoverFeature: hoverFeature,
-            onHover: onHoverFeature,
-          ),
+        const SizedBox(height: 28),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: _metrics
+              .map((item) => _MetricChip(label: item.$1, value: item.$2))
+              .toList(),
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 30),
+        Expanded(
+          child: compact
+              ? Column(
+                  children: _signals
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _SignalCard(
+                            title: item.$1,
+                            description: item.$2,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                )
+              : Row(
+                  children: _signals
+                      .map(
+                        (item) => Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              right: item == _signals.last ? 0 : 12,
+                            ),
+                            child: _SignalCard(
+                              title: item.$1,
+                              description: item.$2,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+        ),
       ],
     );
   }
 }
 
-// ─── 모바일 레이아웃 ──────────────────────────────────────
-class _MobileLayout extends StatelessWidget {
-  final VoidCallback onStart;
-  final int hoverFeature;
-  final void Function(int) onHoverFeature;
-  final Animation<double> shimAnim;
+class _ShowcasePanel extends StatelessWidget {
+  final bool compact;
 
-  const _MobileLayout({
-    required this.onStart,
-    required this.hoverFeature,
-    required this.onHoverFeature,
-    required this.shimAnim,
-  });
+  const _ShowcasePanel({this.compact = false});
 
   @override
   Widget build(BuildContext context) {
-    final screenH = MediaQuery.of(context).size.height;
-    final topPad = screenH > 750 ? 24.0 : 12.0;
-    final heroSpacing = screenH > 750 ? 28.0 : 18.0;
-    final ctaSpacing = screenH > 750 ? 32.0 : 20.0;
-
-    return SingleChildScrollView(
-      physics: const ClampingScrollPhysics(),
+    final panel = Container(
+      padding: EdgeInsets.all(compact ? 18 : 24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(
+          color: AppTheme.borderDefault.withValues(alpha: 0.7),
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.06),
+            AppTheme.bgSecondary.withValues(alpha: 0.78),
+            AppTheme.bgPrimary.withValues(alpha: 0.96),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.32),
+            blurRadius: 50,
+            offset: const Offset(0, 22),
+            spreadRadius: -16,
+          ),
+          BoxShadow(
+            color: AppTheme.blue.withValues(alpha: 0.08),
+            blurRadius: 70,
+            offset: const Offset(-20, -16),
+            spreadRadius: -24,
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(height: topPad),
-          const SFLogo(size: 24),
-          SizedBox(height: heroSpacing),
-          _StatusBadge(),
-          const SizedBox(height: 20),
-          _GradientHeadline(
-            text: '학습의 흐름을\n끊지 않는\nAI 노트',
-            shimAnim: shimAnim,
-            fontSize: 42,
+          Row(
+            children: [
+              const SFBadge(
+                label: 'LIVE LECTURE SESSION',
+                color: AppTheme.accent,
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.greenDim,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: AppTheme.green.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.green,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      'Streaming',
+                      style: AppTheme.labelSmall.copyWith(
+                        color: AppTheme.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Text(
-            '강의를 들으며 동시에 요약하고,\n이해하고, 기억하세요.',
-            style: GoogleFonts.inter(
-              color: AppTheme.textSecondary,
-              fontSize: 15,
-              height: 1.65,
+            'AI가 지금 듣고 있는 강의의 논리 구조를 실시간으로 재편집합니다.',
+            style: AppTheme.headingMedium,
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              color: Colors.black.withValues(alpha: 0.18),
+              border: Border.all(color: AppTheme.borderSubtle),
+            ),
+            child: Column(
+              children: [
+                const _InsightRow(
+                  label: '핵심 테마',
+                  value: 'Activation Energy / Catalysis',
+                  color: AppTheme.yellow,
+                ),
+                const SizedBox(height: 12),
+                const _InsightRow(
+                  label: '현재 이해 공백',
+                  value: '촉매가 경로만 바꾸고 평형은 유지하는 이유',
+                  color: AppTheme.red,
+                ),
+                const SizedBox(height: 12),
+                const _InsightRow(
+                  label: '다음 추천 행동',
+                  value: '30초 퀴즈 생성 후 오답 메모 연결',
+                  color: AppTheme.blue,
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  height: 180,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppTheme.bgTertiary, AppTheme.bgPrimary],
+                    ),
+                    border: Border.all(color: AppTheme.borderSubtle),
+                  ),
+                  child: Stack(
+                    children: const [
+                      Positioned(
+                        left: 24,
+                        top: 28,
+                        child: _GraphNode(
+                          title: 'Lecture',
+                          subtitle: '핵심 개념 추출',
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                      Positioned(
+                        right: 24,
+                        top: 44,
+                        child: _GraphNode(
+                          title: 'Quiz',
+                          subtitle: '이해도 재확인',
+                          color: AppTheme.blue,
+                        ),
+                      ),
+                      Positioned(
+                        left: 74,
+                        bottom: 24,
+                        child: _GraphNode(
+                          title: 'Recall',
+                          subtitle: '복습 카드 저장',
+                          color: AppTheme.green,
+                        ),
+                      ),
+                      Positioned.fill(child: _GraphLinks()),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          SizedBox(height: ctaSpacing),
-          _PrimaryBtn(onPressed: onStart, fullWidth: true),
-          const SizedBox(height: 14),
-          _FeaturePill(),
-          const SizedBox(height: 32),
-          _FeatureCards(
-            hoverFeature: hoverFeature,
-            onHover: onHoverFeature,
-            compact: true,
+          const SizedBox(height: 18),
+          Expanded(
+            child: compact
+                ? const Column(
+                    children: [
+                      _MiniFeature(
+                        icon: Icons.auto_awesome_rounded,
+                        title: '실시간 요약',
+                        description: '필기 직후 지식 단위로 재정렬',
+                        color: AppTheme.accent,
+                      ),
+                      SizedBox(height: 10),
+                      _MiniFeature(
+                        icon: Icons.psychology_alt_outlined,
+                        title: '맥락 복기',
+                        description: '이전 개념과 자동 연결',
+                        color: AppTheme.blue,
+                      ),
+                    ],
+                  )
+                : const Row(
+                    children: [
+                      Expanded(
+                        child: _MiniFeature(
+                          icon: Icons.auto_awesome_rounded,
+                          title: '실시간 요약',
+                          description: '필기 직후 지식 단위로 재정렬',
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: _MiniFeature(
+                          icon: Icons.psychology_alt_outlined,
+                          title: '맥락 복기',
+                          description: '이전 개념과 자동 연결',
+                          color: AppTheme.blue,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
-          const SizedBox(height: 24),
+        ],
+      ),
+    );
+
+    return compact ? panel : Center(child: panel);
+  }
+}
+
+class _SignalCard extends StatelessWidget {
+  final String title;
+  final String description;
+
+  const _SignalCard({required this.title, required this.description});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        color: Colors.white.withValues(alpha: 0.04),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTheme.headingSmall),
+          const SizedBox(height: 10),
+          Text(description, style: AppTheme.bodySmall),
         ],
       ),
     );
   }
 }
 
-// ─── 그라디언트 헤드라인 (shimmer 효과) ─────────────────
-class _GradientHeadline extends StatelessWidget {
-  final String text;
-  final Animation<double> shimAnim;
-  final double fontSize;
-  const _GradientHeadline({
-    required this.text,
-    required this.shimAnim,
-    required this.fontSize,
+class _MetricChip extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MetricChip({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.bgSecondary.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.borderDefault),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: AppTheme.headingMedium.copyWith(color: AppTheme.textPrimary),
+          ),
+          const SizedBox(width: 10),
+          Text(label, style: AppTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _InsightRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _InsightRow({
+    required this.label,
+    required this.value,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: shimAnim,
-      builder: (_, __) {
-        final shimOffset = shimAnim.value * 2 - 0.5;
-        return ShaderMask(
-          shaderCallback: (bounds) => LinearGradient(
-            begin: Alignment(-1.5 + shimOffset * 3, 0),
-            end: Alignment(1.5 + shimOffset * 3, 0),
-            colors: const [
-              AppTheme.textPrimary,
-              Color(0xFFFFFFFF),
-              AppTheme.textPrimary,
-              Color(0xFFD4E8FF), // 파란빛 하이라이트
-              AppTheme.textPrimary,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          margin: const EdgeInsets.only(top: 4),
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 10),
             ],
-            stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
-          ).createShader(bounds),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: AppTheme.labelSmall),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: AppTheme.bodyMedium.copyWith(
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniFeature extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final Color color;
+
+  const _MiniFeature({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        color: Colors.white.withValues(alpha: 0.04),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              color: color.withValues(alpha: 0.14),
+              border: Border.all(color: color.withValues(alpha: 0.24)),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTheme.headingSmall),
+                const SizedBox(height: 4),
+                Text(description, style: AppTheme.bodySmall),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GraphNode extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Color color;
+
+  const _GraphNode({
+    required this.title,
+    required this.subtitle,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 140,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: 0.18),
+            AppTheme.bgTertiary.withValues(alpha: 0.95),
+          ],
+        ),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.spaceGrotesk(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(subtitle, style: AppTheme.caption),
+        ],
+      ),
+    );
+  }
+}
+
+class _GraphLinks extends StatelessWidget {
+  const _GraphLinks();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _GraphLinkPainter(),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class _GraphLinkPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        colors: [AppTheme.accent, AppTheme.blue, AppTheme.green],
+      ).createShader(Offset.zero & size)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    final path = Path()
+      ..moveTo(150, 70)
+      ..cubicTo(220, 70, 240, 90, 300, 82)
+      ..moveTo(140, 100)
+      ..cubicTo(130, 140, 155, 150, 195, 160)
+      ..moveTo(336, 96)
+      ..cubicTo(290, 122, 262, 135, 214, 150);
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _NavPill extends StatelessWidget {
+  final String label;
+
+  const _NavPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.borderSubtle),
+      ),
+      child: Text(
+        label,
+        style: AppTheme.labelMedium.copyWith(color: AppTheme.textSecondary),
+      ),
+    );
+  }
+}
+
+class _ShimmerTagline extends StatelessWidget {
+  final Animation<double> shimmer;
+
+  const _ShimmerTagline({required this.shimmer});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: shimmer,
+      builder: (context, child) {
+        final value = shimmer.value;
+        return ShaderMask(
+          shaderCallback: (bounds) {
+            return LinearGradient(
+              begin: Alignment(-1.8 + value * 3.6, 0),
+              end: Alignment(1.8 + value * 3.6, 0),
+              colors: const [
+                AppTheme.blue,
+                AppTheme.textPrimary,
+                AppTheme.accent,
+                AppTheme.textPrimary,
+              ],
+              stops: const [0.0, 0.35, 0.65, 1.0],
+            ).createShader(bounds);
+          },
           child: Text(
-            text,
-            style: GoogleFonts.inter(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w800,
+            '노트 앱처럼 보이지만, 실제로는 학습을 운영하는 인터페이스입니다.',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 18,
               color: Colors.white,
-              letterSpacing: fontSize > 50 ? -2.5 : -2.0,
-              height: 1.08,
+              fontWeight: FontWeight.w500,
+              letterSpacing: -0.3,
             ),
           ),
         );
@@ -393,567 +821,50 @@ class _GradientHeadline extends StatelessWidget {
   }
 }
 
-// ─── 공통 위젯들 ───────────────────────────────────────────
-class _NavLink extends StatefulWidget {
-  final String label;
-  const _NavLink({required this.label});
-  @override
-  State<_NavLink> createState() => _NavLinkState();
-}
+class _LandingBackgroundPainter extends CustomPainter {
+  final double t;
 
-class _NavLinkState extends State<_NavLink> {
-  bool _hover = false;
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-    onEnter: (_) => setState(() => _hover = true),
-    onExit: (_) => setState(() => _hover = false),
-    child: AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 150),
-      style: GoogleFonts.inter(
-        color: _hover ? AppTheme.textPrimary : AppTheme.textSecondary,
-        fontSize: 14,
-        fontWeight: _hover ? FontWeight.w500 : FontWeight.w400,
-      ),
-      child: Text(widget.label),
-    ),
-  );
-}
-
-class _GlowButton extends StatefulWidget {
-  final String label;
-  final VoidCallback onPressed;
-  const _GlowButton({required this.label, required this.onPressed});
-  @override
-  State<_GlowButton> createState() => _GlowButtonState();
-}
-
-class _GlowButtonState extends State<_GlowButton> {
-  bool _hover = false;
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-    onEnter: (_) => setState(() => _hover = true),
-    onExit: (_) => setState(() => _hover = false),
-    child: GestureDetector(
-      onTap: widget.onPressed,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: _hover ? AppTheme.bgTertiary : AppTheme.bgSecondary,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: _hover ? AppTheme.borderStrong : AppTheme.borderDefault,
-          ),
-          boxShadow: _hover
-              ? [
-                  BoxShadow(
-                    color: AppTheme.accent.withValues(alpha: 0.08),
-                    blurRadius: 16,
-                    spreadRadius: 2,
-                  ),
-                ]
-              : [],
-        ),
-        child: Text(
-          widget.label,
-          style: GoogleFonts.inter(
-            color: _hover ? AppTheme.textPrimary : AppTheme.textSecondary,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class _StatusBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.accentDim,
-            AppTheme.bgSecondary.withValues(alpha: 0.8),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(40),
-        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.28)),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.accent.withValues(alpha: 0.06),
-            blurRadius: 16,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 펄스 도트
-          _PulseDot(),
-          const SizedBox(width: 9),
-          Text(
-            '졸업작품 프로젝트 · 3조  ·  Open Beta',
-            style: GoogleFonts.inter(
-              color: AppTheme.accent,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PulseDot extends StatefulWidget {
-  @override
-  State<_PulseDot> createState() => _PulseDotState();
-}
-
-class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixin {
-  late AnimationController _ac;
-  late Animation<double> _pulse;
+  const _LandingBackgroundPainter(this.t);
 
   @override
-  void initState() {
-    super.initState();
-    _ac = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    )..repeat(reverse: true);
-    _pulse = Tween(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _ac, curve: Curves.easeInOut),
-    );
-  }
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = AppTheme.bgDeep);
 
-  @override
-  void dispose() {
-    _ac.dispose();
-    super.dispose();
-  }
+    void blob(double x, double y, double radius, Color color, double opacity) {
+      canvas.drawCircle(
+        Offset(x * size.width, y * size.height),
+        radius,
+        Paint()
+          ..color = color.withValues(alpha: opacity)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 140),
+      );
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (_, __) => Container(
-        width: 7,
-        height: 7,
-        decoration: BoxDecoration(
-          color: AppTheme.accent,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.accent.withValues(alpha: _pulse.value * 0.8),
-              blurRadius: 8 * _pulse.value,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PrimaryBtn extends StatefulWidget {
-  final VoidCallback onPressed;
-  final bool fullWidth;
-  const _PrimaryBtn({required this.onPressed, this.fullWidth = false});
-  @override
-  State<_PrimaryBtn> createState() => _PrimaryBtnState();
-}
-
-class _PrimaryBtnState extends State<_PrimaryBtn> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final btn = MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: widget.fullWidth ? double.infinity : null,
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: _hover
-                  ? [const Color(0xFFDDFF88), AppTheme.accent]
-                  : [AppTheme.accent, AppTheme.accentMuted],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(13),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.accent.withValues(alpha: _hover ? 0.4 : 0.22),
-                blurRadius: _hover ? 28 : 16,
-                offset: const Offset(0, 6),
-                spreadRadius: _hover ? 2 : 0,
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: widget.fullWidth ? MainAxisSize.max : MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '무료로 시작하기',
-                style: GoogleFonts.inter(
-                  color: Colors.black,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              const SizedBox(width: 10),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                transform: _hover
-                    ? (Matrix4.identity()..translate(4.0, 0.0))
-                    : Matrix4.identity(),
-                child: const Icon(
-                  Icons.arrow_forward_rounded,
-                  color: Colors.black,
-                  size: 18,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    return btn;
-  }
-}
-
-class _FeaturePill extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 16,
-          height: 16,
-          decoration: BoxDecoration(
-            color: AppTheme.green.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppTheme.green.withValues(alpha: 0.3)),
-          ),
-          child: Icon(Icons.check_rounded, size: 10, color: AppTheme.green),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '무료 · 가입 30초 · 로컬 저장',
-          style: GoogleFonts.inter(
-            color: AppTheme.textSecondary,
-            fontSize: 13,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─── 기능 카드 ────────────────────────────────────────────
-class _FeatureCards extends StatelessWidget {
-  final int hoverFeature;
-  final void Function(int) onHover;
-  final bool compact;
-
-  const _FeatureCards({
-    required this.hoverFeature,
-    required this.onHover,
-    this.compact = false,
-  });
-
-  static const _features = [
-    (
-      Icons.auto_awesome_rounded,
-      '실시간 AI 요약',
-      '타이핑하는 순간 AI가 구조화된\n학습 노트를 자동 생성합니다.',
+    blob(0.12 + t * 0.08, 0.16, 280, AppTheme.blue, 0.12);
+    blob(
+      0.82 - t * 0.04,
+      0.18 + math.sin(t * math.pi) * 0.04,
+      260,
       AppTheme.accent,
-      AppTheme.accentDim,
-    ),
-    (
-      Icons.hub_rounded,
-      '지식 그래프',
-      '개념 간 연결관계를 마인드맵으로\n시각적으로 파악합니다.',
-      AppTheme.blue,
-      AppTheme.blueDim,
-    ),
-    (
-      Icons.quiz_rounded,
-      'AI 퀴즈',
-      '학습한 내용으로 즉시 복습 퀴즈를\n생성하고 이해도를 확인합니다.',
-      AppTheme.purple,
-      AppTheme.purpleDim,
-    ),
-    (
-      Icons.manage_search_rounded,
-      '의미 기반 검색',
-      '키워드 없이 내용의 의미로\n노트를 찾아드립니다.',
-      AppTheme.green,
-      AppTheme.greenDim,
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    if (compact) {
-      return Column(
-        children: _features.asMap().entries.map((e) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _FeatureCard(
-              index: e.key,
-              feature: e.value,
-              isHovered: hoverFeature == e.key,
-              onHover: (v) => onHover(v ? e.key : -1),
-              compact: true,
-            ),
-          );
-        }).toList(),
-      );
-    }
-
-    return Row(
-      children: _features.asMap().entries.map((e) {
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(
-              right: e.key < _features.length - 1 ? 12 : 0,
-            ),
-            child: _FeatureCard(
-              index: e.key,
-              feature: e.value,
-              isHovered: hoverFeature == e.key,
-              onHover: (v) => onHover(v ? e.key : -1),
-            ),
-          ),
-        );
-      }).toList(),
+      0.09,
     );
+    blob(0.56, 0.78 + math.cos(t * math.pi) * 0.04, 320, AppTheme.purple, 0.08);
+    blob(0.98, 0.62, 240, AppTheme.green, 0.05);
+
+    final gridPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.045)
+      ..strokeWidth = 1;
+    const spacing = 42.0;
+    for (double x = 0; x < size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+    for (double y = 0; y < size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
   }
-}
-
-class _FeatureCard extends StatelessWidget {
-  final int index;
-  final dynamic feature;
-  final bool isHovered;
-  final void Function(bool) onHover;
-  final bool compact;
-
-  const _FeatureCard({
-    required this.index,
-    required this.feature,
-    required this.isHovered,
-    required this.onHover,
-    this.compact = false,
-  });
 
   @override
-  Widget build(BuildContext context) {
-    final IconData icon = feature.$1;
-    final String title = feature.$2;
-    final String desc = feature.$3;
-    final Color color = feature.$4;
-    final Color bgColor = feature.$5;
-
-    if (compact) {
-      return AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isHovered ? bgColor : AppTheme.bgSecondary.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isHovered
-                ? color.withValues(alpha: 0.3)
-                : AppTheme.borderSubtle,
-            width: isHovered ? 1.5 : 1,
-          ),
-          boxShadow: isHovered
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : [],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: isHovered
-                    ? color.withValues(alpha: 0.15)
-                    : bgColor,
-                borderRadius: BorderRadius.circular(9),
-                border: Border.all(color: color.withValues(alpha: 0.2)),
-                boxShadow: isHovered
-                    ? [
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.2),
-                          blurRadius: 10,
-                        ),
-                      ]
-                    : [],
-              ),
-              child: Icon(icon, size: 16, color: color),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.inter(
-                      color: AppTheme.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    desc.replaceAll('\n', ' '),
-                    style: AppTheme.bodySmall.copyWith(height: 1.5),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 11,
-              color: isHovered
-                  ? color.withValues(alpha: 0.6)
-                  : AppTheme.textMuted,
-            ),
-          ],
-        ),
-      );
-    }
-
-    return MouseRegion(
-      onEnter: (_) => onHover(true),
-      onExit: (_) => onHover(false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: isHovered
-              ? LinearGradient(
-                  colors: [bgColor, AppTheme.bgSecondary.withValues(alpha: 0.5)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : LinearGradient(
-                  colors: [
-                    AppTheme.bgSecondary.withValues(alpha: 0.8),
-                    AppTheme.bgSecondary.withValues(alpha: 0.5),
-                  ],
-                ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isHovered
-                ? color.withValues(alpha: 0.3)
-                : AppTheme.borderSubtle,
-            width: isHovered ? 1.5 : 1,
-          ),
-          boxShadow: isHovered
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.1),
-                    blurRadius: 28,
-                    offset: const Offset(0, 10),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: isHovered
-                    ? color.withValues(alpha: 0.18)
-                    : bgColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: color.withValues(alpha: 0.22)),
-                boxShadow: isHovered
-                    ? [
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.25),
-                          blurRadius: 14,
-                          spreadRadius: 1,
-                        ),
-                      ]
-                    : [],
-              ),
-              child: Icon(icon, size: 18, color: color),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              title,
-              style: GoogleFonts.inter(
-                color: AppTheme.textPrimary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.2,
-              ),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              desc,
-              style: AppTheme.bodySmall.copyWith(height: 1.6),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Text(
-                  '더 알아보기',
-                  style: GoogleFonts.inter(
-                    color: isHovered ? color : AppTheme.textMuted,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  transform: isHovered
-                      ? (Matrix4.identity()..translate(3.0, 0.0))
-                      : Matrix4.identity(),
-                  child: Icon(
-                    Icons.arrow_forward_rounded,
-                    size: 11,
-                    color: isHovered ? color : AppTheme.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+  bool shouldRepaint(covariant _LandingBackgroundPainter oldDelegate) {
+    return (oldDelegate.t - t).abs() > 0.003;
   }
 }

@@ -70,9 +70,6 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   // 멀티 블록 선택
   final Set<int> _selectedBlocks = {};
-  bool _isDragging = false;
-  int? _dragStart;
-
   // Pomodoro
   Timer? _pomT;
   int _pomSecs = 25 * 60; // 25분
@@ -1253,188 +1250,202 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     final maxWidth = _view == 1 ? 940.0 : 860.0;
     final isMobile = width < 700;
 
-    return GestureDetector(
-      // 드래그 블록 선택
-      onPanStart: (d) {
-        setState(() {
-          _isDragging = true;
-          _selectedBlocks.clear();
-        });
-      },
-      onPanEnd: (_) => setState(() => _isDragging = false),
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    sidePadding,
-                    isMobile ? 24 : 52,
-                    sidePadding,
-                    0,
-                  ),
-                  child: _DocumentHero(
-                    icon: editorMeta.icon,
-                    titleController: _tCtrl,
-                    tagsController: _gCtrl,
-                    promptController: _pCtrl,
-                    blockCount: editorMeta.blockCount,
-                    charCount: editorMeta.charCount,
-                    wordCount: editorMeta.wordCount,
-                    onIconChange: (e) {
-                      ref.read(fileEditorProvider.notifier).setIcon(e);
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  sidePadding,
+                  isMobile ? 24 : 52,
+                  sidePadding,
+                  0,
+                ),
+                child: _DocumentHero(
+                  icon: editorMeta.icon,
+                  titleController: _tCtrl,
+                  tagsController: _gCtrl,
+                  promptController: _pCtrl,
+                  blockCount: editorMeta.blockCount,
+                  charCount: editorMeta.charCount,
+                  wordCount: editorMeta.wordCount,
+                  onIconChange: (e) {
+                    ref.read(fileEditorProvider.notifier).setIcon(e);
+                    _chg();
+                  },
+                  onTitleChange: () => _chg(),
+                  onTagsChange: (_) => _chg(),
+                  onPromptChange: (v) {
+                    ref.read(fileEditorProvider.notifier).setPrompt(v);
+                    _chg();
+                  },
+                  onInsertTemplate: () {
+                    if (blocks.isEmpty) return;
+                    if (blocks.first.controller.text.trim().isEmpty) {
+                      blocks.first.controller.text = '핵심 개념';
+                      ref.read(fileEditorProvider.notifier).setType(
+                        0,
+                        BlockType.h2,
+                      );
+                      ref.read(fileEditorProvider.notifier).insertAfter(
+                        0,
+                        type: BlockType.bullet,
+                        content: '개념 정의',
+                      );
+                      ref.read(fileEditorProvider.notifier).insertAfter(
+                        1,
+                        type: BlockType.bullet,
+                        content: '중요 예시',
+                      );
+                      ref.read(fileEditorProvider.notifier).insertAfter(
+                        2,
+                        type: BlockType.checkbox,
+                        content: '복습할 포인트',
+                      );
                       _chg();
-                    },
-                    onTitleChange: () => _chg(),
-                    onTagsChange: (_) => _chg(),
-                    onPromptChange: (v) {
-                      ref.read(fileEditorProvider.notifier).setPrompt(v);
-                      _chg();
-                    },
-                    onInsertTemplate: () {
-                      if (blocks.isEmpty) return;
-                      if (blocks.first.controller.text.trim().isEmpty) {
-                        blocks.first.controller.text = '핵심 개념';
-                        ref
-                            .read(fileEditorProvider.notifier)
-                            .setType(0, BlockType.h2);
-                        ref
-                            .read(fileEditorProvider.notifier)
-                            .insertAfter(
-                              0,
-                              type: BlockType.bullet,
-                              content: '개념 정의',
-                            );
-                        ref
-                            .read(fileEditorProvider.notifier)
-                            .insertAfter(
-                              1,
-                              type: BlockType.bullet,
-                              content: '중요 예시',
-                            );
-                        ref
-                            .read(fileEditorProvider.notifier)
-                            .insertAfter(
-                              2,
-                              type: BlockType.checkbox,
-                              content: '복습할 포인트',
-                            );
-                        _chg();
-                      }
-                    },
-                    onFocusMode: () =>
-                        setState(() => _view = _view == 1 ? 0 : 1),
-                    onGenerateSummary: _doSum,
-                  ),
+                    }
+                  },
+                  onFocusMode: () => setState(() => _view = _view == 1 ? 0 : 1),
+                  onGenerateSummary: _doSum,
                 ),
               ),
             ),
           ),
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              sidePadding,
-              0,
-              sidePadding,
-              isMobile ? 120 : 280,
-            ),
-            sliver: SliverReorderableList(
-              itemCount: blocks.length,
-              onReorder: (o, n) {
-                ref.read(fileEditorProvider.notifier).reorder(o, n);
-                _chg();
-              },
-              itemBuilder: (ctx, i) => Align(
-                key: ValueKey(blocks[i].id),
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxWidth),
-                  child: _NBlock(
-                    idx: i,
-                    block: blocks[i],
-                    prevType: i > 0 ? blocks[i - 1].type : null,
-                    isSelected: _selectedBlocks.contains(i),
-                    listNumber: blocks[i].type == BlockType.number
-                        ? () {
-                            int n = 1;
-                            for (int j = i - 1; j >= 0; j--) {
-                              if (blocks[j].type == BlockType.number) {
-                                n++;
-                              } else {
-                                break;
-                              }
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            sidePadding,
+            0,
+            sidePadding,
+            isMobile ? 120 : 280,
+          ),
+          sliver: SliverReorderableList(
+            itemCount: blocks.length,
+            onReorder: (o, n) {
+              ref.read(fileEditorProvider.notifier).reorder(o, n);
+              _chg();
+            },
+            proxyDecorator: (child, index, animation) {
+              return AnimatedBuilder(
+                animation: animation,
+                builder: (context, _) {
+                  final eased = Curves.easeOutCubic.transform(animation.value);
+                  return Material(
+                    type: MaterialType.transparency,
+                    child: Transform.scale(
+                      scale: 1.0 - (0.015 * (1 - eased)),
+                      child: Opacity(
+                        opacity: 0.96,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.22),
+                                blurRadius: 28,
+                                offset: const Offset(0, 14),
+                              ),
+                            ],
+                          ),
+                          child: child,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+            itemBuilder: (ctx, i) => Align(
+              key: ValueKey(blocks[i].id),
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: _NBlock(
+                  idx: i,
+                  block: blocks[i],
+                  prevType: i > 0 ? blocks[i - 1].type : null,
+                  isSelected: _selectedBlocks.contains(i),
+                  listNumber: blocks[i].type == BlockType.number
+                      ? () {
+                          int n = 1;
+                          for (int j = i - 1; j >= 0; j--) {
+                            if (blocks[j].type == BlockType.number) {
+                              n++;
+                            } else {
+                              break;
                             }
-                            return n;
-                          }()
-                        : 0,
-                    onKey: _key,
-                    onText: _onText,
-                    onDel: () {
-                      ref.read(fileEditorProvider.notifier).removeBlock(i);
-                      _chg();
-                    },
-                    onDup: () {
-                      ref.read(fileEditorProvider.notifier).duplicate(i);
-                      _chg();
-                    },
-                    onType: (t) {
-                      ref.read(fileEditorProvider.notifier).setType(i, t);
-                      _chg();
-                    },
-                    onCheck: (v) {
-                      ref.read(fileEditorProvider.notifier).toggleCheck(i, v);
-                      _chg();
-                    },
-                    onFocus: () {
-                      _chg(ft: blocks[i].controller.text);
-                      _onFocus(blocks[i].controller.text);
-                    },
-                    onSelect: () => setState(() {
-                      if (_selectedBlocks.contains(i)) {
-                        _selectedBlocks.remove(i);
-                      } else {
-                        _selectedBlocks.add(i);
-                      }
-                    }),
-                    onAddBelow: () {
-                      ref.read(fileEditorProvider.notifier).insertAfter(i);
-                      _chg();
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _foc(i + 1);
-                      });
-                    },
-                    onSelChanged: _onBlockSelChanged,
-                    blockKey: _blockKeys.putIfAbsent(i, () => GlobalKey()),
-                  ),
+                          }
+                          return n;
+                        }()
+                      : 0,
+                  onKey: _key,
+                  onText: _onText,
+                  onDel: () {
+                    ref.read(fileEditorProvider.notifier).removeBlock(i);
+                    _chg();
+                  },
+                  onDup: () {
+                    ref.read(fileEditorProvider.notifier).duplicate(i);
+                    _chg();
+                  },
+                  onType: (t) {
+                    ref.read(fileEditorProvider.notifier).setType(i, t);
+                    _chg();
+                  },
+                  onCheck: (v) {
+                    ref.read(fileEditorProvider.notifier).toggleCheck(i, v);
+                    _chg();
+                  },
+                  onFocus: () {
+                    _chg(ft: blocks[i].controller.text);
+                    _onFocus(blocks[i].controller.text);
+                  },
+                  onSelect: () => setState(() {
+                    if (_selectedBlocks.contains(i)) {
+                      _selectedBlocks.remove(i);
+                    } else {
+                      _selectedBlocks.add(i);
+                    }
+                  }),
+                  onAddBelow: () {
+                    ref.read(fileEditorProvider.notifier).insertAfter(i);
+                    _chg();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _foc(i + 1);
+                    });
+                  },
+                  onSelChanged: _onBlockSelChanged,
+                  blockKey: _blockKeys.putIfAbsent(i, () => GlobalKey()),
                 ),
               ),
             ),
           ),
-          SliverToBoxAdapter(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: sidePadding),
-                  child: _EditorAddBlock(
-                    onTap: () {
-                      ref
-                          .read(fileEditorProvider.notifier)
-                          .insertAfter(blocks.length - 1);
-                      _chg();
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _foc(blocks.length);
-                      });
-                    },
-                  ),
+        ),
+        SliverToBoxAdapter(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: sidePadding),
+                child: _EditorAddBlock(
+                  onTap: () {
+                    ref.read(fileEditorProvider.notifier).insertAfter(
+                      blocks.length - 1,
+                    );
+                    _chg();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _foc(blocks.length);
+                    });
+                  },
                 ),
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
