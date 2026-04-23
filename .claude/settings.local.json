@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(flutter analyze:*)",
-      "Bash(flutter build:*)"
+      "Bash(flutter build:*)",
+      "Bash(grep -n \"^  }$\\\\|^    }$\\\\|^      }$\" /Users/lsh/Docs/StudyFlow/front/study_flow/lib/features/file/file_screen.dart)"
     ]
   }
 }
