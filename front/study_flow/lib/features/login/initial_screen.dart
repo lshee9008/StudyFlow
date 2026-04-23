@@ -271,8 +271,14 @@ class _DesktopLayout extends StatelessWidget {
 
         const Spacer(),
 
-        // 기능 카드
-        _FeatureCards(hoverFeature: hoverFeature, onHover: onHoverFeature),
+        // 기능 카드 (height 고정 필수 — Spacer 없는 Row이므로)
+        SizedBox(
+          height: 170,
+          child: _FeatureCards(
+            hoverFeature: hoverFeature,
+            onHover: onHoverFeature,
+          ),
+        ),
         const SizedBox(height: 40),
       ],
     );
@@ -920,7 +926,7 @@ class _FeatureCard extends StatelessWidget {
               desc,
               style: AppTheme.bodySmall.copyWith(height: 1.6),
             ),
-            const Spacer(),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Text(
