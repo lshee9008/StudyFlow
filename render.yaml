@@ -30,7 +30,9 @@ services:
     name: studyflow-redis
     plan: free
     region: oregon
-    ipAllowList: []
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere
 
 databases:
   - name: studyflow-db
