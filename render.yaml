@@ -6,7 +6,7 @@ services:
     dockerfilePath: ./back/Dockerfile
     dockerContext: ./back
     plan: free
-    region: oregon
+    region: singapore
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -28,4 +28,4 @@ databases:
     plan: free
     databaseName: studyflow
     user: studyflow
-    region: oregon
+    region: singapore
