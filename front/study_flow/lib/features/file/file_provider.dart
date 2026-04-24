@@ -7,11 +7,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/db_helper/files_db_helper.dart';
+import '../../core/provider_config.dart' show baseUrl;
 import '../../models/block_model.dart';
 import '../../core/markdown_parser.dart';
 import 'file_model.dart';
 
-const String _api = 'http://127.0.0.1:8000';
+// provider_config.dart 의 baseUrl 을 사용 (dart-define API_BASE 로 주입 가능)
+const String _api = baseUrl;
 
 class SummaryBlock {
   String content;

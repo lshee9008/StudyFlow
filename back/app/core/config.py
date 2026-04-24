@@ -2,8 +2,29 @@ import os
 
 class Settings:
     PROJECT_NAME: str = "StudyFlow API"
-    # 실제 운영 시 .env 파일이나 환경변수에서 가져오도록 수정 권장
-    # 예: postgresql://user:password@localhost:5432/dbname
+
+    # ── Database ────────────────────────────────────────────
+    # local  : sqlite:///./studyflow.db
+    # render : postgresql://user:pw@host/db  (자동 주입)
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./studyflow.db")
+
+    # ── Redis ───────────────────────────────────────────────
+    # local  : redis://localhost:6379/0
+    # render : redis://red-xxx:6379  (자동 주입)
+    # 미설정 시 in-memory LRU 폴백 자동 사용
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+
+    # ── Ollama (LLM) ────────────────────────────────────────
+    # local  : http://localhost:11434
+    # docker : http://ollama:11434
+    # 외부   : https://your-ollama.example.com
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # ── External APIs ───────────────────────────────────────
+    TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
+
+    # ── CORS ────────────────────────────────────────────────
+    # 쉼표로 여러 오리진 지정: https://app.vercel.app,https://custom.com
+    ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "*")
 
 settings = Settings()

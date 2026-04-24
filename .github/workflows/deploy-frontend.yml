@@ -1,0 +1,65 @@
+name: "Deploy Frontend → Vercel"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "front/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:   # 수동 트리거
+
+jobs:
+  build-and-deploy:
+    name: Flutter Web Build & Vercel Deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: front/study_flow
+
+    steps:
+      # ── 소스 체크아웃 ─────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Flutter 설치 ──────────────────────────────────
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.x"
+          channel: stable
+          cache: true
+
+      # ── 의존성 ────────────────────────────────────────
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ── 분석 ─────────────────────────────────────────
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+        continue-on-error: true   # 경고가 배포를 막지 않도록
+
+      # ── 웹 빌드 ───────────────────────────────────────
+      # API_BASE 는 GitHub Secret 에서 주입
+      # 예: https://studyflow-api.onrender.com
+      - name: Build web (release)
+        run: |
+          flutter build web \
+            --release \
+            --web-renderer canvaskit \
+            --dart-define=API_BASE=${{ secrets.API_BASE_URL }}
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+
+      # ── Vercel 배포 ────────────────────────────────────
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token:      ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id:     ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: front/study_flow/build/web
+          vercel-args: "--prod"
+
+      # ── 배포 URL 출력 ─────────────────────────────────
+      - name: Print deploy URL
+        run: echo "✅ 배포 완료"

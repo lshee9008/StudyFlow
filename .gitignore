@@ -1,0 +1,26 @@
+# ── 환경변수 / 시크릿 ────────────────────────────────────
+.env
+back/.env
+*.env.local
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+back/.venv/
+back/venv/
+back/studyflow.db
+back/chroma_db/
+
+# ── Flutter / Dart ───────────────────────────────────────
+front/study_flow/.dart_tool/
+front/study_flow/.flutter-plugins
+front/study_flow/.flutter-plugins-dependencies
+front/study_flow/build/
+
+# ── IDE ──────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

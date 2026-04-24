@@ -1,0 +1,83 @@
+# ════════════════════════════════════════════════════════════
+# StudyFlow — Render 배포 설정
+#
+# 사용법:
+#   1. render.com 에서 "New Blueprint" 생성
+#   2. 이 저장소 연결 → render.yaml 자동 인식
+#   3. 환경변수 TAVILY_API_KEY, OLLAMA_BASE_URL 수동 설정
+#
+# 구성:
+#   - studyflow-api   : FastAPI 웹 서비스
+#   - studyflow-redis : Redis 인스턴스
+#   - studyflow-db    : PostgreSQL 데이터베이스
+# ════════════════════════════════════════════════════════════
+
+services:
+
+  # ── FastAPI 백엔드 ───────────────────────────────────────
+  - type: web
+    name: studyflow-api
+    runtime: docker
+    dockerfilePath: ./back/Dockerfile
+    dockerContext: ./back
+    plan: free          # starter / standard / pro 로 업그레이드 가능
+    region: singapore   # 한국 사용자 기준 최근접 리전
+    envVars:
+
+      # PostgreSQL — Render 가 자동 주입
+      - key: DATABASE_URL
+        fromDatabase:
+          name: studyflow-db
+          property: connectionString
+
+      # Redis — Render 가 자동 주입
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: studyflow-redis
+          property: connectionString
+
+      # LLM — 외부 Ollama 인스턴스 URL (직접 입력)
+      # 예: http://your-vps-ip:11434
+      - key: OLLAMA_BASE_URL
+        value: http://localhost:11434   # ← 반드시 외부 Ollama URL 로 변경
+
+      # Tavily 웹 검색 키 (대시보드에서 직접 입력)
+      - key: TAVILY_API_KEY
+        sync: false
+
+      # CORS — Flutter Web 배포 URL 로 변경
+      # 예: https://studyflow.vercel.app,https://www.studyflow.co.kr
+      - key: ALLOWED_ORIGINS
+        value: "*"
+
+      # Python 버전
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+
+    # ChromaDB 벡터 DB 영구 저장 디스크
+    # free 플랜은 디스크 미지원 → starter 이상 필요
+    # disk:
+    #   name: chroma-store
+    #   mountPath: /app/chroma_db
+    #   sizeGB: 5
+
+    healthCheckPath: /health
+    autoDeploy: true
+
+
+  # ── Redis ────────────────────────────────────────────────
+  - type: redis
+    name: studyflow-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    region: singapore
+
+
+# ── PostgreSQL ────────────────────────────────────────────
+databases:
+  - name: studyflow-db
+    plan: free
+    databaseName: studyflow
+    user: studyflow
+    region: singapore

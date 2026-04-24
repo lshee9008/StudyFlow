@@ -2,20 +2,17 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, AsyncGenerator
-import json, httpx, re, asyncio, hashlib, time as _time
-from collections import OrderedDict
+import json, httpx, re, asyncio
+
+from app.core.config import settings
+from app.core.redis_cache import cache_get, cache_set, make_key
 
 router = APIRouter()
-OLLAMA = "http://localhost:11434/api/generate"
+
+# Ollama 엔드포인트 — 환경변수 OLLAMA_BASE_URL 로 제어
+OLLAMA = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate"
 MODEL  = "gemma3:27b-cloud"
-
-# ── LRU 캐시 (메모리, 100개, TTL 1h) ─────────────────────
-_llm_cache: OrderedDict = OrderedDict()
-_CACHE_MAX  = 100
-_CACHE_TTL  = 3600
-
-def _cache_key(prompt: str, temp: float, tokens: int) -> str:
-    return hashlib.md5(f"{prompt}|{temp}|{tokens}".encode()).hexdigest()
+_CACHE_TTL = 3600
 
 
 # ══════════════════════════════════════════════════════════
@@ -118,17 +115,34 @@ def _semantic_chunks(text: str, max_chars: int = 1500, overlap: int = 200) -> Li
     return result
 
 
+def _infer_node_description(text: str, label: str, group: str = "") -> str:
+    label = (label or "").strip()
+    if not label:
+        return ""
+
+    normalized = re.sub(r"\s+", "", label).lower()
+    candidates = re.split(r"(?<=[.!?])\s+|\n+", text)
+    for candidate in candidates:
+        snippet = candidate.strip()
+        if not snippet:
+            continue
+        if normalized in re.sub(r"\s+", "", snippet).lower():
+            return snippet[:140]
+
+    if group:
+        return f"{group} 묶음에서 다루는 핵심 개념이다."
+    return f"{label}와 관련된 핵심 개념이다."
+
+
 # ══════════════════════════════════════════════════════════
-# LLM 호출 — 비스트리밍 (캐시 포함)
+# LLM 호출 — 비스트리밍 (Redis 캐시 포함)
 # ══════════════════════════════════════════════════════════
 async def _llm(prompt: str, temp: float = 0.2, tokens: int = 1500) -> str:
-    key = _cache_key(prompt, temp, tokens)
-    if key in _llm_cache:
-        entry = _llm_cache[key]
-        if _time.time() - entry['ts'] < _CACHE_TTL:
-            _llm_cache.move_to_end(key)
-            return entry['val']
-        del _llm_cache[key]
+    key = make_key(prompt, temp, tokens, prefix="sf:llm")
+
+    cached = await cache_get(key)
+    if cached is not None:
+        return cached
 
     async with httpx.AsyncClient(timeout=120.0) as c:
         r = await c.post(OLLAMA, json={
@@ -139,9 +153,7 @@ async def _llm(prompt: str, temp: float = 0.2, tokens: int = 1500) -> str:
         r.raise_for_status()
         result = r.json().get("response", "").strip()
 
-    if len(_llm_cache) >= _CACHE_MAX:
-        _llm_cache.popitem(last=False)
-    _llm_cache[key] = {'val': result, 'ts': _time.time()}
+    await cache_set(key, result, ttl=_CACHE_TTL)
     return result
 
 
@@ -528,6 +540,9 @@ async def proofread(req: ProofreadReq):
 # ══════════════════════════════════════════════════════════
 class GraphReq(BaseModel):
     content: str
+    title: str = ""
+    tags: str = ""
+    summary: str = ""
 
 
 @router.post("/graph")
@@ -536,18 +551,66 @@ async def graph(req: GraphReq):
     if _meaningful(text) < 30:
         return {"nodes": [], "edges": []}
     p = (
-        f"텍스트: {text[:2000]}\n\n"
-        "핵심 키워드 최대 12개와 관계를 순수 JSON으로만 출력:\n"
-        '{"nodes":[{"id":"개념","label":"개념","type":"main"}],'
-        '"edges":[{"source":"A","target":"B","label":"관계"}]}\n\n'
-        "type은 main(핵심개념), sub(하위개념), detail(세부사항) 중 하나."
+        "당신은 강의 노트를 시각적 개념 보드로 재구성하는 전문가입니다.\n"
+        f"제목: {req.title}\n"
+        f"태그: {req.tags}\n"
+        f"기존 요약: {req.summary[:2000]}\n\n"
+        f"원문:\n{text[:6000]}\n\n"
+        "아래 규칙으로 화이트보드형 지식 그래프를 순수 JSON만으로 출력하세요.\n"
+        "1. nodes는 10~24개\n"
+        "2. 루트 1개, 핵심 개념 3~6개, 세부 설명/예시 노드 여러 개\n"
+        "3. 각 노드는 label 외에 description을 반드시 포함\n"
+        "4. description은 1~3문장 또는 bullet 성격의 짧은 부연설명\n"
+        "5. group은 같은 덩어리의 개념 묶음명\n"
+        "6. type은 core, branch, concept, detail 중 하나\n"
+        "7. edges는 source, target, label 포함\n"
+        "8. 본문에 없는 내용은 만들지 말 것\n\n"
+        "형식 예시:\n"
+        '{'
+        '"nodes":['
+        '{"id":"os","label":"운영체제","description":"하드웨어와 응용 소프트웨어 사이를 중재한다.","type":"core","group":"시스템"},'
+        '{"id":"cpu","label":"CPU","description":"명령을 실행하고 제어 흐름을 담당한다.","type":"branch","group":"하드웨어"}'
+        '],'
+        '"edges":[{"source":"os","target":"cpu","label":"제어/사용"}]'
+        '}\n\n'
+        "설명 없이 JSON만 출력하세요."
     )
     try:
-        raw = await _llm(p, temp=0.1, tokens=600)
+        raw = await _llm(p, temp=0.1, tokens=1600)
         raw = raw.replace("```json", "").replace("```", "").strip()
         s, e = raw.find("{"), raw.rfind("}")
         if s != -1 and e != -1:
-            return json.loads(raw[s:e + 1])
+            parsed = json.loads(raw[s:e + 1])
+            nodes = parsed.get("nodes", [])
+            edges = parsed.get("edges", [])
+            clean_nodes = []
+            for i, node in enumerate(nodes):
+                if not isinstance(node, dict):
+                    continue
+                clean_nodes.append({
+                    "id": str(node.get("id") or f"node_{i}"),
+                    "label": str(node.get("label") or ""),
+                    "description": str(node.get("description") or "").strip()
+                    or _infer_node_description(
+                        text,
+                        str(node.get("label") or ""),
+                        str(node.get("group") or ""),
+                    ),
+                    "type": str(node.get("type") or "detail"),
+                    "group": str(node.get("group") or ""),
+                    "x": node.get("x"),
+                    "y": node.get("y"),
+                })
+            clean_edges = []
+            for edge in edges:
+                if not isinstance(edge, dict):
+                    continue
+                clean_edges.append({
+                    "source": str(edge.get("source") or ""),
+                    "target": str(edge.get("target") or ""),
+                    "label": str(edge.get("label") or ""),
+                })
+            return {"nodes": clean_nodes, "edges": clean_edges}
         return {"nodes": [], "edges": []}
     except Exception:
         return {"nodes": [], "edges": []}

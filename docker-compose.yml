@@ -1,0 +1,130 @@
+# ════════════════════════════════════════════════════════════
+# StudyFlow — 로컬 개발 전체 스택
+#
+# 사용법:
+#   cp .env.example .env          # 환경변수 설정
+#   docker compose up -d          # 전체 실행
+#   docker compose up -d backend  # 백엔드만 재시작
+#   docker compose logs -f backend
+#
+# 포트 요약:
+#   8000  → FastAPI 백엔드
+#   5432  → PostgreSQL
+#   6379  → Redis
+#   11434 → Ollama (LLM)
+# ════════════════════════════════════════════════════════════
+
+services:
+
+  # ── FastAPI 백엔드 ───────────────────────────────────────
+  backend:
+    build:
+      context: ./back
+      target: runtime
+    container_name: sf-backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://sf:sf@db:5432/studyflow
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_BASE_URL: http://ollama:11434
+      ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:8080,http://localhost:5173"
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./back:/app          # 핫리로드용 소스 마운트
+      - chroma_data:/app/chroma_db
+    restart: unless-stopped
+    networks:
+      - sf_net
+    # 개발 시 reload 활성화
+    command: >
+      uvicorn app.main:app
+        --host 0.0.0.0
+        --port 8000
+        --reload
+        --reload-dir /app/app
+
+  # ── PostgreSQL ───────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: sf-db
+    environment:
+      POSTGRES_USER: sf
+      POSTGRES_PASSWORD: sf
+      POSTGRES_DB: studyflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sf -d studyflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - sf_net
+
+  # ── Redis ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sf-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+        --save 60 1
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - sf_net
+
+  # ── Ollama (LLM 서버) ────────────────────────────────────
+  # 첫 실행 후 모델 pull 필요:
+  #   docker exec sf-ollama ollama pull gemma3:27b-cloud
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sf-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - sf_net
+    # GPU 사용 시 주석 해제 (NVIDIA)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+
+# ── 볼륨 ─────────────────────────────────────────────────
+volumes:
+  pg_data:
+  redis_data:
+  chroma_data:
+  ollama_data:
+
+
+# ── 네트워크 ──────────────────────────────────────────────
+networks:
+  sf_net:
+    driver: bridge
