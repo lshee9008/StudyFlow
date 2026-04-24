@@ -1,6 +1,5 @@
 services:
 
-  # ── FastAPI 백엔드 ───────────────────────────────────────
   - type: web
     name: studyflow-api
     env: docker
@@ -8,6 +7,8 @@ services:
     dockerContext: ./back
     plan: free
     region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -21,21 +22,16 @@ services:
       - key: OLLAMA_BASE_URL
         value: http://localhost:11434
       - key: TAVILY_API_KEY
-        sync: false
+        value: ""
       - key: ALLOWED_ORIGINS
         value: "*"
-    healthCheckPath: /health
-    autoDeploy: true
 
-  # ── Redis ────────────────────────────────────────────────
   - type: redis
     name: studyflow-redis
     plan: free
     region: oregon
-    maxmemoryPolicy: allkeys-lru
     ipAllowList: []
 
-# ── PostgreSQL ────────────────────────────────────────────
 databases:
   - name: studyflow-db
     plan: free
