@@ -72,6 +72,7 @@ services:
     plan: free
     maxmemoryPolicy: allkeys-lru
     region: singapore
+    ipAllowList: []   # 빈 배열 = 모든 IP 허용 (Render 내부 서비스끼리만 통신)
 
 
 # ── PostgreSQL ────────────────────────────────────────────
