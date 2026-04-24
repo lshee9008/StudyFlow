@@ -172,6 +172,7 @@ final fileEditorProvider =
 class FileEditorNotifier extends StateNotifier<FileEditorState> {
   FileEditorNotifier() : super(FileEditorState(blocks: []));
 
+  // ignore: unused_field
   String _lastAnalyzedText = '';
   // 마지막으로 요약에 사용된 콘텐츠 해시 (변경 없으면 skip)
   int _lastSummaryHash = 0;
@@ -213,12 +214,14 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         icon: file.icon,
         filePrompt: file.prompt,
         summaryBlocks: summaryToUse,
+        graphData: _parseGraph(file.graph),
         lastSentContent: file.content,
         fileTitle: file.title == '제목 없음' ? '' : file.title,
         fileTags: file.tags,
       );
     } else {
-      if (!syncMode) state = state.copyWith(blocks: [_newBlock(0)], isLoading: false);
+      if (!syncMode)
+        state = state.copyWith(blocks: [_newBlock(0)], isLoading: false);
     }
   }
 
@@ -278,6 +281,16 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     }
   }
 
+  Map<String, dynamic>? _parseGraph(String? s) {
+    if (s == null || s.isEmpty) return null;
+    try {
+      final parsed = jsonDecode(s);
+      return parsed is Map<String, dynamic> ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ─── 저장 ────────────────────────────────────────────
   Future<void> saveFile({
     required String fileId,
@@ -296,6 +309,9 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     final summaryJson = jsonEncode(
       state.summaryBlocks.map((b) => b.toJson()).toList(),
     );
+    final graphJson = state.graphData == null
+        ? null
+        : jsonEncode(state.graphData);
 
     if (!kIsWeb) {
       await FilesDBHelper.updateFile(
@@ -307,6 +323,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         prompt: prompt,
         content: blocksJson,
         summary: summaryJson,
+        graph: graphJson,
       );
     } else {
       try {
@@ -320,6 +337,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
                 'prompt': prompt,
                 'content': blocksJson,
                 'summary': summaryJson,
+                'graph': graphJson,
                 'icon': state.icon,
               }),
             )
@@ -438,8 +456,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
               break;
 
             case 'done':
-              final finalText =
-                  ((evt['text'] as String?) ?? streamText).trim();
+              final finalText = ((evt['text'] as String?) ?? streamText).trim();
               if (finalText.isNotEmpty) {
                 _lastSummaryHash = hash;
                 state = state.copyWith(
@@ -487,10 +504,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
             lastSentContent: full,
           );
         } else {
-          state = state.copyWith(
-            isSummaryLoading: false,
-            summaryProgress: '',
-          );
+          state = state.copyWith(isSummaryLoading: false, summaryProgress: '');
         }
       }
     } catch (_) {
@@ -529,17 +543,11 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
             );
           }
         } else {
-          state = state.copyWith(
-            isSummaryLoading: false,
-            summaryProgress: '',
-          );
+          state = state.copyWith(isSummaryLoading: false, summaryProgress: '');
         }
       } catch (_) {
         if (mounted) {
-          state = state.copyWith(
-            isSummaryLoading: false,
-            summaryProgress: '',
-          );
+          state = state.copyWith(isSummaryLoading: false, summaryProgress: '');
         }
       }
     } finally {
@@ -553,9 +561,41 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     state = state.copyWith(summaryBlocks: list);
   }
 
+  void updateSummaryBlock(int i, String content) {
+    final list = List<SummaryBlock>.from(state.summaryBlocks);
+    list[i] = SummaryBlock(content: content, isSaved: list[i].isSaved);
+    state = state.copyWith(summaryBlocks: list);
+  }
+
   void removeSummaryBlock(int i) {
     final list = List<SummaryBlock>.from(state.summaryBlocks)..removeAt(i);
     state = state.copyWith(summaryBlocks: list);
+  }
+
+  void setGraphData(Map<String, dynamic>? graph) {
+    state = state.copyWith(graphData: graph);
+  }
+
+  void updateGraphNode(
+    String nodeId, {
+    String? label,
+    String? description,
+    double? x,
+    double? y,
+  }) {
+    if (state.graphData == null) return;
+    final graph = Map<String, dynamic>.from(state.graphData!);
+    final nodes = (graph['nodes'] as List? ?? []).map((raw) {
+      final node = Map<String, dynamic>.from(raw as Map);
+      if (node['id'].toString() != nodeId) return node;
+      if (label != null) node['label'] = label;
+      if (description != null) node['description'] = description;
+      if (x != null) node['x'] = x;
+      if (y != null) node['y'] = y;
+      return node;
+    }).toList();
+    graph['nodes'] = nodes;
+    state = state.copyWith(graphData: graph);
   }
 
   // ─── 블록 분석 ──────────────────────────────────────
@@ -732,13 +772,18 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     try {
       final content = state.fullContent.substring(
         0,
-        state.fullContent.length.clamp(0, 2000),
+        state.fullContent.length.clamp(0, 6000),
       );
       final res = await http
           .post(
             Uri.parse('$_api/api/ai/graph'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'content': content}),
+            body: jsonEncode({
+              'content': content,
+              'title': state.fileTitle,
+              'tags': state.fileTags,
+              'summary': state.summaryBlocks.map((b) => b.content).join('\n\n'),
+            }),
           )
           .timeout(const Duration(seconds: 45));
       if (!mounted) return;
@@ -856,11 +901,13 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       }
       if (trimmed == '```' && inCode) {
         inCode = false;
-        result.add(_newBlock(
-          result.length,
-          type: BlockType.code,
-          content: codeBuf.toString().trimRight(),
-        ));
+        result.add(
+          _newBlock(
+            result.length,
+            type: BlockType.code,
+            content: codeBuf.toString().trimRight(),
+          ),
+        );
         codeBuf.clear();
         continue;
       }
@@ -907,11 +954,13 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
     // 코드 블록이 닫히지 않은 경우 처리
     if (inCode && codeBuf.isNotEmpty) {
-      result.add(_newBlock(
-        result.length,
-        type: BlockType.code,
-        content: codeBuf.toString().trimRight(),
-      ));
+      result.add(
+        _newBlock(
+          result.length,
+          type: BlockType.code,
+          content: codeBuf.toString().trimRight(),
+        ),
+      );
     }
 
     return result.isEmpty ? [_newBlock(0)] : result;
@@ -1055,7 +1104,9 @@ class FilesNotifier extends StateNotifier<List<FileModel>> {
           .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         state = (jsonDecode(res.body) as List)
-            .map((j) => FileModel.fromJson(j))
+            .map<FileModel>(
+              (j) => FileModel.fromJson(Map<String, dynamic>.from(j as Map)),
+            )
             .toList();
       }
     } catch (e) {

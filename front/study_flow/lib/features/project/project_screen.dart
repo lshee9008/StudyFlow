@@ -67,8 +67,12 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
         Uri.parse('$baseUrl/api/files/project/${widget.project.id}'),
       );
       if (res.statusCode == 200) {
-        final List data = jsonDecode(res.body);
-        return data.map((j) => FileModel.fromJson(j)).toList();
+        final List data = jsonDecode(res.body) as List;
+        return data
+            .map<FileModel>(
+              (j) => FileModel.fromJson(Map<String, dynamic>.from(j as Map)),
+            )
+            .toList();
       }
     } catch (e) {
       debugPrint('fetchFiles error: $e');
@@ -172,6 +176,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
       icon: '',
       prompt: '',
       summary: '',
+      graph: '',
     );
 
     if (!kIsWeb) {
@@ -191,6 +196,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen>
           'icon': '',
           'prompt': '',
           'summary': '',
+          'graph': '',
           'create_at': now.toIso8601String(),
           'update_at': null,
         }),

@@ -270,39 +270,40 @@ class _HeroCopy extends StatelessWidget {
               .toList(),
         ),
         const SizedBox(height: 30),
-        Expanded(
-          child: compact
-              ? Column(
-                  children: _signals
-                      .map(
-                        (item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _SignalCard(
-                            title: item.$1,
-                            description: item.$2,
-                          ),
-                        ),
-                      )
-                      .toList(),
+        if (compact)
+          Column(
+            children: _signals
+                .map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _SignalCard(
+                      title: item.$1,
+                      description: item.$2,
+                    ),
+                  ),
                 )
-              : Row(
-                  children: _signals
-                      .map(
-                        (item) => Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              right: item == _signals.last ? 0 : 12,
-                            ),
-                            child: _SignalCard(
-                              title: item.$1,
-                              description: item.$2,
-                            ),
-                          ),
+                .toList(),
+          )
+        else
+          Expanded(
+            child: Row(
+              children: _signals
+                  .map(
+                    (item) => Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          right: item == _signals.last ? 0 : 12,
                         ),
-                      )
-                      .toList(),
-                ),
-        ),
+                        child: _SignalCard(
+                          title: item.$1,
+                          description: item.$2,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
       ],
     );
   }
@@ -471,47 +472,48 @@ class _ShowcasePanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          Expanded(
-            child: compact
-                ? const Column(
-                    children: [
-                      _MiniFeature(
-                        icon: Icons.auto_awesome_rounded,
-                        title: '실시간 요약',
-                        description: '필기 직후 지식 단위로 재정렬',
-                        color: AppTheme.accent,
-                      ),
-                      SizedBox(height: 10),
-                      _MiniFeature(
-                        icon: Icons.psychology_alt_outlined,
-                        title: '맥락 복기',
-                        description: '이전 개념과 자동 연결',
-                        color: AppTheme.blue,
-                      ),
-                    ],
-                  )
-                : const Row(
-                    children: [
-                      Expanded(
-                        child: _MiniFeature(
-                          icon: Icons.auto_awesome_rounded,
-                          title: '실시간 요약',
-                          description: '필기 직후 지식 단위로 재정렬',
-                          color: AppTheme.accent,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: _MiniFeature(
-                          icon: Icons.psychology_alt_outlined,
-                          title: '맥락 복기',
-                          description: '이전 개념과 자동 연결',
-                          color: AppTheme.blue,
-                        ),
-                      ),
-                    ],
+          if (compact)
+            const Column(
+              children: [
+                _MiniFeature(
+                  icon: Icons.auto_awesome_rounded,
+                  title: '실시간 요약',
+                  description: '필기 직후 지식 단위로 재정렬',
+                  color: AppTheme.accent,
+                ),
+                SizedBox(height: 10),
+                _MiniFeature(
+                  icon: Icons.psychology_alt_outlined,
+                  title: '맥락 복기',
+                  description: '이전 개념과 자동 연결',
+                  color: AppTheme.blue,
+                ),
+              ],
+            )
+          else
+            const Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _MiniFeature(
+                      icon: Icons.auto_awesome_rounded,
+                      title: '실시간 요약',
+                      description: '필기 직후 지식 단위로 재정렬',
+                      color: AppTheme.accent,
+                    ),
                   ),
-          ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: _MiniFeature(
+                      icon: Icons.psychology_alt_outlined,
+                      title: '맥락 복기',
+                      description: '이전 개념과 자동 연결',
+                      color: AppTheme.blue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

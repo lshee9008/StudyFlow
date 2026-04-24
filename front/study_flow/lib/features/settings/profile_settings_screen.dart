@@ -105,7 +105,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen>
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.red.withOpacity(0.1),
+                      color: AppTheme.red.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(
@@ -327,7 +327,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen>
                   decoration: BoxDecoration(
                     color: AppTheme.bgSecondary,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.red.withOpacity(0.3)),
+                    border: Border.all(color: AppTheme.red.withValues(alpha: 0.3)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,7 +362,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen>
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: AppTheme.red.withOpacity(0.4),
+                              color: AppTheme.red.withValues(alpha: 0.4),
                             ),
                           ),
                           child: const Center(
@@ -400,9 +400,9 @@ class _StatusBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [

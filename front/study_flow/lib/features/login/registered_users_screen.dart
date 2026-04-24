@@ -183,7 +183,7 @@ class _UserTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: selected
-                ? AppTheme.accent.withOpacity(0.5)
+                ? AppTheme.accent.withValues(alpha: 0.5)
                 : AppTheme.borderSubtle,
           ),
         ),
