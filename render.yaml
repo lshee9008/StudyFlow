@@ -15,24 +15,13 @@ services:
           name: studyflow-db
           property: connectionString
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: studyflow-redis
-          property: connectionString
+        value: ""
       - key: OLLAMA_BASE_URL
         value: http://localhost:11434
       - key: TAVILY_API_KEY
         value: ""
       - key: ALLOWED_ORIGINS
         value: "*"
-
-  - type: redis
-    name: studyflow-redis
-    plan: free
-    region: oregon
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: everywhere
 
 databases:
   - name: studyflow-db
