@@ -16,13 +16,13 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
       showBack: true,
       child: AuthSplitLayout(
         left: const AuthHero(
-          eyebrow: '접근',
+          eyebrow: '시작',
           title: '계정을 선택하고\n바로 시작합니다.',
-          body: '로그인, 새 계정 생성, 저장된 계정 진입을 같은 흐름으로 정리했습니다.',
+          body: '지금 쓰던 계정으로 이어가거나, 새 학습 공간을 바로 열 수 있습니다.',
           items: [
-            (LucideIcons.logIn, '기존 계정으로 계속하기'),
-            (LucideIcons.userPlus, '새 계정 만들기'),
-            (LucideIcons.laptop, '저장된 계정 열기'),
+            (LucideIcons.logIn, '기존 계정으로 바로 이어가기'),
+            (LucideIcons.userPlus, '새 학습 공간 만들기'),
+            (LucideIcons.laptop, '이 기기의 계정 불러오기'),
           ],
         ),
         right: AuthPanel(

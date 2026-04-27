@@ -14,10 +14,19 @@ def init_db():
         columns = {column["name"] for column in inspector.get_columns("files")}
     except Exception:
         columns = set()
+    try:
+        project_columns = {
+            column["name"] for column in inspector.get_columns("projects")
+        }
+    except Exception:
+        project_columns = set()
 
     if columns and "graph" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE files ADD COLUMN graph TEXT"))
+    if project_columns and "icon" not in project_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE projects ADD COLUMN icon TEXT"))
 
 def get_session():
     with Session(engine) as session:

@@ -7,6 +7,7 @@ import '../../core/ui/app_components.dart';
 import '../../models/user_model.dart';
 import '../../providers/user_provider.dart';
 import '../login/initial_screen.dart';
+import '../search/search_screen.dart';
 
 class ProfileSettingsScreen extends ConsumerStatefulWidget {
   final UserModel user;
@@ -140,7 +141,10 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
       compact: isCompact,
       onHome: () => Navigator.popUntil(context, (route) => route.isFirst),
       onWorkspace: () => Navigator.pop(context),
-      onSearch: () {},
+      onSearch: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SearchScreen()),
+      ),
       onSettings: () {},
       primaryAction: AppButton(
         label: '저장',
@@ -200,10 +204,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
             ),
           ),
           const SizedBox(height: 56),
-          Text(
-            '보안 인증',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+          Text('보안 인증', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpace.md),
           AppCard(
             child: Column(
@@ -239,19 +240,13 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
             ),
           ),
           const SizedBox(height: 56),
-          Text(
-            '워크스페이스 관리',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+          Text('워크스페이스 관리', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpace.md),
           AppCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '계정 삭제',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
+                Text('계정 삭제', style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: AppSpace.xs),
                 Text(
                   '삭제 후 복구할 수 없습니다.',

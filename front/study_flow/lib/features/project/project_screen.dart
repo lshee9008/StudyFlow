@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -14,7 +15,6 @@ import 'package:uuid/uuid.dart';
 import '../../core/provider_config.dart';
 import '../../core/theme.dart';
 import '../../core/ui/app_components.dart';
-import '../../providers/user_provider.dart';
 import '../file/file_screen.dart';
 import 'project_provider.dart';
 
@@ -98,6 +98,14 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
     await ref
         .read(projectProvider.notifier)
         .updateProjectTags(widget.project.id, _tags.join(','));
+  }
+
+  Future<void> _updateIcon(String icon) async {
+    widget.project.icon = icon;
+    await ref.read(projectProvider.notifier).updateProjectIcon(
+      widget.project.id,
+      icon,
+    );
   }
 
   Future<void> _removeTag(String tag) async {
@@ -251,62 +259,47 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userName = ref.watch(userProvider)?.name ?? AppTheme.brandName;
-    final isCompact = MediaQuery.of(context).size.width < 980;
-
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          return;
-        }
+        if (!didPop) return;
         widget.project.name = _nameController.text.trim();
         widget.project.tags = _tags.join(',');
         widget.project.update_at = DateTime.now();
         ref.read(projectProvider.notifier).updateProjectAll(widget.project);
       },
-      child: AppWorkspaceShell(
-        currentNav: 'workspace',
-        title: '프로젝트 노트',
-        subtitle: '워크스페이스의 노트와 학습 자료를 관리합니다.',
-        profileLabel: userName,
-        compact: isCompact,
-        onHome: () => Navigator.popUntil(context, (route) => route.isFirst),
-        onWorkspace: () => Navigator.pop(context),
-        onSearch: () {},
-        onSettings: () {},
-        secondaryAction: AppButton(
-          label: '태그',
-          onPressed: _openTagSheet,
-          primary: false,
-          icon: LucideIcons.tags,
-        ),
-        primaryAction: AppButton(
-          label: '새 노트',
-          onPressed: _createFile,
-          icon: LucideIcons.filePlus,
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpace.lg,
-                0,
-                AppSpace.lg,
-                AppSpace.md,
-              ),
-              child: _ProjectHeader(
-                controller: _nameController,
-                tags: _tags,
-                onBack: () => Navigator.pop(context),
-                onUpdateName: _updateName,
-                onAddTag: _openTagSheet,
-                onRemoveTag: _removeTag,
-                onCreateFile: _createFile,
-              ),
-            ),
-            Expanded(
-              child: FutureBuilder<List<FileModel>>(
+      child: Column(
+        children: [
+          _ProjectTopBar(
+            projectName: widget.project.name,
+            onBack: () => Navigator.pop(context),
+            onAddTag: _openTagSheet,
+            onCreateFile: _createFile,
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.lg,
+                    AppSpace.md,
+                    AppSpace.lg,
+                    AppSpace.md,
+                  ),
+                  child: _ProjectHeader(
+                    controller: _nameController,
+                    icon: widget.project.icon,
+                    tags: _tags,
+                    onBack: () => Navigator.pop(context),
+                    onUpdateName: _updateName,
+                    onUpdateIcon: _updateIcon,
+                    onAddTag: _openTagSheet,
+                    onRemoveTag: _removeTag,
+                    onCreateFile: _createFile,
+                  ),
+                ),
+                Expanded(
+                  child: FutureBuilder<List<FileModel>>(
                 future: _filesFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -349,42 +342,55 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
                       }
 
                       final file = files[index];
-                      return Padding(
-                        padding: EdgeInsets.only(
-                          bottom: index == files.length - 1 ? 0 : AppSpace.sm,
-                        ),
-                        child: _FileTile(
-                          file: file,
-                          onOpen: () async {
-                            await Navigator.push(
-                              context,
-                              PageRouteBuilder(
-                                pageBuilder:
-                                    (_, animation, secondaryAnimation) =>
-                                        FileScreen(
-                                          fileId: file.id,
-                                          projectId: widget.project.id,
-                                        ),
-                                transitionsBuilder:
-                                    (_, animation, secondaryAnimation, child) {
-                                      return FadeTransition(
-                                        opacity: animation,
-                                        child: Transform.translate(
-                                          offset: Tween<Offset>(
-                                            begin: const Offset(0, 0.02),
-                                            end: Offset.zero,
-                                          ).evaluate(animation),
-                                          child: child,
-                                        ),
-                                      );
-                                    },
-                                transitionDuration: AppMotion.normal,
-                              ),
-                            );
-                            await _reloadFiles();
-                          },
-                          onRename: () => _renameFile(file),
-                          onDelete: () => _deleteFile(file),
+                      return AppFadeSlide(
+                        delay: Duration(milliseconds: 40 + index * 35),
+                        beginOffset: const Offset(0, 12),
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == files.length - 1 ? 0 : AppSpace.sm,
+                          ),
+                          child: _FileTile(
+                            file: file,
+                            onOpen: () async {
+                              await Navigator.push(
+                                context,
+                                PageRouteBuilder(
+                                  pageBuilder:
+                                      (_, animation, secondaryAnimation) =>
+                                          FileScreen(
+                                            fileId: file.id,
+                                            projectId: widget.project.id,
+                                          ),
+                                  transitionsBuilder:
+                                      (
+                                        _,
+                                        animation,
+                                        secondaryAnimation,
+                                        child,
+                                      ) {
+                                        final curved = CurvedAnimation(
+                                          parent: animation,
+                                          curve: Curves.easeOutCubic,
+                                        );
+                                        return FadeTransition(
+                                          opacity: curved,
+                                          child: SlideTransition(
+                                            position: Tween<Offset>(
+                                              begin: const Offset(0, 0.02),
+                                              end: Offset.zero,
+                                            ).animate(curved),
+                                            child: child,
+                                          ),
+                                        );
+                                      },
+                                  transitionDuration: AppMotion.normal,
+                                ),
+                              );
+                              await _reloadFiles();
+                            },
+                            onRename: () => _renameFile(file),
+                            onDelete: () => _deleteFile(file),
+                          ),
                         ),
                       );
                     },
@@ -394,6 +400,90 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
             ),
           ],
         ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Project top bar (breadcrumb + actions) ───────────────────────────────────
+
+class _ProjectTopBar extends StatelessWidget {
+  final String projectName;
+  final VoidCallback onBack;
+  final VoidCallback onAddTag;
+  final VoidCallback onCreateFile;
+
+  const _ProjectTopBar({
+    required this.projectName,
+    required this.onBack,
+    required this.onAddTag,
+    required this.onCreateFile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: colors.border.withValues(alpha: 0.7)),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Back + breadcrumb
+          _HeaderButton(icon: LucideIcons.arrowLeft, onTap: onBack),
+          const SizedBox(width: 10),
+          Row(
+            children: [
+              Text(
+                'WORKSPACE',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: colors.textSecondary.withValues(alpha: 0.55),
+                  letterSpacing: 0.3,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Icon(
+                  LucideIcons.chevronRight,
+                  size: 12,
+                  color: colors.textSecondary.withValues(alpha: 0.4),
+                ),
+              ),
+              Text(
+                projectName,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+          const Spacer(),
+          AppButton(
+            label: '태그',
+            onPressed: onAddTag,
+            primary: false,
+            icon: LucideIcons.tags,
+          ),
+          const SizedBox(width: AppSpace.xs),
+          AppButton(
+            label: '새 노트',
+            onPressed: onCreateFile,
+            icon: LucideIcons.filePlus,
+          ),
+        ],
       ),
     );
   }
@@ -401,18 +491,22 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
 
 class _ProjectHeader extends StatelessWidget {
   final TextEditingController controller;
+  final String icon;
   final List<String> tags;
   final VoidCallback onBack;
   final ValueChanged<String> onUpdateName;
+  final ValueChanged<String> onUpdateIcon;
   final VoidCallback onAddTag;
   final ValueChanged<String> onRemoveTag;
   final VoidCallback onCreateFile;
 
   const _ProjectHeader({
     required this.controller,
+    required this.icon,
     required this.tags,
     required this.onBack,
     required this.onUpdateName,
+    required this.onUpdateIcon,
     required this.onAddTag,
     required this.onRemoveTag,
     required this.onCreateFile,
@@ -423,30 +517,14 @@ class _ProjectHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppTopBar(
-          title: '프로젝트',
-          leading: _HeaderButton(icon: LucideIcons.arrowLeft, onTap: onBack),
-          actions: [
-            AppButton(
-              label: '태그',
-              onPressed: onAddTag,
-              primary: false,
-              icon: LucideIcons.plus,
-            ),
-            const SizedBox(width: AppSpace.xs),
-            AppButton(
-              label: '새 노트',
-              onPressed: onCreateFile,
-              icon: LucideIcons.filePlus,
-            ),
-          ],
-        ),
         AppInput(
           controller: controller,
           hintText: '프로젝트 이름',
           onSubmitted: onUpdateName,
           onChanged: onUpdateName,
         ),
+        const SizedBox(height: AppSpace.md),
+        _ProjectIconRow(current: icon, onChanged: onUpdateIcon),
         const SizedBox(height: AppSpace.md),
         Wrap(
           spacing: AppSpace.xs,
@@ -461,7 +539,167 @@ class _ProjectHeader extends StatelessWidget {
   }
 }
 
-class _FileTile extends StatelessWidget {
+class _ProjectIconRow extends StatelessWidget {
+  final String current;
+  final ValueChanged<String> onChanged;
+
+  const _ProjectIconRow({required this.current, required this.onChanged});
+
+  static const _choices = [
+    // 학습 / Study
+    '📘', '📗', '📕', '📙', '📚', '📖', '🎓', '✏️',
+    // 과학 / Science & Tech
+    '🧠', '🔬', '🔭', '🧪', '💻', '🤖', '🔐', '🌐',
+    // 에너지 / Goals
+    '💡', '⚡', '🎯', '🏆', '🚀', '🔥', '⭐', '💪',
+    // 도구 / Tools & Work
+    '🛠️', '📊', '📋', '🗂️', '📝', '📌', '🗓️', '📁',
+    // 감성 / Life
+    '🎨', '🎵', '🌿', '☕', '🌸', '🌍', '🦋', '🎮',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _choices
+          .map((e) => _EmojiChip(
+                emoji: e,
+                selected: e == current,
+                onTap: () => onChanged(e),
+              ))
+          .toList(),
+    );
+  }
+}
+
+class _EmojiChip extends StatefulWidget {
+  final String emoji;
+  final bool selected;
+  final VoidCallback onTap;
+  const _EmojiChip({
+    required this.emoji,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  State<_EmojiChip> createState() => _EmojiChipState();
+}
+
+class _EmojiChipState extends State<_EmojiChip>
+    with SingleTickerProviderStateMixin {
+  bool _hovered = false;
+  late AnimationController _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _scale = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 120),
+      lowerBound: 0.0,
+      upperBound: 1.0,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scale.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    final accent = colors.accent;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) {
+        setState(() => _hovered = true);
+        _scale.forward();
+      },
+      onExit: (_) {
+        setState(() => _hovered = false);
+        _scale.reverse();
+      },
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedBuilder(
+          animation: _scale,
+          builder: (_, child) => Transform.scale(
+            scale: 1.0 + _scale.value * 0.08,
+            child: child,
+          ),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? accent.withValues(alpha: 0.14)
+                  : _hovered
+                  ? colors.border.withValues(alpha: 0.35)
+                  : colors.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: widget.selected
+                    ? accent.withValues(alpha: 0.7)
+                    : _hovered
+                    ? colors.border
+                    : colors.border.withValues(alpha: 0.5),
+                width: widget.selected ? 1.5 : 1.0,
+              ),
+              boxShadow: widget.selected
+                  ? [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.22),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Text(
+                  widget.emoji,
+                  style: TextStyle(
+                    fontSize: widget.selected ? 20 : 18,
+                  ),
+                ),
+                if (widget.selected)
+                  Positioned(
+                    bottom: 4,
+                    child: Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: accent.withValues(alpha: 0.5),
+                            blurRadius: 3,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FileTile extends StatefulWidget {
   final FileModel file;
   final VoidCallback onOpen;
   final VoidCallback onRename;
@@ -475,72 +713,245 @@ class _FileTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final tags = file.tags
-        .split(',')
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
-        .toList();
-    final updatedAt = file.update_at ?? file.create_at;
+  State<_FileTile> createState() => _FileTileState();
+}
 
-    return AppCard(
-      padding: const EdgeInsets.all(AppSpace.md),
-      child: InkWell(
-        onTap: onOpen,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    file.title,
-                    style: Theme.of(context).textTheme.titleSmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'rename') {
-                      onRename();
-                    }
-                    if (value == 'delete') {
-                      onDelete();
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem<String>(
-                      value: 'rename',
-                      child: Text('이름 변경'),
-                    ),
-                    PopupMenuItem<String>(value: 'delete', child: Text('삭제')),
-                  ],
-                  icon: const Icon(LucideIcons.moreHorizontal, size: 16),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpace.xs),
-            Text(
-              DateFormat('yyyy.MM.dd HH:mm').format(updatedAt),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            if (tags.isNotEmpty) ...[
-              const SizedBox(height: AppSpace.sm),
-              Wrap(
-                spacing: AppSpace.xs,
-                runSpacing: AppSpace.xs,
-                children: tags
-                    .take(3)
-                    .map((tag) => AppBadge(label: tag))
-                    .toList(),
+class _FileTileState extends State<_FileTile>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pressCtrl;
+  bool _hovered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 80),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pressCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    final tags = widget.file.tags
+        .split(',')
+        .map((v) => v.trim())
+        .where((v) => v.isNotEmpty)
+        .toList();
+    final updatedAt = widget.file.update_at ?? widget.file.create_at;
+    final hasContent = widget.file.content.trim().isNotEmpty;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTapDown: (_) => _pressCtrl.forward(),
+        onTapUp: (_) {
+          _pressCtrl.reverse();
+          widget.onOpen();
+        },
+        onTapCancel: () => _pressCtrl.reverse(),
+        child: AnimatedBuilder(
+          animation: _pressCtrl,
+          builder: (_, child) => Transform.scale(
+            scale: 1.0 - 0.015 * _pressCtrl.value,
+            child: child,
+          ),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _hovered
+                    ? colors.accent.withValues(alpha: 0.35)
+                    : colors.border,
+                width: _hovered ? 1.5 : 1,
               ),
-            ],
-          ],
+              boxShadow: _hovered
+                  ? AppShadows.cardHover(colors.accent)
+                  : AppShadows.elevation1,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpace.md),
+              child: Row(
+                children: [
+                  // File type icon
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: _hovered
+                          ? colors.accent.withValues(alpha: 0.12)
+                          : colors.background,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _hovered
+                            ? colors.accent.withValues(alpha: 0.25)
+                            : colors.border,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        hasContent ? LucideIcons.fileText : LucideIcons.file,
+                        size: 16,
+                        color: _hovered ? colors.accent : colors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.sm),
+                  // Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.file.title,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textPrimary,
+                            letterSpacing: -0.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _relativeDate(updatedAt),
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: colors.textSecondary.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        if (tags.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 4,
+                            children: tags
+                                .take(3)
+                                .map(
+                                  (t) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colors.border.withValues(
+                                        alpha: 0.5,
+                                      ),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      t,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 10,
+                                        color: colors.textSecondary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  // Chevron + menu
+                  AnimatedOpacity(
+                    opacity: _hovered ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Icon(
+                      LucideIcons.chevronRight,
+                      size: 14,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'rename') widget.onRename();
+                      if (value == 'delete') widget.onDelete();
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem<String>(
+                        value: 'rename',
+                        child: Row(
+                          children: [
+                            const Icon(LucideIcons.pencil, size: 14),
+                            const SizedBox(width: 8),
+                            const Text('이름 변경'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem<String>(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(
+                              LucideIcons.trash2,
+                              size: 14,
+                              color: AppTheme.red,
+                            ),
+                            const SizedBox(width: 8),
+                            Text('삭제', style: TextStyle(color: AppTheme.red)),
+                          ],
+                        ),
+                      ),
+                    ],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: colors.border),
+                    ),
+                    color: colors.surface,
+                    child: AnimatedOpacity(
+                      opacity: _hovered ? 1.0 : 0.4,
+                      duration: const Duration(milliseconds: 150),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: _hovered
+                              ? colors.border.withValues(alpha: 0.35)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(
+                          LucideIcons.moreHorizontal,
+                          size: 14,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
+  }
+
+  String _relativeDate(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return '방금 전';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+    if (diff.inHours < 24) return '${diff.inHours}시간 전';
+    if (diff.inDays == 1) return '어제';
+    if (diff.inDays < 7) return '${diff.inDays}일 전';
+    return DateFormat('M월 d일 HH:mm', 'ko_KR').format(dt);
   }
 }
 
@@ -673,19 +1084,58 @@ class _ProjectFileSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: 4,
-      padding: const EdgeInsets.all(AppSpace.lg),
-      itemBuilder: (context, index) => Padding(
-        padding: EdgeInsets.only(bottom: index == 3 ? 0 : AppSpace.sm),
-        child: AppCard(
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppSkeletonLine(width: 160),
-              SizedBox(height: AppSpace.sm),
-              AppSkeletonLine(width: 120),
-            ],
+    final colors = AppTheme.colorsOf(context);
+
+    return AppShimmer(
+      child: ListView.builder(
+        itemCount: 5,
+        padding: const EdgeInsets.all(AppSpace.lg),
+        itemBuilder: (context, index) => Padding(
+          padding: EdgeInsets.only(bottom: index == 4 ? 0 : AppSpace.sm),
+          child: Container(
+            height: 68,
+            padding: const EdgeInsets.all(AppSpace.md),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colors.border),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: colors.border.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                const SizedBox(width: AppSpace.sm),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 140 + (index % 3) * 30.0,
+                      height: 13,
+                      decoration: BoxDecoration(
+                        color: colors.border.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: 80,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: colors.border.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

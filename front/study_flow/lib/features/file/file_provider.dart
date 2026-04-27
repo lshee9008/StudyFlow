@@ -48,6 +48,7 @@ class FileEditorState {
   final Map<int, int> quizAnswers;
   final String? qaAnswer;
   final Map<String, dynamic>? graphData;
+  final String? graphError;
 
   final String focusedText;
   final DateTime? lastSavedAt;
@@ -80,6 +81,7 @@ class FileEditorState {
     this.quizAnswers = const {},
     this.qaAnswer,
     this.graphData,
+    this.graphError,
     this.focusedText = '',
     this.lastSavedAt,
     this.lastSentContent = '',
@@ -108,6 +110,8 @@ class FileEditorState {
     Map<int, int>? quizAnswers,
     String? qaAnswer,
     Map<String, dynamic>? graphData,
+    String? graphError,
+    bool clearGraphError = false,
     String? focusedText,
     DateTime? lastSavedAt,
     String? lastSentContent,
@@ -134,6 +138,7 @@ class FileEditorState {
     quizAnswers: quizAnswers ?? this.quizAnswers,
     qaAnswer: qaAnswer ?? this.qaAnswer,
     graphData: graphData ?? this.graphData,
+    graphError: clearGraphError ? null : (graphError ?? this.graphError),
     focusedText: focusedText ?? this.focusedText,
     lastSavedAt: lastSavedAt ?? this.lastSavedAt,
     lastSentContent: lastSentContent ?? this.lastSentContent,
@@ -578,12 +583,83 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     state = state.copyWith(graphData: graph);
   }
 
+  List<dynamic> _normalizeQuiz(List<dynamic> quiz) {
+    return quiz.whereType<Map>().map((raw) {
+      final question = (raw['question']?.toString() ?? '').trim();
+      final explanation = (raw['explanation']?.toString() ?? '').trim();
+      final options = ((raw['options'] as List?) ?? [])
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      while (options.length < 4) {
+        options.add('본문을 다시 확인해보세요.');
+      }
+      int answer = 0;
+      final rawAnswer = raw['answer'];
+      if (rawAnswer is int) {
+        answer = rawAnswer;
+      } else if (rawAnswer is String) {
+        answer = int.tryParse(rawAnswer) ?? 0;
+      }
+      answer = answer.clamp(0, options.length - 1);
+      return {
+        'question': question.isEmpty ? '본문 내용과 가장 잘 맞는 설명은?' : question,
+        'options': options.take(4).toList(),
+        'answer': answer,
+        'explanation': explanation.isEmpty ? options[answer] : explanation,
+      };
+    }).toList();
+  }
+
+  Map<String, dynamic>? _normalizeGraph(Map<String, dynamic>? graph) {
+    if (graph == null) return null;
+    final rawNodes = (graph['nodes'] as List?) ?? [];
+    final rawEdges = (graph['edges'] as List?) ?? [];
+    final nodes = rawNodes
+        .whereType<Map>()
+        .map(
+          (raw) => {
+            'id': raw['id']?.toString() ?? '',
+            'label': (raw['label']?.toString() ?? '').trim(),
+            'description': (raw['description']?.toString() ?? '').trim(),
+            'type': (raw['type']?.toString() ?? 'detail').trim(),
+            'group': (raw['group']?.toString() ?? '').trim(),
+            'x': raw['x'],
+            'y': raw['y'],
+          },
+        )
+        .where(
+          (node) =>
+              (node['id'] as String).isNotEmpty &&
+              (node['label'] as String).isNotEmpty,
+        )
+        .toList();
+    final ids = nodes.map((e) => e['id'] as String).toSet();
+    final edges = rawEdges
+        .whereType<Map>()
+        .map(
+          (raw) => {
+            'source': raw['source']?.toString() ?? '',
+            'target': raw['target']?.toString() ?? '',
+            'label': (raw['label']?.toString() ?? '').trim(),
+          },
+        )
+        .where(
+          (edge) =>
+              ids.contains(edge['source']) && ids.contains(edge['target']),
+        )
+        .toList();
+    return {'nodes': nodes, 'edges': edges};
+  }
+
   void updateGraphNode(
     String nodeId, {
     String? label,
     String? description,
     double? x,
     double? y,
+    String? type,
+    String? group,
   }) {
     if (state.graphData == null) return;
     final graph = Map<String, dynamic>.from(state.graphData!);
@@ -594,10 +670,174 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       if (description != null) node['description'] = description;
       if (x != null) node['x'] = x;
       if (y != null) node['y'] = y;
+      if (type != null) node['type'] = type;
+      if (group != null) node['group'] = group;
       return node;
     }).toList();
     graph['nodes'] = nodes;
     state = state.copyWith(graphData: graph);
+  }
+
+  List<Map<String, dynamic>> _sanitizeGraphEdges(
+    List<Map<String, dynamic>> edges,
+    Set<String> validIds,
+  ) {
+    final seen = <String>{};
+    return edges.where((edge) {
+      final source = edge['source']?.toString() ?? '';
+      final target = edge['target']?.toString() ?? '';
+      if (source.isEmpty ||
+          target.isEmpty ||
+          source == target ||
+          !validIds.contains(source) ||
+          !validIds.contains(target)) {
+        return false;
+      }
+      final key = '$source->$target';
+      if (seen.contains(key)) {
+        return false;
+      }
+      seen.add(key);
+      edge['label'] = (edge['label']?.toString() ?? '').trim();
+      return true;
+    }).toList();
+  }
+
+  void addGraphNode({
+    required String label,
+    String description = '',
+    String type = 'detail',
+    String group = '',
+    String? parentId,
+    double? x,
+    double? y,
+  }) {
+    if (state.graphData == null) {
+      return;
+    }
+    final graph = Map<String, dynamic>.from(state.graphData!);
+    final nodes = List<Map<String, dynamic>>.from(
+      (graph['nodes'] as List? ?? []).whereType<Map>().map(
+        (raw) => Map<String, dynamic>.from(raw),
+      ),
+    );
+    final edges = List<Map<String, dynamic>>.from(
+      (graph['edges'] as List? ?? []).whereType<Map>().map(
+        (raw) => Map<String, dynamic>.from(raw),
+      ),
+    );
+    final nodeId = 'node_${DateTime.now().millisecondsSinceEpoch}';
+    nodes.add({
+      'id': nodeId,
+      'label': label,
+      'description': description,
+      'type': type,
+      'group': group,
+      'x': x,
+      'y': y,
+    });
+    if (parentId != null && parentId.isNotEmpty) {
+      edges.add({'source': parentId, 'target': nodeId, 'label': '메모'});
+    }
+    graph['nodes'] = nodes;
+    graph['edges'] = _sanitizeGraphEdges(
+      edges,
+      nodes.map((node) => node['id'].toString()).toSet(),
+    );
+    state = state.copyWith(graphData: graph);
+  }
+
+  void removeGraphNode(String nodeId) {
+    if (state.graphData == null) {
+      return;
+    }
+    final graph = Map<String, dynamic>.from(state.graphData!);
+    final nodes = (graph['nodes'] as List? ?? [])
+        .whereType<Map>()
+        .map((raw) => Map<String, dynamic>.from(raw))
+        .where((node) => node['id'].toString() != nodeId)
+        .toList();
+    final edges = (graph['edges'] as List? ?? [])
+        .whereType<Map>()
+        .map((raw) => Map<String, dynamic>.from(raw))
+        .where(
+          (edge) =>
+              edge['source'].toString() != nodeId &&
+              edge['target'].toString() != nodeId,
+        )
+        .toList();
+    graph['nodes'] = nodes;
+    graph['edges'] = _sanitizeGraphEdges(
+      edges,
+      nodes.map((node) => node['id'].toString()).toSet(),
+    );
+    state = state.copyWith(graphData: graph);
+  }
+
+  void connectGraphNodes(
+    String sourceId,
+    String targetId, {
+    String label = '연결',
+  }) {
+    if (state.graphData == null || sourceId == targetId) {
+      return;
+    }
+    final graph = Map<String, dynamic>.from(state.graphData!);
+    final nodes = List<Map<String, dynamic>>.from(
+      (graph['nodes'] as List? ?? []).whereType<Map>().map(
+        (raw) => Map<String, dynamic>.from(raw),
+      ),
+    );
+    final validIds = nodes.map((node) => node['id'].toString()).toSet();
+    final edges = List<Map<String, dynamic>>.from(
+      (graph['edges'] as List? ?? []).whereType<Map>().map(
+        (raw) => Map<String, dynamic>.from(raw),
+      ),
+    )..add({'source': sourceId, 'target': targetId, 'label': label});
+    graph['edges'] = _sanitizeGraphEdges(edges, validIds);
+    state = state.copyWith(graphData: graph);
+  }
+
+  void reparentGraphNode(String nodeId, String? parentId) {
+    if (state.graphData == null) {
+      return;
+    }
+    final graph = Map<String, dynamic>.from(state.graphData!);
+    final nodes = List<Map<String, dynamic>>.from(
+      (graph['nodes'] as List? ?? []).whereType<Map>().map(
+        (raw) => Map<String, dynamic>.from(raw),
+      ),
+    );
+    final validIds = nodes.map((node) => node['id'].toString()).toSet();
+    final edges = List<Map<String, dynamic>>.from(
+      (graph['edges'] as List? ?? []).whereType<Map>().map(
+        (raw) => Map<String, dynamic>.from(raw),
+      ),
+    ).where((edge) => edge['target']?.toString() != nodeId).toList();
+    if (parentId != null &&
+        parentId.isNotEmpty &&
+        parentId != nodeId &&
+        validIds.contains(parentId) &&
+        validIds.contains(nodeId)) {
+      edges.add({'source': parentId, 'target': nodeId, 'label': '구조'});
+    }
+    graph['edges'] = _sanitizeGraphEdges(edges, validIds);
+    state = state.copyWith(graphData: graph);
+  }
+
+  void updateGraphNodeMeta(
+    String nodeId, {
+    String? type,
+    String? group,
+    String? parentId,
+  }) {
+    if (state.graphData == null) {
+      return;
+    }
+    updateGraphNode(nodeId, type: type, group: group);
+    if (parentId != null) {
+      reparentGraphNode(nodeId, parentId);
+    }
   }
 
   // ─── 블록 분석 ──────────────────────────────────────
@@ -712,8 +952,9 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .timeout(const Duration(seconds: 60));
       if (!mounted) return;
       if (res.statusCode == 200) {
-        final quiz =
-            jsonDecode(utf8.decode(res.bodyBytes))['quiz'] as List? ?? [];
+        final quiz = _normalizeQuiz(
+          jsonDecode(utf8.decode(res.bodyBytes))['quiz'] as List? ?? [],
+        );
         state = state.copyWith(
           quizData: quiz,
           quizAnswers: {},
@@ -769,12 +1010,25 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   // ─── 지식 그래프 ────────────────────────────────────
   Future<void> requestGraph() async {
-    if (state.meaningfulCharCount < 10) return;
-    state = state.copyWith(isGraphLoading: true);
+    debugPrint(
+      '[Graph] requestGraph() called, meaningfulCharCount=${state.meaningfulCharCount}',
+    );
+    if (state.meaningfulCharCount < 10) {
+      debugPrint('[Graph] skipped: too short');
+      state = state.copyWith(
+        isGraphLoading: false,
+        graphError: '노트 내용이 너무 짧습니다. 내용을 더 작성한 후 시도해주세요.',
+      );
+      return;
+    }
+    state = state.copyWith(isGraphLoading: true, clearGraphError: true);
     try {
       final content = state.fullContent.substring(
         0,
         state.fullContent.length.clamp(0, 6000),
+      );
+      debugPrint(
+        '[Graph] POST $_api/api/ai/graph (content=${content.length}chars)',
       );
       final res = await http
           .post(
@@ -787,19 +1041,41 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
               'summary': state.summaryBlocks.map((b) => b.content).join('\n\n'),
             }),
           )
-          .timeout(const Duration(seconds: 45));
+          .timeout(const Duration(seconds: 60));
       if (!mounted) return;
+      debugPrint('[Graph] response status=${res.statusCode}');
       if (res.statusCode == 200) {
-        state = state.copyWith(
-          graphData: jsonDecode(utf8.decode(res.bodyBytes)),
-          isGraphLoading: false,
-        );
+        final decoded = _normalizeGraph(
+          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>,
+        )!;
+        final nodes = (decoded['nodes'] as List?) ?? [];
+        debugPrint('[Graph] parsed nodes=${nodes.length}');
+        if (nodes.isEmpty) {
+          state = state.copyWith(
+            isGraphLoading: false,
+            graphError: '그래프를 생성하지 못했습니다. 노트 내용을 더 자세히 작성한 후 다시 시도해주세요.',
+          );
+        } else {
+          state = state.copyWith(
+            graphData: decoded,
+            isGraphLoading: false,
+            clearGraphError: true,
+          );
+        }
       } else {
-        state = state.copyWith(isGraphLoading: false);
+        debugPrint('[Graph] error body: ${res.body}');
+        state = state.copyWith(
+          isGraphLoading: false,
+          graphError: '서버 오류 (${res.statusCode}). 잠시 후 다시 시도해주세요.',
+        );
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[Graph] exception: $e');
       if (!mounted) return;
-      state = state.copyWith(isGraphLoading: false);
+      state = state.copyWith(
+        isGraphLoading: false,
+        graphError: '연결 실패. 백엔드 서버가 실행 중인지 확인해주세요.\n($e)',
+      );
     }
   }
 

@@ -92,32 +92,28 @@ class AppTheme {
   static const String brandTagline = '배움의 흐름을 이어가는 학습 워크스페이스';
 
   static const AppColors darkColors = AppColors(
-    background: Color(0xFF0E1116),
-    surface: Color(0xFF161B22),
-    border: Color(0xFF2A313C),
-    textPrimary: Color(0xFFF3F5F7),
-    textSecondary: Color(0xFF97A1AE),
-    accent: Color(0xFF6C8CFF),
+    background: Color(0xFF0A0F1C),
+    surface: Color(0xFF12192A),
+    border: Color(0xFF27324A),
+    textPrimary: Color(0xFFF5F7FB),
+    textSecondary: Color(0xFF93A0BA),
+    accent: Color(0xFF7A92FF),
   );
 
   static const AppColors lightColors = AppColors(
-    background: Color(0xFFF6F8FB),
+    background: Color(0xFFF5F7FC),
     surface: Color(0xFFFFFFFF),
-    border: Color(0xFFE4E8EE),
-    textPrimary: Color(0xFF141821),
-    textSecondary: Color(0xFF697586),
-    accent: Color(0xFF4B6BFF),
+    border: Color(0xFFE3E8F3),
+    textPrimary: Color(0xFF111827),
+    textSecondary: Color(0xFF66748B),
+    accent: Color(0xFF5E79FF),
   );
 
-  static ThemeData get darkTheme => _buildTheme(
-    brightness: Brightness.dark,
-    colors: darkColors,
-  );
+  static ThemeData get darkTheme =>
+      _buildTheme(brightness: Brightness.dark, colors: darkColors);
 
-  static ThemeData get lightTheme => _buildTheme(
-    brightness: Brightness.light,
-    colors: lightColors,
-  );
+  static ThemeData get lightTheme =>
+      _buildTheme(brightness: Brightness.light, colors: lightColors);
 
   static AppColors colorsOf(BuildContext context) =>
       Theme.of(context).extension<AppColors>() ??
@@ -161,7 +157,11 @@ class AppTheme {
         titleMedium: _text(colors.textPrimary, 24, FontWeight.w600, -0.5),
         titleLarge: _text(colors.textPrimary, 28, FontWeight.w600, -0.5),
         headlineSmall: _text(colors.textPrimary, 32, FontWeight.w600, -0.7),
-        labelSmall: _text(colors.textSecondary.withValues(alpha: 0.55), 12, FontWeight.w400),
+        labelSmall: _text(
+          colors.textSecondary.withValues(alpha: 0.55),
+          12,
+          FontWeight.w400,
+        ),
         labelMedium: _text(colors.textSecondary, 14, FontWeight.w500),
         labelLarge: _text(colors.textPrimary, 14, FontWeight.w600),
       ),
@@ -192,8 +192,13 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: BorderSide(color: colors.accent),
+          borderSide: BorderSide(color: colors.accent, width: 1.4),
         ),
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: colors.accent,
+        selectionColor: colors.accent.withValues(alpha: 0.22),
+        selectionHandleColor: colors.accent,
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
@@ -216,7 +221,7 @@ class AppTheme {
       iconTheme: IconThemeData(color: colors.textSecondary, size: 20),
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
-      hoverColor: colors.border.withValues(alpha: 0.18),
+      hoverColor: colors.accent.withValues(alpha: 0.08),
     );
   }
 
@@ -236,26 +241,26 @@ class AppTheme {
   }
 
   // Compatibility aliases while remaining screens migrate.
-  static const Color bgDeep = Color(0xFF0E1116);
-  static const Color bgPrimary = Color(0xFF0E1116);
-  static const Color bgSecondary = Color(0xFF161B22);
-  static const Color bgTertiary = Color(0xFF11161D);
-  static const Color bgQuaternary = Color(0xFF0C1016);
-  static const Color borderSubtle = Color(0xFF2A313C);
-  static const Color borderDefault = Color(0xFF2A313C);
-  static const Color borderStrong = Color(0xFF3B4552);
-  static const Color borderFocus = Color(0xFF6C8CFF);
-  static const Color textPrimary = Color(0xFFF3F5F7);
-  static const Color textSecondary = Color(0xFF97A1AE);
-  static const Color textTertiary = Color(0xFF97A1AE);
-  static const Color textMuted = Color(0xFF6E7886);
-  static const Color accent = Color(0xFF6C8CFF);
-  static const Color accentDim = Color(0x142F58FF);
-  static const Color accentMuted = Color(0xFF93A8FF);
-  static const Color accentHover = Color(0xFF7F99FF);
-  static const Color accentGlow = Color(0x142F58FF);
-  static const Color blue = Color(0xFF6C8CFF);
-  static const Color blueDim = Color(0x142F58FF);
+  static const Color bgDeep = Color(0xFF0A0F1C);
+  static const Color bgPrimary = Color(0xFF0A0F1C);
+  static const Color bgSecondary = Color(0xFF12192A);
+  static const Color bgTertiary = Color(0xFF0F1524);
+  static const Color bgQuaternary = Color(0xFF0B1120);
+  static const Color borderSubtle = Color(0xFF27324A);
+  static const Color borderDefault = Color(0xFF27324A);
+  static const Color borderStrong = Color(0xFF35425D);
+  static const Color borderFocus = Color(0xFF7A92FF);
+  static const Color textPrimary = Color(0xFFF5F7FB);
+  static const Color textSecondary = Color(0xFF93A0BA);
+  static const Color textTertiary = Color(0xFF93A0BA);
+  static const Color textMuted = Color(0xFF6C7892);
+  static const Color accent = Color(0xFF7A92FF);
+  static const Color accentDim = Color(0x1A7A92FF);
+  static const Color accentMuted = Color(0xFFA5B5FF);
+  static const Color accentHover = Color(0xFF8EA2FF);
+  static const Color accentGlow = Color(0x247A92FF);
+  static const Color blue = Color(0xFF7A92FF);
+  static const Color blueDim = Color(0x1A7A92FF);
   static const Color purple = Color(0xFF9B8BFF);
   static const Color purpleDim = Color(0x149B8BFF);
   static const Color red = Color(0xFFE26D5A);
@@ -265,25 +270,163 @@ class AppTheme {
   static const Color yellow = Color(0xFFB69155);
   static const Color yellowDim = Color(0x14B69155);
 
-  static TextStyle get displayLarge => _text(textPrimary, 32, FontWeight.w600, -0.5);
-  static TextStyle get displayMedium => _text(textPrimary, 28, FontWeight.w600, -0.5);
-  static TextStyle get headingLarge => _text(textPrimary, 24, FontWeight.w600, -0.5);
-  static TextStyle get headingMedium => _text(textPrimary, 18, FontWeight.w500, -0.2);
-  static TextStyle get headingSmall => _text(textPrimary, 16, FontWeight.w500, -0.1);
+  static TextStyle get displayLarge =>
+      _text(textPrimary, 32, FontWeight.w600, -0.5);
+  static TextStyle get displayMedium =>
+      _text(textPrimary, 28, FontWeight.w600, -0.5);
+  static TextStyle get headingLarge =>
+      _text(textPrimary, 24, FontWeight.w600, -0.5);
+  static TextStyle get headingMedium =>
+      _text(textPrimary, 18, FontWeight.w500, -0.2);
+  static TextStyle get headingSmall =>
+      _text(textPrimary, 16, FontWeight.w500, -0.1);
   static TextStyle get bodyLarge => _text(textPrimary, 14, FontWeight.w400);
   static TextStyle get bodyMedium => _text(textSecondary, 14, FontWeight.w400);
-  static TextStyle get bodySmall => _text(textSecondary.withValues(alpha: 0.55), 12, FontWeight.w400);
+  static TextStyle get bodySmall =>
+      _text(textSecondary.withValues(alpha: 0.55), 12, FontWeight.w400);
   static TextStyle get labelMedium => _text(textSecondary, 14, FontWeight.w500);
-  static TextStyle get labelSmall => _text(textSecondary.withValues(alpha: 0.55), 12, FontWeight.w400);
-  static TextStyle get caption => _text(textSecondary.withValues(alpha: 0.55), 12, FontWeight.w400);
+  static TextStyle get labelSmall =>
+      _text(textSecondary.withValues(alpha: 0.55), 12, FontWeight.w400);
+  static TextStyle get caption =>
+      _text(textSecondary.withValues(alpha: 0.55), 12, FontWeight.w400);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gradients
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AppGradients {
+  const AppGradients._();
+
+  static const LinearGradient accent = LinearGradient(
+    colors: [Color(0xFF5A7BFF), Color(0xFF8B7BFF)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient accentSoft = LinearGradient(
+    colors: [Color(0x226C8CFF), Color(0x229B8BFF)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient heroCard = LinearGradient(
+    colors: [Color(0xFF1A2035), Color(0xFF0F1419)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient surface = LinearGradient(
+    colors: [Color(0xFF1A2030), Color(0xFF161B22)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shadows
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AppShadows {
+  const AppShadows._();
+
+  static List<BoxShadow> get elevation1 => [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.12),
+      blurRadius: 8,
+      offset: const Offset(0, 2),
+    ),
+  ];
+
+  static List<BoxShadow> get elevation2 => [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.16),
+      blurRadius: 18,
+      offset: const Offset(0, 6),
+    ),
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.06),
+      blurRadius: 4,
+      offset: const Offset(0, 1),
+    ),
+  ];
+
+  static List<BoxShadow> get floating => [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.24),
+      blurRadius: 32,
+      offset: const Offset(0, 12),
+    ),
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.10),
+      blurRadius: 8,
+      offset: const Offset(0, 3),
+    ),
+  ];
+
+  static List<BoxShadow> accentGlow(Color color, {double intensity = 0.28}) => [
+    BoxShadow(
+      color: color.withValues(alpha: intensity),
+      blurRadius: 28,
+      spreadRadius: -4,
+    ),
+  ];
+
+  static List<BoxShadow> cardHover(Color accentColor) => [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.18),
+      blurRadius: 24,
+      offset: const Offset(0, 8),
+    ),
+    BoxShadow(
+      color: accentColor.withValues(alpha: 0.10),
+      blurRadius: 32,
+      spreadRadius: -6,
+    ),
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project palette  (emoji icon backgrounds)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AppProjectColors {
+  const AppProjectColors._();
+
+  static const List<Color> palette = [
+    Color(0xFF1E3A6E), // deep blue
+    Color(0xFF3A1E6E), // purple
+    Color(0xFF1E5E3A), // forest green
+    Color(0xFF6E1E1E), // crimson
+    Color(0xFF4A3218), // warm brown
+    Color(0xFF1A4A5E), // teal
+    Color(0xFF4A1A4A), // magenta
+    Color(0xFF2E4A1A), // lime
+  ];
+
+  static Color forIndex(int i) => palette[i % palette.length];
 }
 
 class AppEmojiSet {
   const AppEmojiSet._();
 
   static const List<String> projectEmojis = [
-    '📚', '🧠', '⚡', '🎯', '🔬', '💡', '🛠', '🌿',
-    '🚀', '📝', '🎨', '🔢', '💻', '🌍', '🎵', '⭐',
+    '📚',
+    '🧠',
+    '⚡',
+    '🎯',
+    '🔬',
+    '💡',
+    '🛠',
+    '🌿',
+    '🚀',
+    '📝',
+    '🎨',
+    '🔢',
+    '💻',
+    '🌍',
+    '🎵',
+    '⭐',
   ];
 
   static String forIndex(int i) => projectEmojis[i % projectEmojis.length];
@@ -320,9 +463,7 @@ class SFButton extends StatelessWidget {
         : outlined
         ? colors.surface
         : colors.accent;
-    final foreground = danger || !outlined
-        ? Colors.white
-        : colors.textPrimary;
+    final foreground = danger || !outlined ? Colors.white : colors.textPrimary;
 
     return SizedBox(
       width: width,
@@ -337,9 +478,7 @@ class SFButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(
-                color: outlined ? colors.border : background,
-              ),
+              border: Border.all(color: outlined ? colors.border : background),
             ),
             child: Center(
               child: isLoading
@@ -360,9 +499,9 @@ class SFButton extends StatelessWidget {
                         ],
                         Text(
                           label,
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: foreground,
-                          ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.labelLarge?.copyWith(color: foreground),
                         ),
                       ],
                     ),
@@ -416,9 +555,9 @@ class SFTextField extends StatelessWidget {
           keyboardType: keyboardType,
           onChanged: onChanged,
           onSubmitted: onSubmitted,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: colors.textPrimary,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: colors.textPrimary),
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: prefixIcon == null

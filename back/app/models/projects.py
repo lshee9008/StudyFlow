@@ -20,6 +20,7 @@ class Projects(SQLModel, table=True):
     update_at: datetime
     name: str = Field(index=True)
     tags: Optional[str] = None
+    icon: Optional[str] = None
     is_sync: bool = Field(default=False)
 
 
@@ -35,6 +36,7 @@ class ProjectCreate(SQLModel):
     update_at: datetime
     name: str
     tags: Optional[str] = None
+    icon: Optional[str] = None
     is_sync: bool = False
 
 # [응답 모델]
@@ -45,4 +47,5 @@ class ProjectRead(SQLModel):
     update_at: datetime
     name: str
     tags: Optional[str] = None
+    icon: Optional[str] = None
     is_sync: bool

@@ -7,6 +7,7 @@ class ProjectModel {
   DateTime update_at;
   String name;
   String tags;
+  String icon;
   int is_sync;
 
   ProjectModel({
@@ -16,6 +17,7 @@ class ProjectModel {
     required this.update_at,
     required this.name,
     required this.tags,
+    required this.icon,
     required this.is_sync,
   });
 
@@ -32,6 +34,7 @@ class ProjectModel {
           : DateTime.now(),
       name: json['name']?.toString() ?? '제목 없음',
       tags: json['tags']?.toString() ?? '',
+      icon: json['icon']?.toString() ?? '',
       is_sync: json['is_sync'] == 1 ? 1 : 0,
     );
   }
@@ -44,6 +47,7 @@ class ProjectModel {
       'update_at': update_at.toIso8601String(),
       'name': name,
       'tags': tags,
+      'icon': icon,
       'is_sync': is_sync,
     };
   }
@@ -53,6 +57,7 @@ class ProjectModel {
     DateTime? update_at,
     String? name,
     String? tags,
+    String? icon,
     int? is_sync,
   }) {
     return ProjectModel(
@@ -62,6 +67,7 @@ class ProjectModel {
       update_at: update_at ?? this.update_at,
       name: name ?? this.name,
       tags: tags ?? this.tags,
+      icon: icon ?? this.icon,
       is_sync: is_sync ?? this.is_sync,
     );
   }

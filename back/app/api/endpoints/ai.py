@@ -134,6 +134,171 @@ def _infer_node_description(text: str, label: str, group: str = "") -> str:
     return f"{label}와 관련된 핵심 개념이다."
 
 
+def _normalize_quiz_items(raw_items, fallback_text: str, count: int = 3):
+    if not isinstance(raw_items, list):
+        return []
+
+    sentence_pool = [
+        s.strip()
+        for s in re.split(r'(?<=[.!?])\s+|\n+', fallback_text)
+        if len(s.strip()) > 12
+    ]
+    cleaned = []
+
+    for index, item in enumerate(raw_items[:count]):
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question") or "").strip()
+        options = item.get("options") if isinstance(item.get("options"), list) else []
+        normalized_options = []
+        for option in options:
+            text = str(option or "").strip()
+            if text:
+                normalized_options.append(text)
+
+        while len(normalized_options) < 4:
+            fallback = sentence_pool[(index + len(normalized_options)) % len(sentence_pool)] if sentence_pool else "본문을 다시 확인해보세요."
+            normalized_options.append(fallback[:80])
+
+        normalized_options = normalized_options[:4]
+
+        answer = item.get("answer", 0)
+        try:
+            answer = int(answer)
+        except Exception:
+            answer = 0
+        answer = max(0, min(answer, len(normalized_options) - 1))
+
+        explanation = str(item.get("explanation") or "").strip()
+        if not explanation:
+            explanation = sentence_pool[index % len(sentence_pool)] if sentence_pool else normalized_options[answer]
+
+        if not question:
+            if sentence_pool:
+                question = f"다음 중 '{sentence_pool[index % len(sentence_pool)][:24]}'와 가장 관련 있는 설명은?"
+            else:
+                question = f"Q{index + 1}. 본문 내용과 가장 일치하는 설명은?"
+
+        cleaned.append({
+            "question": question,
+            "options": normalized_options,
+            "answer": answer,
+            "explanation": explanation[:220],
+        })
+
+    return cleaned
+
+
+def _normalize_node_type(raw_type: str) -> str:
+    token = (raw_type or "").strip().lower()
+    if token in {"core", "root", "main"}:
+        return "core"
+    if token in {"branch", "topic", "section"}:
+        return "branch"
+    return "detail"
+
+
+def _normalize_graph_payload(nodes, edges, text: str):
+    if not isinstance(nodes, list):
+        nodes = []
+    if not isinstance(edges, list):
+        edges = []
+
+    clean_nodes = []
+    seen_ids = set()
+    for i, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            continue
+        label = str(node.get("label") or "").strip()
+        if not label:
+            continue
+        node_id = str(node.get("id") or f"node_{i}").strip() or f"node_{i}"
+        if node_id in seen_ids:
+            node_id = f"{node_id}_{i}"
+        seen_ids.add(node_id)
+        group = str(node.get("group") or "").strip()
+        clean_nodes.append({
+            "id": node_id,
+            "label": label[:80],
+            "description": str(node.get("description") or "").strip()
+            or _infer_node_description(text, label, group),
+            "type": _normalize_node_type(str(node.get("type") or "detail")),
+            "group": group[:40],
+            "x": node.get("x"),
+            "y": node.get("y"),
+        })
+
+    if not clean_nodes:
+        return {"nodes": [], "edges": []}
+
+    indegree = {n["id"]: 0 for n in clean_nodes}
+    clean_edges = []
+    valid_ids = {n["id"] for n in clean_nodes}
+    seen_edges = set()
+
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        source = str(edge.get("source") or "").strip()
+        target = str(edge.get("target") or "").strip()
+        if not source or not target or source == target:
+            continue
+        if source not in valid_ids or target not in valid_ids:
+            continue
+        key = (source, target)
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
+        indegree[target] = indegree.get(target, 0) + 1
+        clean_edges.append({
+            "source": source,
+            "target": target,
+            "label": str(edge.get("label") or "").strip()[:40],
+        })
+
+    root = next((n for n in clean_nodes if n["type"] == "core"), None)
+    if root is None:
+        root = next((n for n in clean_nodes if indegree.get(n["id"], 0) == 0), clean_nodes[0])
+        root["type"] = "core"
+
+    branches = [n for n in clean_nodes if n["id"] != root["id"] and n["type"] == "branch"]
+    details = [n for n in clean_nodes if n["id"] != root["id"] and n["type"] == "detail"]
+
+    if not branches and details:
+        promoted = details[: min(4, len(details))]
+        for node in promoted:
+            node["type"] = "branch"
+        branches = promoted
+        details = [n for n in details if n not in promoted]
+
+    connected_targets = {(e["source"], e["target"]) for e in clean_edges}
+    if branches:
+        for branch in branches:
+            if (root["id"], branch["id"]) not in connected_targets:
+                clean_edges.append({"source": root["id"], "target": branch["id"], "label": "핵심"})
+                connected_targets.add((root["id"], branch["id"]))
+
+    if details:
+        branch_cycle = branches or [root]
+        for idx, detail in enumerate(details):
+            parent = branch_cycle[idx % len(branch_cycle)]
+            if (parent["id"], detail["id"]) not in connected_targets:
+                clean_edges.append({"source": parent["id"], "target": detail["id"], "label": "세부"})
+                connected_targets.add((parent["id"], detail["id"]))
+
+    ordered_nodes = [root]
+    ordered_nodes.extend(sorted(
+        [n for n in clean_nodes if n["id"] != root["id"] and n["type"] == "branch"],
+        key=lambda n: (n["group"], n["label"]),
+    ))
+    ordered_nodes.extend(sorted(
+        [n for n in clean_nodes if n["id"] != root["id"] and n["type"] == "detail"],
+        key=lambda n: (n["group"], n["label"]),
+    ))
+
+    return {"nodes": ordered_nodes, "edges": clean_edges}
+
+
 # ══════════════════════════════════════════════════════════
 # LLM 호출 — 비스트리밍 (Redis 캐시 포함)
 # ══════════════════════════════════════════════════════════
@@ -389,11 +554,14 @@ async def analyze_block(req: BlockReq):
         return {"analysis": ""}
     p = (
         f"제목: {req.context_title}\n"
-        f"내용: {req.text[:600]}\n\n"
-        "위 내용을 3줄로 분석하세요 (마크다운):\n"
-        "- **핵심 의미**: 이 내용이 말하는 것\n"
-        "- **관련 개념/주의사항**: 연결되는 배경지식 또는 함정\n"
-        "- **실제 활용**: 어디에 쓰이는지 (없으면 생략)"
+        f"포커스 문단:\n{req.text[:900]}\n\n"
+        "아래 포커스 문단만 분석하세요.\n"
+        "- 다른 문단, 문서 전체, 일반적인 전체 요약으로 확장하지 마세요.\n"
+        "- 입력에 없는 사실을 새로 만들지 마세요.\n"
+        "- 답변은 짧은 마크다운 불릿 3개만 출력하세요.\n"
+        "- **핵심 의미**: 이 문단이 직접 말하는 내용\n"
+        "- **관련 개념/주의사항**: 이 문단을 이해할 때 바로 연결되는 개념 또는 주의점\n"
+        "- **실제 활용**: 이 문단의 내용이 쓰이는 상황 (없으면 생략)"
     )
     try:
         return {"analysis": await _llm(p, temp=0.2, tokens=400)}
@@ -455,7 +623,8 @@ async def quiz(req: QuizReq):
         raw = raw.replace("```json", "").replace("```", "").strip()
         s, e = raw.find("["), raw.rfind("]")
         if s != -1 and e != -1:
-            return {"quiz": json.loads(raw[s:e + 1])}
+            parsed = json.loads(raw[s:e + 1])
+            return {"quiz": _normalize_quiz_items(parsed, text, req.count)}
         return {"quiz": []}
     except Exception:
         return {"quiz": []}
@@ -547,8 +716,12 @@ class GraphReq(BaseModel):
 
 @router.post("/graph")
 async def graph(req: GraphReq):
+    import traceback as _tb
     text = _extract_text_structured(req.content.strip())
-    if _meaningful(text) < 30:
+    mc = _meaningful(text)
+    print(f"[Graph] content_len={len(req.content)} text_len={len(text)} meaningful={mc}")
+    if mc < 30:
+        print("[Graph] skip: too short")
         return {"nodes": [], "edges": []}
     p = (
         "당신은 강의 노트를 시각적 개념 보드로 재구성하는 전문가입니다.\n"
@@ -557,62 +730,56 @@ async def graph(req: GraphReq):
         f"기존 요약: {req.summary[:2000]}\n\n"
         f"원문:\n{text[:6000]}\n\n"
         "아래 규칙으로 화이트보드형 지식 그래프를 순수 JSON만으로 출력하세요.\n"
-        "1. nodes는 10~24개\n"
-        "2. 루트 1개, 핵심 개념 3~6개, 세부 설명/예시 노드 여러 개\n"
-        "3. 각 노드는 label 외에 description을 반드시 포함\n"
-        "4. description은 1~3문장 또는 bullet 성격의 짧은 부연설명\n"
-        "5. group은 같은 덩어리의 개념 묶음명\n"
-        "6. type은 core, branch, concept, detail 중 하나\n"
-        "7. edges는 source, target, label 포함\n"
-        "8. 본문에 없는 내용은 만들지 말 것\n\n"
-        "형식 예시:\n"
-        '{'
-        '"nodes":['
-        '{"id":"os","label":"운영체제","description":"하드웨어와 응용 소프트웨어 사이를 중재한다.","type":"core","group":"시스템"},'
-        '{"id":"cpu","label":"CPU","description":"명령을 실행하고 제어 흐름을 담당한다.","type":"branch","group":"하드웨어"}'
-        '],'
-        '"edges":[{"source":"os","target":"cpu","label":"제어/사용"}]'
-        '}\n\n'
-        "설명 없이 JSON만 출력하세요."
+        "1. nodes는 8~20개\n"
+        "2. 루트 1개, 핵심 개념 3~5개, 세부 노드 여러 개\n"
+        "3. 각 노드: id, label, description, type(core/branch/detail), group\n"
+        "4. description은 1~2문장 짧게\n"
+        "5. edges: source, target, label\n\n"
+        "출력 형식 (설명 없이 JSON만):\n"
+        '{"nodes":[{"id":"root","label":"주제","description":"설명","type":"core","group":""},...],'
+        '"edges":[{"source":"root","target":"n1","label":"포함"},...]}'
     )
     try:
-        raw = await _llm(p, temp=0.1, tokens=1600)
+        print(f"[Graph] calling LLM (prompt_len={len(p)})...")
+        raw = await _llm(p, temp=0.15, tokens=2000)
+        print(f"[Graph] LLM raw_len={len(raw)} preview={repr(raw[:120])}")
         raw = raw.replace("```json", "").replace("```", "").strip()
+        # JSON 객체 추출 — 가장 바깥 { } 쌍 찾기
         s, e = raw.find("{"), raw.rfind("}")
-        if s != -1 and e != -1:
-            parsed = json.loads(raw[s:e + 1])
-            nodes = parsed.get("nodes", [])
-            edges = parsed.get("edges", [])
-            clean_nodes = []
-            for i, node in enumerate(nodes):
-                if not isinstance(node, dict):
-                    continue
-                clean_nodes.append({
-                    "id": str(node.get("id") or f"node_{i}"),
-                    "label": str(node.get("label") or ""),
-                    "description": str(node.get("description") or "").strip()
-                    or _infer_node_description(
-                        text,
-                        str(node.get("label") or ""),
-                        str(node.get("group") or ""),
-                    ),
-                    "type": str(node.get("type") or "detail"),
-                    "group": str(node.get("group") or ""),
-                    "x": node.get("x"),
-                    "y": node.get("y"),
-                })
-            clean_edges = []
-            for edge in edges:
-                if not isinstance(edge, dict):
-                    continue
-                clean_edges.append({
-                    "source": str(edge.get("source") or ""),
-                    "target": str(edge.get("target") or ""),
-                    "label": str(edge.get("label") or ""),
-                })
-            return {"nodes": clean_nodes, "edges": clean_edges}
-        return {"nodes": [], "edges": []}
-    except Exception:
+        if s == -1 or e == -1 or e <= s:
+            print(f"[Graph] no JSON braces found in response")
+            return {"nodes": [], "edges": []}
+        chunk = raw[s:e + 1]
+        try:
+            parsed = json.loads(chunk)
+        except json.JSONDecodeError as je:
+            print(f"[Graph] JSON parse error: {je} — trying repair")
+            # 잘린 JSON 복구 시도: 마지막 완성된 node까지만 추출
+            last_comma = chunk.rfind('},')
+            if last_comma > s:
+                try:
+                    repaired = chunk[:last_comma + 1] + ']}'
+                    parsed = json.loads(repaired)
+                    print(f"[Graph] repaired JSON OK")
+                except Exception:
+                    print(f"[Graph] repair failed too")
+                    return {"nodes": [], "edges": []}
+            else:
+                return {"nodes": [], "edges": []}
+        nodes = parsed.get("nodes", [])
+        edges = parsed.get("edges", [])
+        print(f"[Graph] parsed nodes={len(nodes)} edges={len(edges)}")
+        normalized = _normalize_graph_payload(nodes, edges, text)
+        clean_nodes = normalized["nodes"]
+        clean_edges = normalized["edges"]
+        if not clean_nodes:
+            print("[Graph] clean_nodes empty after processing")
+            return {"nodes": [], "edges": []}
+        print(f"[Graph] success — returning {len(clean_nodes)} nodes")
+        return {"nodes": clean_nodes, "edges": clean_edges}
+    except Exception as ex:
+        print(f"[Graph] exception: {ex}")
+        _tb.print_exc()
         return {"nodes": [], "edges": []}
 
 

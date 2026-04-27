@@ -21,6 +21,7 @@ class ProjectsDBHelper {
     String? updateAt,
     String? name,
     String? tags,
+    String? icon,
     int? isSync,
   }) async {
     if (kIsWeb) return 0;
@@ -29,6 +30,7 @@ class ProjectsDBHelper {
     if (updateAt != null) updates['update_at'] = updateAt;
     if (name != null) updates['name'] = name;
     if (tags != null) updates['tags'] = tags;
+    if (icon != null) updates['icon'] = icon;
     if (isSync != null) updates['is_sync'] = isSync;
     if (updates.isEmpty) return 0;
     return await db.update(

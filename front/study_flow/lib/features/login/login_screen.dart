@@ -70,11 +70,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         left: const AuthHero(
           eyebrow: '로그인',
           title: '바로 이어서\n작업합니다.',
-          body: '최근 프로젝트와 노트 흐름을 바로 복원합니다.',
+          body: '이전 학습 흐름과 최근 노트를 빠르게 다시 불러옵니다.',
           items: [
             (LucideIcons.folderOpen, '최근 프로젝트 이어가기'),
-            (LucideIcons.sparkles, '요약과 노트 이어쓰기'),
-            (LucideIcons.search, '검색 기록 유지'),
+            (LucideIcons.sparkles, '요약과 그래프 이어보기'),
+            (LucideIcons.search, '문맥 검색 유지'),
           ],
         ),
         right: AuthPanel(

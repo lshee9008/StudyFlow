@@ -70,6 +70,7 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
           updateAt: r.update_at.toIso8601String(),
           name: r.name,
           tags: r.tags,
+          icon: r.icon,
           isSync: 1,
         );
       } else if (found.first.is_sync == 2) {
@@ -96,6 +97,7 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
             'update_at': project.update_at.toIso8601String(),
             'name': project.name,
             'tags': project.tags,
+            'icon': project.icon,
             'is_sync': 1,
           }),
         );
@@ -162,6 +164,7 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
             'update_at': p.update_at.toIso8601String(),
             'name': p.name,
             'tags': p.tags,
+            'icon': p.icon,
             'is_sync': 1,
           }),
         );
@@ -179,6 +182,7 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
           updateAt: p.update_at.toIso8601String(),
           name: p.name,
           tags: p.tags,
+          icon: p.icon,
           isSync: p.is_sync,
         );
       } catch (e) {
@@ -189,7 +193,12 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
     state = [
       for (final item in state)
         if (item.id == p.id)
-          item.updateWith(update_at: p.update_at, name: p.name, tags: p.tags)
+          item.updateWith(
+            update_at: p.update_at,
+            name: p.name,
+            tags: p.tags,
+            icon: p.icon,
+          )
         else
           item,
     ];
@@ -224,6 +233,21 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
     state = [
       for (final p in state)
         if (p.id == id) p.updateWith(tags: tags) else p,
+    ];
+  }
+
+  Future<void> updateProjectIcon(String id, String icon) async {
+    if (!kIsWeb) {
+      await ProjectsDBHelper.updateProject(
+        id,
+        updateAt: DateTime.now().toIso8601String(),
+        icon: icon,
+        isSync: 0,
+      );
+    }
+    state = [
+      for (final p in state)
+        if (p.id == id) p.updateWith(icon: icon) else p,
     ];
   }
 }
