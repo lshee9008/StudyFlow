@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/theme.dart';
+import '../../core/ui/app_components.dart';
 import '../../providers/user_provider.dart';
 import '../home/home_screen.dart';
 import 'auth_shared.dart';
@@ -14,35 +16,38 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _idCtrl = TextEditingController();
-  final _pwCtrl = TextEditingController();
-  bool _loading = false;
-  String? _error;
+  final _idController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _busy = false;
+  String? _message;
 
   @override
   void dispose() {
-    _idCtrl.dispose();
-    _pwCtrl.dispose();
+    _idController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _login() async {
-    if (_idCtrl.text.isEmpty || _pwCtrl.text.isEmpty) {
-      setState(() => _error = '아이디와 비밀번호를 모두 입력해주세요.');
+    if (_idController.text.trim().isEmpty || _passwordController.text.isEmpty) {
+      setState(() => _message = '아이디와 비밀번호를 입력해 주세요.');
       return;
     }
 
     setState(() {
-      _loading = true;
-      _error = null;
+      _busy = true;
+      _message = null;
     });
 
-    final err = await ref
+    final error = await ref
         .read(userProvider.notifier)
-        .loginUser(_idCtrl.text.trim(), _pwCtrl.text);
+        .loginUser(_idController.text.trim(), _passwordController.text);
 
-    if (!mounted) return;
-    if (err == null) {
+    if (!mounted) {
+      return;
+    }
+
+    if (error == null) {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -52,8 +57,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     setState(() {
-      _loading = false;
-      _error = '아이디 또는 비밀번호가 올바르지 않습니다.';
+      _busy = false;
+      _message = '로그인에 실패했습니다.';
     });
   }
 
@@ -61,67 +66,49 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     return AuthScaffold(
       showBack: true,
-      onBack: () => Navigator.pop(context),
       child: AuthSplitLayout(
-        left: const AuthHeroPanel(
-          eyebrow: 'RETURNING USER',
-          title: '이전 학습 세션을\n바로 이어받습니다',
-          description:
-              '로그인하면 마지막 프로젝트, 복습 큐, 검색 히스토리까지 한 번에 복원됩니다. '
-              '다시 적응할 필요 없이 바로 몰입할 수 있게 설계했습니다.',
-          bullets: [
-            (Icons.history_toggle_off_rounded, '마지막으로 보던 프로젝트와 흐름을 자동 복원'),
-            (Icons.quiz_outlined, '오답 위주 복습 큐를 우선 제안'),
-            (Icons.travel_explore_outlined, '의미 기반 검색 기록도 함께 이어짐'),
+        left: const AuthHero(
+          eyebrow: 'Login',
+          title: '바로 이어서\n작업합니다.',
+          body: '최근 프로젝트와 노트 흐름을 바로 복원합니다.',
+          items: [
+            (LucideIcons.folderOpen, '최근 프로젝트 이어가기'),
+            (LucideIcons.sparkles, '요약과 노트 이어쓰기'),
+            (LucideIcons.search, '검색 기록 유지'),
           ],
         ),
-        right: AuthFormPanel(
+        right: AuthPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const AuthSectionTitle(
-                icon: Icons.login_rounded,
-                title: '로그인',
-                subtitle: 'StudyFlow 학습 공간으로 다시 들어갑니다.',
-              ),
-              const SizedBox(height: 24),
-              SFTextField(
+              const AuthHeader(title: '로그인', subtitle: '필수 정보만 입력합니다.'),
+              const SizedBox(height: AppSpace.lg),
+              AppInput(
+                controller: _idController,
+                hintText: '아이디',
                 label: '아이디',
-                hint: '아이디를 입력하세요',
-                controller: _idCtrl,
-                prefixIcon: Icons.person_outline_rounded,
+                icon: LucideIcons.user,
                 onSubmitted: (_) => _login(),
               ),
-              const SizedBox(height: 14),
-              SFTextField(
+              const SizedBox(height: AppSpace.md),
+              AppInput(
+                controller: _passwordController,
+                hintText: '비밀번호',
                 label: '비밀번호',
-                hint: '비밀번호를 입력하세요',
-                controller: _pwCtrl,
-                obscure: true,
-                prefixIcon: Icons.lock_outline_rounded,
+                icon: LucideIcons.lock,
+                obscureText: true,
                 onSubmitted: (_) => _login(),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 14),
-                AuthHelperBox(
-                  message: _error!,
-                  color: AppTheme.red,
-                  icon: Icons.error_outline_rounded,
-                ),
+              if (_message != null) ...[
+                const SizedBox(height: AppSpace.md),
+                AppInlineMessage(message: _message!),
               ],
-              const SizedBox(height: 22),
-              SFButton(
+              const SizedBox(height: AppSpace.lg),
+              AppButton(
                 label: '로그인',
+                onPressed: _busy ? null : _login,
+                busy: _busy,
                 width: double.infinity,
-                height: 56,
-                isLoading: _loading,
-                onPressed: _loading ? null : _login,
-              ),
-              const SizedBox(height: 18),
-              const AuthHelperBox(
-                message: '계정 정보는 현재 기기 저장소와 사용자 데이터베이스를 통해 관리됩니다.',
-                color: AppTheme.blue,
-                icon: Icons.lock_person_outlined,
               ),
             ],
           ),

@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/theme.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+
 import '../../core/db_helper/users_db_helper.dart';
+import '../../core/theme.dart';
+import '../../core/ui/app_components.dart';
 import '../../models/user_model.dart';
 import '../../providers/user_provider.dart';
 import '../home/home_screen.dart';
-import 'login_or_create_membership_screen.dart';
+import 'auth_shared.dart';
 
 class RegisteredUsersScreen extends ConsumerStatefulWidget {
   const RegisteredUsersScreen({super.key});
+
   @override
   ConsumerState<RegisteredUsersScreen> createState() =>
       _RegisteredUsersScreenState();
@@ -16,143 +20,92 @@ class RegisteredUsersScreen extends ConsumerStatefulWidget {
 
 class _RegisteredUsersScreenState extends ConsumerState<RegisteredUsersScreen> {
   String _selectedId = '';
-  bool _loading = false;
+  bool _busy = false;
+
+  Future<void> _continue() async {
+    if (_selectedId.isEmpty) {
+      return;
+    }
+
+    setState(() => _busy = true);
+    await ref.read(userProvider.notifier).loginExistingUser(_selectedId);
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (_) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgDeep,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          onPressed: () => Navigator.pop(context),
-          color: AppTheme.textSecondary,
+    return AuthScaffold(
+      showBack: true,
+      child: AuthSplitLayout(
+        left: const AuthHero(
+          eyebrow: 'Saved',
+          title: '저장된 계정으로\n바로 들어갑니다.',
+          body: '이 기기에 저장된 계정을 선택하면 로그인 단계를 다시 거치지 않습니다.',
+          items: [
+            (LucideIcons.user, '로컬 계정 확인'),
+            (LucideIcons.zap, '선택 후 바로 홈으로 이동'),
+            (LucideIcons.lock, '기존 데이터 유지'),
+          ],
         ),
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SFLogo(size: 28),
-                const SizedBox(height: 40),
+        right: AuthPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const AuthHeader(title: '저장된 계정', subtitle: '하나를 선택합니다.'),
+              const SizedBox(height: AppSpace.lg),
+              FutureBuilder<List<UserModel>?>(
+                future: UsersDBHelper.selectUsers(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const _SavedAccountSkeleton();
+                  }
 
-                Container(
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgSecondary,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.borderSubtle),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('계정 선택', style: AppTheme.headingMedium),
-                      const SizedBox(height: 4),
-                      Text('이 기기에 저장된 계정을 선택하세요.', style: AppTheme.bodySmall),
-                      const SizedBox(height: 20),
+                  final users = snapshot.data ?? [];
+                  if (users.isEmpty) {
+                    return AppEmptyState(
+                      title: '저장된 계정이 없습니다.',
+                      actionLabel: '뒤로',
+                      onAction: () => Navigator.pop(context),
+                    );
+                  }
 
-                      FutureBuilder<List<UserModel>?>(
-                        future: UsersDBHelper.selectUsers(),
-                        builder: (ctx, snap) {
-                          if (snap.connectionState == ConnectionState.waiting) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(32),
-                                child: CircularProgressIndicator(
-                                  color: AppTheme.accent,
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            );
-                          }
-                          final users = snap.data;
-                          if (users == null || users.isEmpty) {
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 24),
-                              child: Center(
-                                child: Column(
-                                  children: [
-                                    const Icon(
-                                      Icons.person_off_outlined,
-                                      size: 40,
-                                      color: AppTheme.textMuted,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      '저장된 계정이 없어요',
-                                      style: AppTheme.bodyMedium,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }
-                          return Column(
-                            children: users
-                                .map(
-                                  (u) => _UserTile(
-                                    user: u,
-                                    selected: _selectedId == u.id,
-                                    onTap: () =>
-                                        setState(() => _selectedId = u.id!),
-                                  ),
-                                )
-                                .toList(),
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 20),
-                      SFButton(
-                        label: '선택한 계정으로 시작',
-                        width: double.infinity,
-                        isLoading: _loading,
-                        onPressed: _selectedId.isEmpty
-                            ? null
-                            : () async {
-                                setState(() => _loading = true);
-                                await ref
-                                    .read(userProvider.notifier)
-                                    .loginExistingUser(_selectedId);
-                                if (context.mounted) {
-                                  Navigator.pushAndRemoveUntil(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const HomeScreen(),
-                                    ),
-                                    (_) => false,
-                                  );
-                                }
-                              },
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const LoginOrCreateMembershipScreen(),
-                    ),
-                  ),
-                  child: const Text(
-                    '다른 계정으로 로그인',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: users.length,
+                    itemBuilder: (context, index) {
+                      final user = users[index];
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: index == users.length - 1 ? 0 : AppSpace.sm,
+                        ),
+                        child: _SavedAccountTile(
+                          user: user,
+                          selected: _selectedId == user.id,
+                          onTap: () => setState(() => _selectedId = user.id!),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: AppSpace.lg),
+              AppButton(
+                label: '계속',
+                onPressed: _selectedId.isEmpty || _busy ? null : _continue,
+                busy: _busy,
+                width: double.infinity,
+              ),
+            ],
           ),
         ),
       ),
@@ -160,11 +113,12 @@ class _RegisteredUsersScreenState extends ConsumerState<RegisteredUsersScreen> {
   }
 }
 
-class _UserTile extends StatelessWidget {
+class _SavedAccountTile extends StatelessWidget {
   final UserModel user;
   final bool selected;
   final VoidCallback onTap;
-  const _UserTile({
+
+  const _SavedAccountTile({
     required this.user,
     required this.selected,
     required this.onTap,
@@ -172,68 +126,124 @@ class _UserTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected ? AppTheme.accentDim : AppTheme.bgTertiary,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
+    final colors = AppTheme.colorsOf(context);
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.all(AppSpace.md),
+          decoration: BoxDecoration(
             color: selected
-                ? AppTheme.accent.withValues(alpha: 0.5)
-                : AppTheme.borderSubtle,
+                ? colors.accent.withValues(alpha: 0.08)
+                : colors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(
+              color: selected ? colors.accent : colors.border,
+              width: selected ? 1.5 : 1,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: selected ? AppTheme.accent : AppTheme.bgSecondary,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: Text(
-                  user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
-                  style: TextStyle(
-                    color: selected ? Colors.black : AppTheme.textPrimary,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
+          child: Row(
+            children: [
+              // Avatar
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? colors.accent
+                      : colors.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Center(
+                  child: Text(
+                    user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: selected ? Colors.white : colors.accent,
+                      fontSize: 15,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    user.name,
-                    style: TextStyle(
-                      color: selected ? AppTheme.accent : AppTheme.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+              const SizedBox(width: AppSpace.md),
+              // Name + join path
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.name,
+                      style: Theme.of(context).textTheme.labelLarge,
                     ),
-                  ),
-                  Text(
-                    user.join_path.isEmpty ? '로컬 계정' : user.join_path,
-                    style: AppTheme.bodySmall,
-                  ),
-                ],
+                    const SizedBox(height: AppSpace.xxs),
+                    Text(
+                      user.join_path.isEmpty ? '로컬 계정' : user.join_path,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
+              // Check indicator
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: selected
+                    ? Container(
+                        key: const ValueKey('checked'),
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: colors.accent,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: const Icon(
+                          LucideIcons.check,
+                          size: 13,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Container(
+                        key: const ValueKey('unchecked'),
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(99),
+                          border: Border.all(color: colors.border),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedAccountSkeleton extends StatelessWidget {
+  const _SavedAccountSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        3,
+        (index) => Padding(
+          padding: EdgeInsets.only(bottom: index == 2 ? 0 : AppSpace.sm),
+          child: AppCard(
+            padding: const EdgeInsets.all(AppSpace.md),
+            child: const Row(
+              children: [
+                AppSkeletonBlock(height: 28, width: 28),
+                SizedBox(width: AppSpace.sm),
+                AppSkeletonLine(width: 120),
+              ],
             ),
-            if (selected)
-              const Icon(
-                Icons.check_circle_rounded,
-                size: 18,
-                color: AppTheme.accent,
-              ),
-          ],
+          ),
         ),
       ),
     );

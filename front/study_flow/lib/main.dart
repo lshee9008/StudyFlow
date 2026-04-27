@@ -31,7 +31,7 @@ Future<void> _initSqflite() async {
     final sqfliteFfi = await _loadSqfliteFfi();
     sqfliteFfi?.call();
   } catch (e) {
-    print('sqflite FFI init skipped: $e');
+    debugPrint('sqflite FFI init skipped: $e');
   }
 }
 
@@ -50,8 +50,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'StudyFlow',
-      theme: AppTheme.darkTheme,
-      themeMode: ThemeMode.dark,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
       home: const HomeScreen(),
     );
   }

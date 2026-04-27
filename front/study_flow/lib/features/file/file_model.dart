@@ -9,6 +9,7 @@ class FileModel {
   final String? prompt;
   final String content;
   final String? summary;
+  final String? graph;
 
   FileModel({
     required this.id,
@@ -21,6 +22,7 @@ class FileModel {
     required this.prompt,
     required this.content,
     required this.summary,
+    required this.graph,
   });
 
   factory FileModel.fromJson(Map<String, dynamic> json) {
@@ -39,6 +41,7 @@ class FileModel {
       prompt: json['prompt']?.toString() ?? '',
       content: json['content']?.toString() ?? '',
       summary: json['summary']?.toString() ?? '',
+      graph: json['graph']?.toString() ?? '',
     );
   }
 
@@ -54,6 +57,7 @@ class FileModel {
       'prompt': prompt,
       'content': content,
       'summary': summary,
+      'graph': graph,
     };
   }
 
@@ -65,18 +69,20 @@ class FileModel {
     String? prompt,
     String? content,
     String? summary,
+    String? graph,
   }) {
     return FileModel(
-      id: this.id,
-      project_id: this.project_id,
-      create_at: this.create_at,
+      id: id,
+      project_id: project_id,
+      create_at: create_at,
       update_at: update_at ?? this.update_at,
       title: title ?? this.title,
       tags: tags ?? this.tags,
-      icon: tags ?? this.icon,
+      icon: icon ?? this.icon,
       prompt: prompt ?? this.prompt,
       content: content ?? this.content,
       summary: summary ?? this.summary,
+      graph: graph ?? this.graph,
     );
   }
 }

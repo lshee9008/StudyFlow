@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+
 import '../../core/theme.dart';
+import '../../core/ui/app_components.dart';
 import '../../models/user_model.dart';
 import '../../providers/user_provider.dart';
 import '../login/initial_screen.dart';
 
 class ProfileSettingsScreen extends ConsumerStatefulWidget {
   final UserModel user;
+
   const ProfileSettingsScreen({super.key, required this.user});
 
   @override
@@ -14,368 +18,180 @@ class ProfileSettingsScreen extends ConsumerStatefulWidget {
       _ProfileSettingsScreenState();
 }
 
-class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabCtrl;
-  final _nameCtrl = TextEditingController();
-  final _pwCtrl = TextEditingController();
-  final _pw2Ctrl = TextEditingController();
-  bool _loading = false;
-  String? _error;
-  String? _success;
+class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
+  final _nameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
+  bool _busy = false;
+  String? _message;
 
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
-    _nameCtrl.text = widget.user.name;
+    _nameController.text = widget.user.name;
   }
 
   @override
   void dispose() {
-    _tabCtrl.dispose();
-    _nameCtrl.dispose();
-    _pwCtrl.dispose();
-    _pw2Ctrl.dispose();
+    _nameController.dispose();
+    _passwordController.dispose();
+    _confirmController.dispose();
     super.dispose();
   }
 
-  Future<void> _updateProfile() async {
-    final name = _nameCtrl.text.trim();
-    final pw = _pwCtrl.text;
-    final pw2 = _pw2Ctrl.text;
+  Future<void> _save() async {
+    final name = _nameController.text.trim();
+    final password = _passwordController.text;
+    final confirm = _confirmController.text;
 
     if (name.isEmpty) {
-      setState(() => _error = '이름을 입력해주세요.');
+      setState(() => _message = '이름을 입력해 주세요.');
       return;
     }
-    if (pw.isNotEmpty && pw != pw2) {
-      setState(() => _error = '비밀번호가 일치하지 않습니다.');
+    if (password.isNotEmpty && password.length < 4) {
+      setState(() => _message = '비밀번호는 4자 이상이어야 합니다.');
       return;
     }
-    if (pw.isNotEmpty && pw.length < 4) {
-      setState(() => _error = '비밀번호는 4자 이상이어야 합니다.');
+    if (password.isNotEmpty && password != confirm) {
+      setState(() => _message = '비밀번호가 일치하지 않습니다.');
       return;
     }
 
     setState(() {
-      _loading = true;
-      _error = null;
-      _success = null;
+      _busy = true;
+      _message = null;
     });
 
     final newUser = UserModel(
       id: widget.user.id,
       name: name,
       join_path: widget.user.join_path,
-      password: pw.isNotEmpty ? pw : widget.user.password,
+      password: password.isNotEmpty ? password : widget.user.password,
       social_id: widget.user.social_id,
       is_login: 1,
     );
 
-    final err = await ref.read(userProvider.notifier).updateUser(newUser);
-    if (!mounted) return;
+    final error = await ref.read(userProvider.notifier).updateUser(newUser);
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
-      _loading = false;
-      if (err == null) {
-        _success = '프로필이 업데이트되었습니다.';
-        _pwCtrl.clear();
-        _pw2Ctrl.clear();
-      } else {
-        _error = err;
-      }
+      _busy = false;
+      _passwordController.clear();
+      _confirmController.clear();
     });
+
+    if (error == null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Saved successfully.')));
+      return;
+    }
+
+    setState(() => _message = error);
   }
 
-  Future<void> _deleteAccount() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: AppTheme.bgSecondary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.warning_amber_rounded,
-                      color: AppTheme.red,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text('계정 삭제', style: AppTheme.headingSmall),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '계정을 삭제하면 모든 프로젝트와 노트가 영구적으로 삭제됩니다.\n이 작업은 취소할 수 없습니다.',
-                style: AppTheme.bodyMedium,
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  SFButton(
-                    label: '취소',
-                    outlined: true,
-                    onPressed: () => Navigator.pop(context, false),
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context, true),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.red,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Text(
-                        '삭제',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+  Future<void> _requestDelete() async {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('계정을 삭제할까요?'),
+          action: SnackBarAction(
+            label: 'Delete',
+            onPressed: () async {
+              final error = await ref
+                  .read(userProvider.notifier)
+                  .deleteUser(widget.user.id!);
+
+              if (!mounted) {
+                return;
+              }
+
+              if (error == null) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const InitialScreen()),
+                  (_) => false,
+                );
+                return;
+              }
+
+              setState(() => _message = error);
+            },
           ),
         ),
-      ),
-    );
-
-    if (confirm != true) return;
-
-    setState(() {
-      _loading = true;
-    });
-    final err = await ref
-        .read(userProvider.notifier)
-        .deleteUser(widget.user.id!);
-    if (!mounted) return;
-
-    if (err == null) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const InitialScreen()),
-        (_) => false,
       );
-    } else {
-      setState(() {
-        _loading = false;
-        _error = err;
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgDeep,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          onPressed: () => Navigator.pop(context),
-          color: AppTheme.textSecondary,
-        ),
-        title: Text('설정', style: AppTheme.headingSmall),
+    final accountType = widget.user.join_path.isEmpty
+        ? '로컬 계정'
+        : widget.user.join_path;
+    final isCompact = MediaQuery.of(context).size.width < 980;
+
+    return AppWorkspaceShell(
+      currentNav: 'settings',
+      title: 'Secure Your Access',
+      subtitle: 'Manage your account, credentials, and workspace provisioning.',
+      profileLabel: widget.user.name,
+      compact: isCompact,
+      onHome: () => Navigator.popUntil(context, (route) => route.isFirst),
+      onWorkspace: () => Navigator.pop(context),
+      onSearch: () {},
+      onSettings: () {},
+      primaryAction: AppButton(
+        label: 'Save',
+        onPressed: _busy ? null : _save,
+        busy: _busy,
+        icon: LucideIcons.check,
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListView(
+        key: const PageStorageKey('settings-scroll'),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.lg,
+          0,
+          AppSpace.lg,
+          AppSpace.lg,
+        ),
+        children: [
+          AppCard(
+            child: Row(
               children: [
-                // 프로필 헤더
                 Container(
-                  padding: const EdgeInsets.all(24),
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: AppTheme.bgSecondary,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.borderSubtle),
+                    color: AppTheme.colorsOf(context).background,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: AppTheme.colorsOf(context).border,
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: Text(
-                            widget.user.name.isNotEmpty
-                                ? widget.user.name[0].toUpperCase()
-                                : 'U',
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 28,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.user.name,
-                              style: AppTheme.headingMedium,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.user.join_path.isEmpty
-                                  ? '로컬 계정'
-                                  : widget.user.join_path,
-                              style: AppTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  child: Center(
+                    child: Text(
+                      widget.user.name.isNotEmpty
+                          ? widget.user.name[0].toUpperCase()
+                          : 'U',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
                   ),
                 ),
-
-                const SizedBox(height: 24),
-
-                // 정보 수정 섹션
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgSecondary,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.borderSubtle),
-                  ),
+                const SizedBox(width: AppSpace.md),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('계정 정보', style: AppTheme.headingSmall),
-                      const SizedBox(height: 20),
-                      SFTextField(
-                        label: '아이디',
-                        hint: '새 아이디',
-                        controller: _nameCtrl,
-                        prefixIcon: Icons.person_outline_rounded,
-                      ),
-                      const SizedBox(height: 16),
-                      SFTextField(
-                        label: '새 비밀번호 (선택)',
-                        hint: '변경할 비밀번호',
-                        controller: _pwCtrl,
-                        obscure: true,
-                        prefixIcon: Icons.lock_outline_rounded,
-                      ),
-                      const SizedBox(height: 16),
-                      SFTextField(
-                        label: '비밀번호 확인',
-                        hint: '비밀번호를 다시 입력',
-                        controller: _pw2Ctrl,
-                        obscure: true,
-                        prefixIcon: Icons.lock_outline_rounded,
-                      ),
-
-                      if (_error != null) ...[
-                        const SizedBox(height: 14),
-                        _StatusBanner(message: _error!, isError: true),
-                      ],
-                      if (_success != null) ...[
-                        const SizedBox(height: 14),
-                        _StatusBanner(message: _success!, isError: false),
-                      ],
-
-                      const SizedBox(height: 20),
-                      SFButton(
-                        label: '변경사항 저장',
-                        width: double.infinity,
-                        isLoading: _loading,
-                        onPressed: _loading ? null : _updateProfile,
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // 위험 구역
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgSecondary,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.red.withValues(alpha: 0.3)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.warning_amber_rounded,
-                            size: 16,
-                            color: AppTheme.red,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '위험 구역',
-                            style: AppTheme.headingSmall.copyWith(
-                              color: AppTheme.red,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
                       Text(
-                        '계정을 삭제하면 모든 데이터가 영구적으로 사라집니다.',
-                        style: AppTheme.bodySmall,
+                        widget.user.name,
+                        style: Theme.of(context).textTheme.titleSmall,
                       ),
-                      const SizedBox(height: 16),
-                      GestureDetector(
-                        onTap: _deleteAccount,
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: AppTheme.red.withValues(alpha: 0.4),
-                            ),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              '계정 삭제',
-                              style: TextStyle(
-                                color: AppTheme.red,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
+                      const SizedBox(height: AppSpace.xxs),
+                      Text(
+                        accountType,
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
@@ -383,39 +199,74 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen>
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusBanner extends StatelessWidget {
-  final String message;
-  final bool isError;
-  const _StatusBanner({required this.message, required this.isError});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isError ? AppTheme.red : AppTheme.green;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isError
-                ? Icons.error_outline_rounded
-                : Icons.check_circle_outline_rounded,
-            size: 16,
-            color: color,
+          const SizedBox(height: 56),
+          Text(
+            'Security Credentials',
+            style: Theme.of(context).textTheme.titleSmall,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(message, style: TextStyle(color: color, fontSize: 13)),
+          const SizedBox(height: AppSpace.md),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppInput(
+                  controller: _nameController,
+                  hintText: '이름',
+                  label: 'Display name',
+                  icon: LucideIcons.user,
+                ),
+                const SizedBox(height: AppSpace.md),
+                AppInput(
+                  controller: _passwordController,
+                  hintText: '새 비밀번호',
+                  label: 'Master password',
+                  icon: LucideIcons.lock,
+                  obscureText: true,
+                ),
+                const SizedBox(height: AppSpace.md),
+                AppInput(
+                  controller: _confirmController,
+                  hintText: '비밀번호 확인',
+                  label: 'Confirm password',
+                  icon: LucideIcons.shieldCheck,
+                  obscureText: true,
+                ),
+                if (_message != null) ...[
+                  const SizedBox(height: AppSpace.md),
+                  AppInlineMessage(message: _message!),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 56),
+          Text(
+            'Workspace Provisioning',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: AppSpace.md),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Delete account',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: AppSpace.xs),
+                Text(
+                  '삭제 후 복구할 수 없습니다.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: AppSpace.lg),
+                AppButton(
+                  label: 'Delete',
+                  onPressed: _requestDelete,
+                  primary: false,
+                  icon: LucideIcons.trash2,
+                  width: double.infinity,
+                ),
+              ],
+            ),
           ),
         ],
       ),

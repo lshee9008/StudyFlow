@@ -1537,7 +1537,7 @@ class _AP extends CustomPainter {
     b(0.15 + t * 0.08, 0.2 + math.sin(t * math.pi) * 0.05, 260, _blu, 0.04);
     b(0.85 - t * 0.06, 0.15 + math.cos(t * math.pi) * 0.04, 200, _acc, 0.03);
     b(0.5 + math.sin(t * math.pi) * 0.1, 0.9, 300, _pur, 0.025);
-    b(0.9, 0.7 + t * 0.05, 180, Color(0xFF4ADE80), 0.02);
+    b(0.9, 0.7 + t * 0.05, 180, const Color(0xFF4ADE80), 0.02);
   }
 
   @override
@@ -2392,7 +2392,9 @@ class _PRState extends State<_PropRow> {
         Icon(
           widget.icon,
           size: 12,
-          color: _foc ? _acc.withValues(alpha: 0.9) : _txt2.withValues(alpha: 0.35),
+          color: _foc
+              ? _acc.withValues(alpha: 0.9)
+              : _txt2.withValues(alpha: 0.35),
         ),
         const SizedBox(width: 10),
         SizedBox(
@@ -2575,7 +2577,12 @@ class _PomodoroBar extends StatelessWidget {
             color: running ? color : color.withValues(alpha: 0.3),
             shape: BoxShape.circle,
             boxShadow: running
-                ? [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 6)]
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.6),
+                      blurRadius: 6,
+                    ),
+                  ]
                 : [],
           ),
         ),
@@ -2680,7 +2687,10 @@ class _PomFABState extends State<_PomFAB> {
               offset: const Offset(0, 4),
             ),
             if (widget.running)
-              BoxShadow(color: widget.color.withValues(alpha: 0.15), blurRadius: 16),
+              BoxShadow(
+                color: widget.color.withValues(alpha: 0.15),
+                blurRadius: 16,
+              ),
           ],
         ),
         child: Row(
@@ -2805,10 +2815,14 @@ class _MobileBottomBar extends StatelessWidget {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: pomRunning ? pomColor.withValues(alpha: 0.12) : _bg3,
+                      color: pomRunning
+                          ? pomColor.withValues(alpha: 0.12)
+                          : _bg3,
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: pomRunning ? pomColor.withValues(alpha: 0.4) : _bdr2,
+                        color: pomRunning
+                            ? pomColor.withValues(alpha: 0.4)
+                            : _bdr2,
                       ),
                     ),
                     child: Row(
@@ -3002,7 +3016,11 @@ class _Div extends StatelessWidget {
     margin: const EdgeInsets.symmetric(vertical: 4),
     decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: [Colors.transparent, _bdr.withValues(alpha: 0.6), Colors.transparent],
+        colors: [
+          Colors.transparent,
+          _bdr.withValues(alpha: 0.6),
+          Colors.transparent,
+        ],
       ),
     ),
   );
@@ -3868,7 +3886,10 @@ class _SelToolbarState extends State<_SelToolbar>
                     blurRadius: 24,
                     offset: const Offset(0, 8),
                   ),
-                  BoxShadow(color: _acc.withValues(alpha: 0.04), blurRadius: 40),
+                  BoxShadow(
+                    color: _acc.withValues(alpha: 0.04),
+                    blurRadius: 40,
+                  ),
                 ],
               ),
               child: _aiMode ? _buildAIMode() : _buildMainToolbar(),
@@ -4125,7 +4146,9 @@ class _SelToolbarState extends State<_SelToolbar>
                         decoration: BoxDecoration(
                           color: _accD,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: _acc.withValues(alpha: 0.4)),
+                          border: Border.all(
+                            color: _acc.withValues(alpha: 0.4),
+                          ),
                         ),
                         child: const Center(
                           child: Text(
@@ -4394,7 +4417,12 @@ class _SumPanel extends StatelessWidget {
                     : _txt2.withValues(alpha: 0.3),
                 shape: BoxShape.circle,
                 boxShadow: st.summaryBlocks.isNotEmpty && !st.isSummaryLoading
-                    ? [BoxShadow(color: _acc.withValues(alpha: 0.6), blurRadius: 6)]
+                    ? [
+                        BoxShadow(
+                          color: _acc.withValues(alpha: 0.6),
+                          blurRadius: 6,
+                        ),
+                      ]
                     : [],
               ),
             ),
@@ -4482,7 +4510,7 @@ class _SumPanel extends StatelessWidget {
               const _Empty(
                 icon: Icons.auto_awesome_rounded,
                 title: '자동 요약',
-                desc: '글을 작성하면\nAI가 자동으로 요약합니다.',
+                desc: '노트를 바탕으로\n요약을 생성합니다.',
               ),
             if (st.isSummaryLoading && st.summaryBlocks.isEmpty)
               const _Load('AI가 분석 중...'),
@@ -4585,225 +4613,177 @@ class _SumCard extends StatefulWidget {
   State<_SumCard> createState() => _SCState();
 }
 
-class _SCState extends State<_SumCard> with SingleTickerProviderStateMixin {
-  late AnimationController _ac;
-  late Animation<double> _fade, _scale;
+class _SCState extends State<_SumCard> {
   bool _expanded = true;
-  @override
-  void initState() {
-    super.initState();
-    _ac = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: widget.index == 0 ? 250 : 0),
-    );
-    _fade = CurvedAnimation(parent: _ac, curve: Curves.easeOut);
-    _scale = Tween(
-      begin: widget.index == 0 ? 0.97 : 1.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _ac, curve: Curves.easeOutCubic));
-    _ac.forward();
-  }
-
-  @override
-  void dispose() {
-    _ac.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final pinned = widget.block.isSaved;
-    return FadeTransition(
-      opacity: _fade,
-      child: ScaleTransition(
-        scale: _scale,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: pinned ? const Color(0xFF0A1505) : _bg3,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: pinned ? _acc.withValues(alpha: 0.4) : _bdr,
-              width: pinned ? 1.5 : 1,
-            ),
-            boxShadow: pinned
-                ? [BoxShadow(color: _acc.withValues(alpha: 0.07), blurRadius: 24)]
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 6,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: pinned ? const Color(0xFF0E1710) : _bg3,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: pinned ? _acc.withValues(alpha: 0.32) : _bdr),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: pinned ? _acc : _txt2.withValues(alpha: 0.25),
+                      shape: BoxShape.circle,
                     ),
-                  ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 헤더
-              GestureDetector(
-                onTap: () => setState(() => _expanded = !_expanded),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-                  child: Row(
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: pinned ? _acc : _txt2.withValues(alpha: 0.25),
-                          shape: BoxShape.circle,
-                          boxShadow: pinned
-                              ? [
-                                  BoxShadow(
-                                    color: _acc.withValues(alpha: 0.8),
-                                    blurRadius: 6,
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    pinned ? '고정' : '최신',
+                    style: TextStyle(
+                      color: pinned ? _acc : _txt2.withValues(alpha: 0.6),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const Spacer(),
+                  _IB(
+                    Icons.edit_outlined,
+                    () async {
+                      final ctrl = TextEditingController(
+                        text: widget.block.content,
+                      );
+                      await showDialog(
+                        context: context,
+                        builder: (dialogContext) => Dialog(
+                          backgroundColor: AppTheme.bgSecondary,
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('요약 수정', style: AppTheme.headingSmall),
+                                const SizedBox(height: 14),
+                                TextField(
+                                  controller: ctrl,
+                                  maxLines: 14,
+                                  style: AppTheme.bodyMedium.copyWith(
+                                    color: AppTheme.textPrimary,
                                   ),
-                                ]
-                              : [],
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        pinned ? '확정' : '최신 분석',
-                        style: TextStyle(
-                          color: pinned ? _acc : _txt2.withValues(alpha: 0.6),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const Spacer(),
-                      // 액션 버튼들
-                      _IB(
-                        Icons.edit_outlined,
-                        () async {
-                          final ctrl = TextEditingController(
-                            text: widget.block.content,
-                          );
-                          await showDialog(
-                            context: context,
-                            builder: (dialogContext) => Dialog(
-                              backgroundColor: AppTheme.bgSecondary,
-                              child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  decoration: const InputDecoration(
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
                                   children: [
-                                    Text('요약 수정', style: AppTheme.headingSmall),
-                                    const SizedBox(height: 14),
-                                    TextField(
-                                      controller: ctrl,
-                                      maxLines: 14,
-                                      style: AppTheme.bodyMedium.copyWith(
-                                        color: AppTheme.textPrimary,
-                                      ),
-                                      decoration: const InputDecoration(
-                                        border: OutlineInputBorder(),
-                                      ),
+                                    SFButton(
+                                      label: '취소',
+                                      outlined: true,
+                                      onPressed: () =>
+                                          Navigator.pop(dialogContext),
                                     ),
-                                    const SizedBox(height: 14),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        SFButton(
-                                          label: '취소',
-                                          outlined: true,
-                                          onPressed: () =>
-                                              Navigator.pop(dialogContext),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        SFButton(
-                                          label: '저장',
-                                          onPressed: () {
-                                            widget.onEdit(ctrl.text.trim());
-                                            Navigator.pop(dialogContext);
-                                          },
-                                        ),
-                                      ],
+                                    const SizedBox(width: 8),
+                                    SFButton(
+                                      label: '저장',
+                                      onPressed: () {
+                                        widget.onEdit(ctrl.text.trim());
+                                        Navigator.pop(dialogContext);
+                                      },
                                     ),
                                   ],
                                 ),
-                              ),
+                              ],
                             ),
-                          );
-                        },
-                        color: _txt2.withValues(alpha: 0.5),
-                        sz: 12,
-                      ),
-                      const SizedBox(width: 1),
-                      _IB(
-                        Icons.content_copy_rounded,
-                        widget.onCopy,
-                        color: _txt2.withValues(alpha: 0.5),
-                        sz: 12,
-                      ),
-                      const SizedBox(width: 1),
-                      _IB(
-                        Icons.save_outlined,
-                        widget.onExport,
-                        color: pinned ? _acc : _txt2.withValues(alpha: 0.5),
-                        sz: 12,
-                      ),
-                      const SizedBox(width: 1),
-                      _IB(
-                        pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                        widget.onPin,
-                        color: pinned ? _acc : _txt2.withValues(alpha: 0.5),
-                        sz: 12,
-                      ),
-                      const SizedBox(width: 1),
-                      _IB(
-                        Icons.close_rounded,
-                        widget.onDel,
-                        color: _txt2.withValues(alpha: 0.5),
-                        sz: 12,
-                      ),
-                      const SizedBox(width: 2),
-                      AnimatedRotation(
-                        turns: _expanded ? 0 : 0.5,
-                        duration: const Duration(milliseconds: 150),
-                        child: Icon(
-                          Icons.expand_less_rounded,
-                          size: 14,
-                          color: _txt2.withValues(alpha: 0.5),
+                          ),
                         ),
-                      ),
-                    ],
+                      );
+                    },
+                    color: _txt2.withValues(alpha: 0.5),
+                    sz: 12,
                   ),
-                ),
-              ),
-              Container(
-                height: 0.5,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      pinned ? _acc.withValues(alpha: 0.15) : _bdr.withValues(alpha: 0.5),
-                      Colors.transparent,
-                    ],
+                  const SizedBox(width: 1),
+                  _IB(
+                    Icons.content_copy_rounded,
+                    widget.onCopy,
+                    color: _txt2.withValues(alpha: 0.5),
+                    sz: 12,
                   ),
-                ),
-              ),
-              // 내용 (접기/펼치기)
-              AnimatedCrossFade(
-                duration: const Duration(milliseconds: 200),
-                crossFadeState: _expanded
-                    ? CrossFadeState.showFirst
-                    : CrossFadeState.showSecond,
-                firstChild: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: MarkdownBody(
-                    data: widget.block.content,
-                    styleSheet: _md(),
+                  const SizedBox(width: 1),
+                  _IB(
+                    Icons.save_outlined,
+                    widget.onExport,
+                    color: pinned ? _acc : _txt2.withValues(alpha: 0.5),
+                    sz: 12,
                   ),
-                ),
-                secondChild: const SizedBox.shrink(),
+                  const SizedBox(width: 1),
+                  _IB(
+                    pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    widget.onPin,
+                    color: pinned ? _acc : _txt2.withValues(alpha: 0.5),
+                    sz: 12,
+                  ),
+                  const SizedBox(width: 1),
+                  _IB(
+                    Icons.close_rounded,
+                    widget.onDel,
+                    color: _txt2.withValues(alpha: 0.5),
+                    sz: 12,
+                  ),
+                  const SizedBox(width: 2),
+                  AnimatedRotation(
+                    turns: _expanded ? 0 : 0.5,
+                    duration: const Duration(milliseconds: 150),
+                    child: Icon(
+                      Icons.expand_less_rounded,
+                      size: 14,
+                      color: _txt2.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          Container(
+            height: 0.5,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  pinned
+                      ? _acc.withValues(alpha: 0.12)
+                      : _bdr.withValues(alpha: 0.45),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 180),
+            crossFadeState: _expanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Padding(
+              padding: const EdgeInsets.all(16),
+              child: MarkdownBody(
+                data: widget.block.content,
+                styleSheet: _md(),
+              ),
+            ),
+            secondChild: const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }
@@ -5316,7 +5296,9 @@ class _QuizPanelState extends State<_QuizPanel>
                           decoration: BoxDecoration(
                             color: _accD,
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: _acc.withValues(alpha: 0.3)),
+                            border: Border.all(
+                              color: _acc.withValues(alpha: 0.3),
+                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -5516,7 +5498,7 @@ class _AskPanel extends StatelessWidget {
               )
             : const _Empty(
                 icon: Icons.chat_bubble_outline_rounded,
-                title: 'Quick Ask',
+                title: '빠른 질문',
                 desc: '내 노트 + 웹으로\n무엇이든 답합니다.',
               ),
       ),
@@ -5610,39 +5592,14 @@ class _MindmapView extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _accD,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(color: _acc.withValues(alpha: 0.2), blurRadius: 12),
-                ],
+            const Text(
+              '지식 그래프',
+              style: TextStyle(
+                color: _txt0,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
               ),
-              child: const Icon(
-                Icons.account_tree_rounded,
-                color: _acc,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '마인드맵',
-                  style: TextStyle(
-                    color: _txt0,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const Text(
-                  'AI가 개념 간 연결을 시각화합니다',
-                  style: TextStyle(color: _txt2, fontSize: 12),
-                ),
-              ],
             ),
             const Spacer(),
             _TBtn(Icons.refresh_rounded, '재생성', () {
@@ -5652,33 +5609,24 @@ class _MindmapView extends StatelessWidget {
             }),
           ],
         ),
-        const SizedBox(height: 20),
-        // 통계
+        const SizedBox(height: 14),
         Row(
           children: [
-            _Stat('블록', '${st.blocks.length}개', Icons.article_outlined),
-            const SizedBox(width: 12),
-            _Stat('글자', '${st.charCount}자', Icons.text_fields_rounded),
+            _Stat('노트', '${st.blocks.length}개', Icons.article_outlined),
             const SizedBox(width: 12),
             _Stat(
-              '확정 요약',
-              '${st.summaryBlocks.where((b) => b.isSaved).length}개',
+              '요약',
+              '${st.summaryBlocks.length}개',
               Icons.bookmark_rounded,
               accent: true,
             ),
-            const SizedBox(width: 12),
-            _Stat(
-              '읽기',
-              '${(st.wordCount / 200).ceil()}분',
-              Icons.timer_outlined,
-            ),
           ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         Expanded(
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF8F4EA),
+              color: _bg2,
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: _bdr),
               boxShadow: [
@@ -5706,8 +5654,8 @@ class _MindmapView extends StatelessWidget {
                     )
                   : const _Empty(
                       icon: Icons.account_tree_outlined,
-                      title: '마인드맵',
-                      desc: '충분한 내용 작성 시\n자동으로 생성됩니다.',
+                      title: '지식 그래프',
+                      desc: '노트 내용이 쌓이면\n그래프를 생성합니다.',
                     ),
             ),
           ),
@@ -5744,8 +5692,8 @@ class _GCS extends State<_GraphCanvas> {
       _build();
       if (mounted) {
         final matrix = Matrix4.identity()
-          ..translate(-520.0, -250.0)
-          ..scale(0.72);
+          ..translate(-300.0, -200.0)
+          ..scale(0.65);
         _controller.value = matrix;
       }
     });
@@ -6077,7 +6025,6 @@ class _GraphBoardPainter extends CustomPainter {
         );
 
       c.drawPath(path, basePaint);
-
       final dashPaint = Paint()
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke
@@ -6109,9 +6056,9 @@ class _GraphDotsPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(
       Offset.zero & size,
-      Paint()..color = const Color(0xFFF8F4EA),
+      Paint()..color = _bg2,
     );
-    final dotPaint = Paint()..color = const Color(0xFFE1DBCE);
+    final dotPaint = Paint()..color = _bdr.withValues(alpha: 0.3);
     const spacing = 12.0;
     for (double x = 0; x < size.width; x += spacing) {
       for (double y = 0; y < size.height; y += spacing) {
@@ -6505,7 +6452,10 @@ class _FABtnS extends State<_FABtn> with SingleTickerProviderStateMixin {
                   offset: const Offset(0, 5),
                 ),
                 if (widget.loading)
-                  BoxShadow(color: _acc.withValues(alpha: 0.12), blurRadius: 20),
+                  BoxShadow(
+                    color: _acc.withValues(alpha: 0.12),
+                    blurRadius: 20,
+                  ),
               ],
             ),
             child: Row(

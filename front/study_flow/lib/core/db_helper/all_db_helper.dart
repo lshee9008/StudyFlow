@@ -30,7 +30,7 @@ class LocalDatabase {
     print("🍎 [DB Path] 파일 위치: $path");
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -72,6 +72,7 @@ class LocalDatabase {
         prompt TEXT, 
         content TEXT, 
         summary TEXT, 
+        graph TEXT,
         FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
       )
     ''');
@@ -92,6 +93,7 @@ class LocalDatabase {
         prompt TEXT,
         content TEXT,
         summary TEXT,
+        graph TEXT,
         FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
       )
     ''');
@@ -100,6 +102,9 @@ class LocalDatabase {
       await db.execute(
         'ALTER TABLE projects ADD COLUMN is_sync INTEGER NOT NULL DEFAULT 0',
       );
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE files ADD COLUMN graph TEXT');
     } catch (_) {}
   }
 

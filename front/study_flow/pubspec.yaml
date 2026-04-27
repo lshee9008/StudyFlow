@@ -44,6 +44,7 @@ dependencies:
   google_fonts: any # 폰트 깨짐 방지
   emoji_picker_flutter: ^4.4.0
   flutter_markdown: ^0.7.3
+  lucide_icons: ^0.257.0
 
 dev_dependencies:
   flutter_test:

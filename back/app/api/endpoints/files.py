@@ -44,6 +44,7 @@ class FileUpdateRequest(BaseModel):
     prompt: Optional[str] = None
     content: Optional[str] = None
     summary: Optional[str] = None
+    graph: Optional[str] = None
 
 @router.put("/{file_id}", response_model=FileRead)
 def update_file(
