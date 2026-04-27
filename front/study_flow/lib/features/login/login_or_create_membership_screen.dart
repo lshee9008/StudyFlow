@@ -16,7 +16,7 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
       showBack: true,
       child: AuthSplitLayout(
         left: const AuthHero(
-          eyebrow: 'Access',
+          eyebrow: '접근',
           title: '계정을 선택하고\n바로 시작합니다.',
           body: '로그인, 새 계정 생성, 저장된 계정 진입을 같은 흐름으로 정리했습니다.',
           items: [

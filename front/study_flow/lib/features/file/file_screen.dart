@@ -2019,14 +2019,14 @@ class _DocumentHero extends StatelessWidget {
               children: [
                 _PropRow(
                   icon: Icons.tag_rounded,
-                  label: 'Tags',
+                  label: '태그',
                   ctrl: tagsController,
                   hint: '태그',
                   onChange: onTagsChange,
                 ),
                 _PropRow(
                   icon: Icons.auto_awesome_rounded,
-                  label: 'Prompt',
+                  label: '프롬프트',
                   ctrl: promptController,
                   hint: 'AI 지시사항',
                   onChange: onPromptChange,
@@ -2908,7 +2908,7 @@ class _MobileTabs extends StatelessWidget {
     (Icons.manage_search_rounded, '분석'),
     (Icons.psychology_rounded, '암기'),
     (Icons.quiz_rounded, '퀴즈'),
-    (Icons.chat_bubble_outline_rounded, 'Ask'),
+    (Icons.chat_bubble_outline_rounded, '질문'),
   ];
 
   @override
@@ -4372,7 +4372,7 @@ class _Tabs extends StatelessWidget {
       _T(Icons.manage_search_rounded, '분석'),
       _T(Icons.psychology_rounded, '암기'),
       _T(Icons.quiz_rounded, '퀴즈'),
-      _T(Icons.chat_bubble_outline_rounded, 'Ask'),
+      _T(Icons.chat_bubble_outline_rounded, '질문'),
     ],
   );
   Tab _T(IconData i, String t) => Tab(
@@ -5691,10 +5691,11 @@ class _GCS extends State<_GraphCanvas> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _build();
       if (mounted) {
-        final matrix = Matrix4.identity()
-          ..translate(-300.0, -200.0)
+        final box = context.findRenderObject() as RenderBox?;
+        final viewSize = box?.size ?? const Size(800, 600);
+        _controller.value = Matrix4.identity()
+          ..translate(-(940 - viewSize.width / 2) * 0.65, -(640 - viewSize.height / 2) * 0.65)
           ..scale(0.65);
-        _controller.value = matrix;
       }
     });
   }
@@ -5739,7 +5740,7 @@ class _GCS extends State<_GraphCanvas> {
 
     final firstLevel = childrenBySource[rootId] ?? [];
     final center = const Offset(940, 640);
-    final branchRadius = 360.0;
+    final branchRadius = 400.0;
 
     ns.add(
       _GraphNodeLayout(
@@ -5758,11 +5759,10 @@ class _GCS extends State<_GraphCanvas> {
     for (int i = 0; i < firstLevel.length; i++) {
       final nodeId = firstLevel[i];
       final angle =
-          -math.pi * 0.9 +
-          (i * (1.8 * math.pi / math.max(firstLevel.length, 1)));
+          (i * 2 * math.pi / firstLevel.length) - math.pi / 2;
       final branchCenter = Offset(
         center.dx + math.cos(angle) * branchRadius,
-        center.dy + math.sin(angle) * (branchRadius * 0.55),
+        center.dy + math.sin(angle) * branchRadius,
       );
       final childIds = childrenBySource[nodeId] ?? [];
 
@@ -6003,7 +6003,7 @@ class _GraphBoardPainter extends CustomPainter {
     final basePaint = Paint()
       ..strokeWidth = 1.4
       ..style = PaintingStyle.stroke
-      ..color = const Color(0xFFB8B6B0);
+      ..color = _bdr.withValues(alpha: 0.8);
 
     for (final e in es) {
       final a = nodeMap[e.s];
@@ -6028,8 +6028,8 @@ class _GraphBoardPainter extends CustomPainter {
       final dashPaint = Paint()
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke
-        ..color = const Color(0xFFD8D5CF);
-      c.drawCircle(end, 2.4, Paint()..color = const Color(0xFFB8B6B0));
+        ..color = _acc.withValues(alpha: 0.35);
+      c.drawCircle(end, 2.4, Paint()..color = _acc.withValues(alpha: 0.7));
       c.drawPath(path, dashPaint);
     }
   }
@@ -6087,8 +6087,8 @@ class _GraphCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final config = switch (node.style) {
       _GraphCardStyle.core => (
-        bg: const Color(0xFF3A6FF7),
-        border: const Color(0xFF2E5CE0),
+        bg: _acc,
+        border: _acc,
         text: Colors.white,
         radius: 22.0,
         font: 16.0,
@@ -6096,36 +6096,36 @@ class _GraphCard extends StatelessWidget {
         pad: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       ),
       _GraphCardStyle.branch => (
-        bg: const Color(0xFF5EC0F5),
-        border: const Color(0xFF46AEE7),
-        text: const Color(0xFF083A52),
+        bg: const Color(0xFF1E3A5F),
+        border: const Color(0xFF2E6CB0),
+        text: Colors.white,
         radius: 20.0,
         font: 14.0,
         weight: FontWeight.w700,
         pad: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
       _GraphCardStyle.subcluster => (
-        bg: const Color(0xFFE185F3),
-        border: const Color(0xFFD56BEA),
-        text: const Color(0xFF4E135C),
+        bg: const Color(0xFF2D1B4E),
+        border: _pur.withValues(alpha: 0.7),
+        text: Colors.white,
         radius: 8.0,
         font: 11.0,
         weight: FontWeight.w700,
         pad: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       ),
       _GraphCardStyle.noteWide => (
-        bg: const Color(0xFFFFDF70),
-        border: const Color(0xFFF0C84C),
-        text: const Color(0xFF4A3510),
+        bg: const Color(0xFF2A2510),
+        border: _yel.withValues(alpha: 0.5),
+        text: _txt0,
         radius: 4.0,
         font: 11.0,
         weight: FontWeight.w700,
         pad: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
       _GraphCardStyle.note => (
-        bg: const Color(0xFFFFDF70),
-        border: const Color(0xFFF0C84C),
-        text: const Color(0xFF4A3510),
+        bg: const Color(0xFF2A2510),
+        border: _yel.withValues(alpha: 0.5),
+        text: _txt0,
         radius: 4.0,
         font: 10.5,
         weight: FontWeight.w700,

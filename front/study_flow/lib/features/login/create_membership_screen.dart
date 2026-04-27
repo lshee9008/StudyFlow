@@ -107,7 +107,7 @@ class _CreateMembershipScreenState
       showBack: true,
       child: AuthSplitLayout(
         left: const AuthHero(
-          eyebrow: 'Sign up',
+          eyebrow: '회원가입',
           title: '새 계정을 만들고\n바로 시작합니다.',
           body: '프로젝트와 노트를 바로 저장할 수 있는 개인 공간을 생성합니다.',
           items: [

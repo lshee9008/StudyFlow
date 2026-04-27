@@ -85,7 +85,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     if (error == null) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Saved successfully.')));
+        ..showSnackBar(const SnackBar(content: Text('저장되었습니다.')));
       return;
     }
 
@@ -99,7 +99,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
         SnackBar(
           content: const Text('계정을 삭제할까요?'),
           action: SnackBarAction(
-            label: 'Delete',
+            label: '삭제',
             onPressed: () async {
               final error = await ref
                   .read(userProvider.notifier)
@@ -134,8 +134,8 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
 
     return AppWorkspaceShell(
       currentNav: 'settings',
-      title: 'Secure Your Access',
-      subtitle: 'Manage your account, credentials, and workspace provisioning.',
+      title: '보안 설정',
+      subtitle: '계정, 보안 인증, 워크스페이스 관리를 한 곳에서.',
       profileLabel: widget.user.name,
       compact: isCompact,
       onHome: () => Navigator.popUntil(context, (route) => route.isFirst),
@@ -143,7 +143,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
       onSearch: () {},
       onSettings: () {},
       primaryAction: AppButton(
-        label: 'Save',
+        label: '저장',
         onPressed: _busy ? null : _save,
         busy: _busy,
         icon: LucideIcons.check,
@@ -201,7 +201,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
           ),
           const SizedBox(height: 56),
           Text(
-            'Security Credentials',
+            '보안 인증',
             style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(height: AppSpace.md),
@@ -212,14 +212,14 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                 AppInput(
                   controller: _nameController,
                   hintText: '이름',
-                  label: 'Display name',
+                  label: '표시 이름',
                   icon: LucideIcons.user,
                 ),
                 const SizedBox(height: AppSpace.md),
                 AppInput(
                   controller: _passwordController,
                   hintText: '새 비밀번호',
-                  label: 'Master password',
+                  label: '마스터 비밀번호',
                   icon: LucideIcons.lock,
                   obscureText: true,
                 ),
@@ -227,7 +227,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                 AppInput(
                   controller: _confirmController,
                   hintText: '비밀번호 확인',
-                  label: 'Confirm password',
+                  label: '비밀번호 확인',
                   icon: LucideIcons.shieldCheck,
                   obscureText: true,
                 ),
@@ -240,7 +240,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
           ),
           const SizedBox(height: 56),
           Text(
-            'Workspace Provisioning',
+            '워크스페이스 관리',
             style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(height: AppSpace.md),
@@ -249,7 +249,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Delete account',
+                  '계정 삭제',
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const SizedBox(height: AppSpace.xs),
@@ -259,7 +259,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                 ),
                 const SizedBox(height: AppSpace.lg),
                 AppButton(
-                  label: 'Delete',
+                  label: '삭제',
                   onPressed: _requestDelete,
                   primary: false,
                   icon: LucideIcons.trash2,

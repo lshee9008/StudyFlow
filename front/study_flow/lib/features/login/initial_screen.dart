@@ -108,7 +108,7 @@ class _NavBar extends StatelessWidget {
         const AppBadge(label: AppTheme.brandVersion),
         const Spacer(),
         AppButton(
-          label: '시작하기',
+          label: '로그인',
           onPressed: onStart,
           icon: LucideIcons.arrowRight,
         ),

@@ -68,7 +68,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       showBack: true,
       child: AuthSplitLayout(
         left: const AuthHero(
-          eyebrow: 'Login',
+          eyebrow: '로그인',
           title: '바로 이어서\n작업합니다.',
           body: '최근 프로젝트와 노트 흐름을 바로 복원합니다.',
           items: [

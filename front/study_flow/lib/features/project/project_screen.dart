@@ -267,9 +267,8 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
       },
       child: AppWorkspaceShell(
         currentNav: 'workspace',
-        title: 'Project Notes',
-        subtitle:
-            'Comprehensive notes and research artifacts for this workspace.',
+        title: '프로젝트 노트',
+        subtitle: '워크스페이스의 노트와 학습 자료를 관리합니다.',
         profileLabel: userName,
         compact: isCompact,
         onHome: () => Navigator.popUntil(context, (route) => route.isFirst),
@@ -277,13 +276,13 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
         onSearch: () {},
         onSettings: () {},
         secondaryAction: AppButton(
-          label: 'Tags',
+          label: '태그',
           onPressed: _openTagSheet,
           primary: false,
           icon: LucideIcons.tags,
         ),
         primaryAction: AppButton(
-          label: 'New Page',
+          label: '새 노트',
           onPressed: _createFile,
           icon: LucideIcons.filePlus,
         ),
@@ -320,7 +319,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
                       padding: const EdgeInsets.all(AppSpace.lg),
                       child: AppEmptyState(
                         title: '노트를 추가하고 학습 흐름을 이어가보세요.',
-                        actionLabel: 'New Page',
+                        actionLabel: '새 노트',
                         onAction: _createFile,
                       ),
                     );
@@ -340,7 +339,7 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
                         return Padding(
                           padding: const EdgeInsets.only(top: AppSpace.sm),
                           child: AppButton(
-                            label: 'New Page',
+                            label: '새 노트',
                             onPressed: _createFile,
                             primary: false,
                             icon: LucideIcons.plus,

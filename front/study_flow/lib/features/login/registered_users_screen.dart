@@ -47,7 +47,7 @@ class _RegisteredUsersScreenState extends ConsumerState<RegisteredUsersScreen> {
       showBack: true,
       child: AuthSplitLayout(
         left: const AuthHero(
-          eyebrow: 'Saved',
+          eyebrow: '저장된 계정',
           title: '저장된 계정으로\n바로 들어갑니다.',
           body: '이 기기에 저장된 계정을 선택하면 로그인 단계를 다시 거치지 않습니다.',
           items: [

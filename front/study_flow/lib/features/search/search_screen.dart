@@ -128,8 +128,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return AppWorkspaceShell(
       currentNav: 'search',
-      title: 'Search',
-      subtitle: 'Find notes, tags, and concepts across your workspace.',
+      title: '검색',
+      subtitle: '워크스페이스 전체에서 노트, 태그, 개념을 검색합니다.',
       profileLabel: userName,
       compact: isCompact,
       onHome: () => Navigator.popUntil(context, (route) => route.isFirst),
@@ -137,7 +137,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       onSearch: () {},
       onSettings: () {},
       primaryAction: AppButton(
-        label: 'Search',
+        label: '검색',
         onPressed: _search,
         icon: LucideIcons.search,
       ),
@@ -229,7 +229,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: AppSpace.md),
             child: Text(
-              '${_results.length} results',
+              '${_results.length}개 결과',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontFamily: 'monospace',
                 fontFeatures: const [FontFeature.tabularFigures()],
