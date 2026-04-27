@@ -49,14 +49,16 @@ jobs:
 
       # ── Vercel 배포 ────────────────────────────────────
       - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token:      ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id:     ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: front/study_flow/build/web
-          vercel-args: "--prod"
+        id: vercel-deploy
+        working-directory: front/study_flow/build/web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          DEPLOYMENT_URL=$(npx vercel@latest --prod --yes --token="$VERCEL_TOKEN")
+          echo "deployment_url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
 
       # ── 배포 URL 출력 ─────────────────────────────────
       - name: Print deploy URL
-        run: echo "✅ 배포 완료"
+        run: echo "✅ 배포 완료: ${{ steps.vercel-deploy.outputs.deployment_url }}"
