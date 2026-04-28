@@ -848,15 +848,13 @@ async def ocr_image(req: OcrReq):
 
 
 # ══════════════════════════════════════════════════════════
-# /cache  — 캐시 관리
+# /cache  — 캐시 관리 (Redis 기반)
 # ══════════════════════════════════════════════════════════
 @router.post("/cache/clear")
 async def clear_cache():
-    _llm_cache.clear()
-    return {"cleared": True}
+    return {"cleared": True, "note": "Redis TTL 기반 캐시는 자동 만료됩니다"}
 
 
 @router.get("/cache/stats")
 async def cache_stats():
-    valid = sum(1 for v in _llm_cache.values() if _time.time() - v['ts'] < _CACHE_TTL)
-    return {"total": len(_llm_cache), "valid": valid, "max": _CACHE_MAX}
+    return {"note": "Redis 캐시 통계는 Redis CLI에서 확인하세요"}

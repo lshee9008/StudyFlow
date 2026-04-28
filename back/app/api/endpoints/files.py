@@ -1,11 +1,13 @@
 from typing import Optional, List
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session
 from pydantic import BaseModel
-import httpx
 import google.generativeai as genai
 
 from app.core.config import settings
+from app.core.database import get_session
+from app.models.files import Files, FileCreate, FileRead
+from app.crud import crud_files
 
 
 def _gemini(prompt: str, temp: float = 0.2, tokens: int = 2048) -> str:
@@ -14,10 +16,6 @@ def _gemini(prompt: str, temp: float = 0.2, tokens: int = 2048) -> str:
     cfg = genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens)
     response = model.generate_content(prompt, generation_config=cfg)
     return response.text.strip() if response.text else ""
-
-from app.core.database import get_session
-from app.models.files import Files, FileCreate, FileRead
-from app.crud import crud_files
 
 router = APIRouter()
 
