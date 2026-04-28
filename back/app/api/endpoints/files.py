@@ -1,5 +1,5 @@
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlmodel import Session, select
 from pydantic import BaseModel
 import httpx
@@ -49,6 +49,7 @@ class FileUpdateRequest(BaseModel):
 def update_file(
     file_id: str,
     file_in: FileUpdateRequest,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session)
 ):
     file = session.get(Files, file_id)
@@ -61,9 +62,9 @@ def update_file(
     session.commit()
     session.refresh(file)
 
-    # RAG 벡터 업데이트 (content 변경 시)
+    # RAG 벡터 업데이트 (content 변경 시) - 백그라운드로 실행하여 응답 지연 방지
     if file_in.content is not None:
-        _update_vector(file)
+        background_tasks.add_task(_update_vector, file)
 
     return file
 

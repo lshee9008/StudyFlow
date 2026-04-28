@@ -348,7 +348,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
                 'icon': state.icon,
               }),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(const Duration(seconds: 30));
       } catch (e) {
         print('saveFile error: $e');
       }
