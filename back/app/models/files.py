@@ -9,10 +9,10 @@ from .projects import Projects
 class Files(SQLModel, table=True):
     __tablename__ = "files"
 
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
 
     # 외래키
-    project_id: uuid.UUID = Field(foreign_key="projects.id", ondelete="CASCADE")
+    project_id: str = Field(foreign_key="projects.id", ondelete="CASCADE", index=True)
 
     # 필드
     title: Optional[str] = None
@@ -31,8 +31,8 @@ class Files(SQLModel, table=True):
 
 # [요청 모델]
 class FileCreate(SQLModel):
-    id: Optional[uuid.UUID] = None
-    project_id: uuid.UUID
+    id: Optional[str] = None
+    project_id: str
     title: Optional[str] = None
     tags: Optional[str] = None
     icon: Optional[str] = None
@@ -46,8 +46,8 @@ class FileCreate(SQLModel):
 
 # [응답 모델]
 class FileRead(SQLModel):
-    id: uuid.UUID
-    project_id: uuid.UUID
+    id: str
+    project_id: str
     title: Optional[str] = None
     tags: Optional[str] = None
     icon: Optional[str] = None

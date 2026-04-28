@@ -1,3 +1,4 @@
+import os
 from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, create_engine, Session
 from .config import settings
@@ -8,6 +9,10 @@ connect_args = {"check_same_thread": False} if "sqlite" in settings.DATABASE_URL
 engine = create_engine(settings.DATABASE_URL, echo=True, connect_args=connect_args)
 
 def init_db():
+    # DB_RESET=true 환경변수가 설정되면 기존 테이블을 모두 삭제 후 재생성 (UUID→str 마이그레이션용)
+    if os.getenv("DB_RESET", "").lower() == "true":
+        SQLModel.metadata.drop_all(engine)
+
     SQLModel.metadata.create_all(engine)
     inspector = inspect(engine)
     try:

@@ -2,7 +2,6 @@ from sqlmodel import Session, select
 from app.models.files import Files, FileCreate
 from app.core.vector_store import get_vector_store
 import langchain_core.documents
-import uuid
 
 
 def create_file(session: Session, file_in: FileCreate) -> Files:
@@ -24,7 +23,6 @@ def create_file(session: Session, file_in: FileCreate) -> Files:
                     "title": db_obj.title or "무제"
                 }
             )
-            # 기존 문서가 있다면 id 기반으로 덮어쓰거나 추가 (Chroma 관리 정책에 따름)
             vector_store.add_documents([doc])
             print(f"✅ [RAG] File {db_obj.id} embedded successfully.")
         except Exception as e:
@@ -33,8 +31,6 @@ def create_file(session: Session, file_in: FileCreate) -> Files:
     return db_obj
 
 
-def get_files_by_project(session: Session, project_id: uuid.UUID):
+def get_files_by_project(session: Session, project_id: str):
     statement = select(Files).where(Files.project_id == project_id)
     return session.exec(statement).all()
-
-# update_file 등 다른 함수들도 create_file과 유사하게 벡터 업데이트 로직 추가 권장

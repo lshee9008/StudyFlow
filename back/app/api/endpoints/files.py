@@ -1,4 +1,3 @@
-import uuid
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -21,7 +20,7 @@ def create_file(*, session: Session = Depends(get_session), file_in: FileCreate)
 # ── 프로젝트의 파일 목록 조회 ──────────────────────────────
 @router.get("/project/{project_id}", response_model=List[FileRead])
 def get_files_by_project(
-    project_id: uuid.UUID,
+    project_id: str,
     session: Session = Depends(get_session)
 ):
     return crud_files.get_files_by_project(session, project_id)
@@ -29,7 +28,7 @@ def get_files_by_project(
 
 # ── 특정 파일 조회 ────────────────────────────────────────
 @router.get("/{file_id}", response_model=FileRead)
-def get_file(*, session: Session = Depends(get_session), file_id: uuid.UUID):
+def get_file(*, session: Session = Depends(get_session), file_id: str):
     file = session.get(Files, file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
@@ -48,7 +47,7 @@ class FileUpdateRequest(BaseModel):
 
 @router.put("/{file_id}", response_model=FileRead)
 def update_file(
-    file_id: uuid.UUID,
+    file_id: str,
     file_in: FileUpdateRequest,
     session: Session = Depends(get_session)
 ):
@@ -71,7 +70,7 @@ def update_file(
 
 # ── 파일 삭제 ──────────────────────────────────────────────
 @router.delete("/{file_id}")
-def delete_file(*, session: Session = Depends(get_session), file_id: uuid.UUID):
+def delete_file(*, session: Session = Depends(get_session), file_id: str):
     file = session.get(Files, file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
