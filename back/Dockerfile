@@ -43,4 +43,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # --workers 1: ChromaDB / SQLite는 멀티프로세스 비호환 → 단일 워커
 # 필요 시 PostgreSQL + stateless 구조로 변경 후 workers 늘릴 것
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
