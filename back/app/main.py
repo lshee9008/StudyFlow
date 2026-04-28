@@ -39,11 +39,13 @@ app.include_router(api_router, prefix="/api")
 
 
 @app.get("/")
+@app.head("/")
 def root():
     return {"status": "ok", "service": settings.PROJECT_NAME}
 
 
 @app.get("/health")
+@app.head("/health")
 def health():
     return {"status": "healthy"}
 
