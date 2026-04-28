@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -18,18 +19,18 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
         left: const AuthHero(
           eyebrow: '시작',
           title: '계정을 선택하고\n바로 시작합니다.',
-          body: '지금 쓰던 계정으로 이어가거나, 새 학습 공간을 바로 열 수 있습니다.',
+          body: 'Google 또는 이메일로 로그인하거나, 새 계정을 만들 수 있습니다.',
           items: [
-            (LucideIcons.logIn, '기존 계정으로 바로 이어가기'),
+            (LucideIcons.logIn, 'Google · 이메일로 바로 로그인'),
             (LucideIcons.userPlus, '새 학습 공간 만들기'),
-            (LucideIcons.laptop, '이 기기의 계정 불러오기'),
+            (LucideIcons.shieldCheck, '안전하게 보호되는 계정'),
           ],
         ),
         right: AuthPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const AuthHeader(title: '계정 선택', subtitle: '하나만 고르면 됩니다.'),
+              const AuthHeader(title: '계정 선택', subtitle: '로그인 또는 새 계정 만들기'),
               const SizedBox(height: AppSpace.lg),
               _EntryTile(
                 icon: LucideIcons.logIn,
@@ -53,18 +54,20 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: AppSpace.sm),
-              _EntryTile(
-                icon: LucideIcons.laptop,
-                title: '저장 계정',
-                subtitle: '이 기기',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const RegisteredUsersScreen(),
+              if (!kIsWeb) ...[
+                const SizedBox(height: AppSpace.sm),
+                _EntryTile(
+                  icon: LucideIcons.laptop,
+                  title: '저장 계정',
+                  subtitle: '이 기기',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const RegisteredUsersScreen(),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
