@@ -633,11 +633,30 @@ class _IconPickerSheetState extends State<_IconPickerSheet>
   String _selected = '';
 
   static const _categories = [
-    ('학습', ['📘', '📗', '📕', '📙', '📚', '📖', '🎓', '✏️', '🖊️', '📓']),
-    ('과학·기술', ['🧠', '🔬', '🔭', '🧪', '💻', '🤖', '🔐', '🌐', '⚙️', '🛰️']),
-    ('목표', ['💡', '⚡', '🎯', '🏆', '🚀', '🔥', '⭐', '💪', '🏅', '✅']),
-    ('도구', ['🛠️', '📊', '📋', '🗂️', '📝', '📌', '🗓️', '📁', '🗃️', '📎']),
-    ('감성', ['🎨', '🎵', '🌿', '☕', '🌸', '🌍', '🦋', '🎮', '🍀', '🌙']),
+    ('학습', [
+      '📘', '📗', '📕', '📙', '📚', '📖', '🎓', '✏️', '🖊️', '📓',
+      '📝', '🖋️', '📒', '📃', '📄', '📑', '🗒️', '🗓️', '📐', '📏',
+    ]),
+    ('과학·기술', [
+      '🧠', '🔬', '🔭', '🧪', '💻', '🤖', '🔐', '🌐', '⚙️', '🛰️',
+      '🖥️', '📱', '💾', '🖱️', '🔋', '🧬', '⚗️', '🔩', '🧲', '📡',
+    ]),
+    ('목표', [
+      '💡', '⚡', '🎯', '🏆', '🚀', '🔥', '⭐', '💪', '🏅', '✅',
+      '🌟', '🎖️', '🥇', '🏁', '⚑', '🎪', '🎠', '💫', '✨', '🌈',
+    ]),
+    ('도구', [
+      '🛠️', '📊', '📋', '🗂️', '📌', '📁', '🗃️', '📎', '🔑', '🗝️',
+      '🔍', '🔎', '📦', '🗄️', '🖇️', '📐', '🖨️', '💼', '🗑️', '📫',
+    ]),
+    ('감성', [
+      '🎨', '🎵', '🌿', '☕', '🌸', '🌍', '🦋', '🎮', '🍀', '🌙',
+      '🎭', '🎬', '🎤', '🎸', '🍃', '🌺', '🌊', '🏔️', '🌅', '🎆',
+    ]),
+    ('기타', [
+      '🐉', '🦊', '🐺', '🦁', '🐯', '🦅', '🦉', '🐬', '🌵', '🍎',
+      '🍕', '🍜', '🏠', '🏛️', '⚽', '🎾', '🏊', '🤸', '💎', '🪐',
+    ]),
   ];
 
   @override
@@ -743,50 +762,53 @@ class _IconPickerSheetState extends State<_IconPickerSheet>
             ),
             // Emoji grid
             SizedBox(
-              height: 200,
+              height: 260,
               child: TabBarView(
                 controller: _tabs,
                 children: _categories.map((cat) {
-                  return Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: cat.$2.map((emoji) {
-                        final isSelected = emoji == _selected;
-                        return MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: () => setState(() => _selected = emoji),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 130),
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
+                  return GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 52,
+                      mainAxisSpacing: 6,
+                      crossAxisSpacing: 6,
+                      childAspectRatio: 1,
+                    ),
+                    itemCount: cat.$2.length,
+                    itemBuilder: (_, idx) {
+                      final emoji = cat.$2[idx];
+                      final isSelected = emoji == _selected;
+                      return MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selected = emoji),
+                          onDoubleTap: () => Navigator.pop(context, emoji),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 130),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? colors.accent.withValues(alpha: 0.14)
+                                  : colors.background,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
                                 color: isSelected
-                                    ? colors.accent.withValues(alpha: 0.14)
-                                    : colors.background,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? colors.accent.withValues(alpha: 0.7)
-                                      : colors.border.withValues(alpha: 0.5),
-                                  width: isSelected ? 1.5 : 1.0,
-                                ),
+                                    ? colors.accent.withValues(alpha: 0.7)
+                                    : colors.border.withValues(alpha: 0.5),
+                                width: isSelected ? 1.5 : 1.0,
                               ),
-                              child: Center(
-                                child: Text(
-                                  emoji,
-                                  style: TextStyle(
-                                    fontSize: isSelected ? 22 : 19,
-                                  ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                emoji,
+                                style: TextStyle(
+                                  fontSize: isSelected ? 22 : 19,
                                 ),
                               ),
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
+                        ),
+                      );
+                    },
                   );
                 }).toList(),
               ),

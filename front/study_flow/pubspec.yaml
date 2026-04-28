@@ -72,10 +72,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Assets — logo files go in assets/images/
-  # Uncomment below when logo files are added:
-  # assets:
-  #   - assets/images/
+  assets:
+    - assets/images/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

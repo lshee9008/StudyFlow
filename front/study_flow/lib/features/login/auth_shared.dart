@@ -95,8 +95,13 @@ class AuthScaffold extends StatelessWidget {
                                   intensity: 0.25,
                                 ),
                               ),
-                              child: const Center(
-                                child: _MiniIcon(),
+                              child: Center(
+                                child: Image.asset(
+                                  'assets/images/logo_icon.png',
+                                  width: 14,
+                                  height: 14,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -158,39 +163,6 @@ class AuthScaffold extends StatelessWidget {
   }
 }
 
-class _MiniIcon extends StatelessWidget {
-  const _MiniIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 13,
-      height: 13,
-      child: CustomPaint(painter: _MiniIconPainter()),
-    );
-  }
-}
-
-class _MiniIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final w = size.width;
-    final h = size.height;
-
-    canvas.drawLine(Offset(w * 0.15, h * 0.28), Offset(w * 0.85, h * 0.28), paint);
-    canvas.drawLine(Offset(w * 0.15, h * 0.54), Offset(w * 0.62, h * 0.54), paint);
-    canvas.drawLine(Offset(w * 0.15, h * 0.78), Offset(w * 0.74, h * 0.78), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
 
 class _AuthBackButton extends StatefulWidget {
   final VoidCallback onTap;

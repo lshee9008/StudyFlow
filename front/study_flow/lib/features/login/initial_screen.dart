@@ -212,7 +212,14 @@ class _TopNav extends StatelessWidget {
                     intensity: 0.3,
                   ),
                 ),
-                child: const Center(child: _BrandIconSmall()),
+                child: Center(
+                child: Image.asset(
+                  'assets/images/logo_icon.png',
+                  width: 16,
+                  height: 16,
+                  color: Colors.white,
+                ),
+              ),
               ),
               const SizedBox(width: 10),
               ShaderMask(
@@ -935,14 +942,26 @@ class _MockSidebar extends StatelessWidget {
                     gradient: AppGradients.accent,
                     borderRadius: BorderRadius.circular(4),
                   ),
+                  child: Center(
+                    child: Image.asset(
+                      'assets/images/logo_icon.png',
+                      width: 11,
+                      height: 11,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 6),
-                Container(
-                  width: 60,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: colors.textPrimary.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(4),
+                ShaderMask(
+                  shaderCallback: (b) => AppGradients.accent.createShader(b),
+                  blendMode: BlendMode.srcIn,
+                  child: Text(
+                    'StudyFlow',
+                    style: GoogleFonts.inter(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
                   ),
                 ),
               ],
@@ -1231,36 +1250,3 @@ class _MockProjectCard extends StatelessWidget {
   }
 }
 
-class _BrandIconSmall extends StatelessWidget {
-  const _BrandIconSmall();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 14,
-      height: 14,
-      child: CustomPaint(painter: _BrandIconPainter()),
-    );
-  }
-}
-
-class _BrandIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final w = size.width;
-    final h = size.height;
-
-    canvas.drawLine(Offset(w * 0.15, h * 0.30), Offset(w * 0.85, h * 0.30), paint);
-    canvas.drawLine(Offset(w * 0.15, h * 0.55), Offset(w * 0.60, h * 0.55), paint);
-    canvas.drawLine(Offset(w * 0.15, h * 0.78), Offset(w * 0.72, h * 0.78), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}

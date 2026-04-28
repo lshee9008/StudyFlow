@@ -299,14 +299,34 @@ class _ShellSidebarState extends State<_ShellSidebar>
         children: [
           // ── Logo + collapse toggle ────────────────────────────────────
           if (widget.collapsed)
-            // Collapsed: only the toggle button, perfectly centered
+            // Collapsed: mini logo icon + toggle, vertically stacked
             SizedBox(
-              height: 54,
-              child: Center(
-                child: _CollapseToggle(
-                  collapsed: widget.collapsed,
-                  onTap: widget.onToggleCollapse,
-                ),
+              height: 62,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      gradient: AppGradients.accent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Image.asset(
+                        'assets/images/logo_icon.png',
+                        width: 16,
+                        height: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _CollapseToggle(
+                    collapsed: widget.collapsed,
+                    onTap: widget.onToggleCollapse,
+                  ),
+                ],
               ),
             )
           else
@@ -599,43 +619,20 @@ class _GlowWordmarkIconState extends State<_GlowWordmarkIcon>
               ),
             ],
           ),
-          child: const Center(child: _BrandIcon()),
+          child: Center(
+            child: Image.asset(
+              'assets/images/logo_icon.png',
+              width: 16,
+              height: 16,
+              color: Colors.white,
+            ),
+          ),
         );
       },
     );
   }
 }
 
-class _BrandIcon extends StatelessWidget {
-  const _BrandIcon();
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 16,
-      height: 16,
-      child: CustomPaint(painter: _BrandIconPainter()),
-    );
-  }
-}
-
-class _BrandIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    final w = size.width;
-    final h = size.height;
-    canvas.drawLine(Offset(w * 0.15, h * 0.3), Offset(w * 0.85, h * 0.3), paint);
-    canvas.drawLine(Offset(w * 0.15, h * 0.55), Offset(w * 0.60, h * 0.55), paint);
-    canvas.drawLine(Offset(w * 0.15, h * 0.78), Offset(w * 0.72, h * 0.78), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
 
 // ─── Sidebar nav item ─────────────────────────────────────────────────────────
 
