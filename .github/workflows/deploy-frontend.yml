@@ -37,7 +37,6 @@ jobs:
         run: flutter build web --release --dart-define=API_BASE=${{ secrets.API_BASE_URL }}
 
       - name: Deploy to Vercel
-        working-directory: ${{ github.workspace }}
         run: npx vercel@latest deploy --prod --yes
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
