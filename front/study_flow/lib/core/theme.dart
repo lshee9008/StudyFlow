@@ -125,7 +125,7 @@ class AppTheme {
     required Brightness brightness,
     required AppColors colors,
   }) {
-    final base = GoogleFonts.interTextTheme(
+    final base = GoogleFonts.notoSansKrTextTheme(
       brightness == Brightness.dark
           ? ThemeData.dark().textTheme
           : ThemeData.light().textTheme,
@@ -147,7 +147,7 @@ class AppTheme {
         onSurface: colors.textPrimary,
       ),
       dividerColor: colors.border,
-      fontFamily: GoogleFonts.inter().fontFamily,
+      fontFamily: GoogleFonts.notoSansKr().fontFamily,
       extensions: <ThemeExtension<dynamic>>[colors],
       textTheme: base.copyWith(
         bodySmall: _text(colors.textSecondary, 12, FontWeight.w400),

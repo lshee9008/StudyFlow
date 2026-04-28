@@ -1,5 +1,9 @@
-from typing import Optional, List
-from sqlmodel import SQLModel, Field, Relationship
+from typing import TYPE_CHECKING, List, Optional
+
+from sqlmodel import Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from .projects import Projects
 
 
 # [DB 테이블 모델]

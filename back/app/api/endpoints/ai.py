@@ -1,11 +1,12 @@
+import asyncio
+import json
+import re
+from typing import AsyncGenerator, List, Optional
+
+import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, List, AsyncGenerator
-import json
-import httpx
-import re
-import asyncio
 
 import google.generativeai as genai
 
@@ -48,16 +49,26 @@ def _extract_text_structured(content: str) -> str:
             c = (b.get("content") or b.get("controller", {}).get("text") or "").strip()
             if not c:
                 continue
-            if   t == "h1":       parts.append(f"# {c}")
-            elif t == "h2":       parts.append(f"## {c}")
-            elif t == "h3":       parts.append(f"### {c}")
-            elif t == "bullet":   parts.append(f"- {c}")
-            elif t == "number":   parts.append(f"1. {c}")
-            elif t == "checkbox": parts.append(f"☐ {c}")
-            elif t == "quote":    parts.append(f"> {c}")
-            elif t == "code":     parts.append(f"```\n{c}\n```")
-            elif t == "divider":  parts.append("---")
-            else:                 parts.append(c)
+            if t == "h1":
+                parts.append(f"# {c}")
+            elif t == "h2":
+                parts.append(f"## {c}")
+            elif t == "h3":
+                parts.append(f"### {c}")
+            elif t == "bullet":
+                parts.append(f"- {c}")
+            elif t == "number":
+                parts.append(f"1. {c}")
+            elif t == "checkbox":
+                parts.append(f"☐ {c}")
+            elif t == "quote":
+                parts.append(f"> {c}")
+            elif t == "code":
+                parts.append(f"```\n{c}\n```")
+            elif t == "divider":
+                parts.append("---")
+            else:
+                parts.append(c)
         return "\n\n".join(parts)   # ← \n\n: 청킹 경계 기준
     except Exception:
         return content
@@ -343,7 +354,7 @@ async def _llm_stream(prompt: str, temp: float = 0.2, tokens: int = 2000) -> Asy
 # 프롬프트 빌더
 # ══════════════════════════════════════════════════════════
 def _structure_hint(text: str) -> str:
-    h1s = [l[2:].strip() for l in text.split('\n') if l.startswith('# ')]
+    h1s = [line[2:].strip() for line in text.split('\n') if line.startswith('# ')]
     return f"문서 주제: {' / '.join(h1s[:4])}\n" if h1s else ""
 
 

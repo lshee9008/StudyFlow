@@ -1,9 +1,11 @@
 from typing import Any
-from app.core.database import get_session
 import uuid
+
+from app.core.database import get_session
 
 # 1. get_db 해결: get_session을 그대로 가져와서 이름만 맞춰줍니다.
 get_db = get_session
+
 
 # 2. get_current_active_user 해결 (임시 통과용)
 # 로그인 기능이 완성되기 전까지, 모든 요청을 '임시 관리자'가 보낸 것으로 처리합니다.
@@ -15,6 +17,7 @@ class MockUser:
         self.id = uuid.UUID("66e5dc5c-4282-4277-8af4-1881e3bc2613")
         self.email = "admin@studyflow.com"
         self.is_active = True
+
 
 def get_current_active_user() -> Any:
     """
