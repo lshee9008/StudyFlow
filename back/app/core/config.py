@@ -14,11 +14,8 @@ class Settings:
     # 미설정 시 in-memory LRU 폴백 자동 사용
     REDIS_URL: str = os.getenv("REDIS_URL", "")
 
-    # ── Ollama (LLM) ────────────────────────────────────────
-    # local  : http://localhost:11434
-    # docker : http://ollama:11434
-    # 외부   : https://your-ollama.example.com
-    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    # ── Google Gemini (LLM) ─────────────────────────────────
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
     # ── External APIs ───────────────────────────────────────
     TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")

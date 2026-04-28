@@ -3,6 +3,17 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlmodel import Session, select
 from pydantic import BaseModel
 import httpx
+import google.generativeai as genai
+
+from app.core.config import settings
+
+
+def _gemini(prompt: str, temp: float = 0.2, tokens: int = 2048) -> str:
+    genai.configure(api_key=settings.GEMINI_API_KEY)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    cfg = genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens)
+    response = model.generate_content(prompt, generation_config=cfg)
+    return response.text.strip() if response.text else ""
 
 from app.core.database import get_session
 from app.models.files import Files, FileCreate, FileRead
@@ -103,19 +114,8 @@ async def summarize_with_prompt(req: ServerSummarizeRequest):
     full_prompt = f"{system_prompt}\n\n[본문]:\n{req.content}"
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": "gemma3:27b-cloud",
-                    "prompt": full_prompt,
-                    "stream": False,
-                    "options": {"temperature": 0.4, "num_predict": 2048}
-                }
-            )
-            response.raise_for_status()
-            result = response.json()
-            return {"summary": result.get("response", "")}
+        result = _gemini(full_prompt, temp=0.4, tokens=2048)
+        return {"summary": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 서버 오류: {str(e)}")
 
@@ -142,19 +142,8 @@ async def proofread_content(req: ProofreadRequest):
     )
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": "gemma3:27b-cloud",
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": 0.2, "num_predict": 2048}
-                }
-            )
-            response.raise_for_status()
-            result = response.json()
-            return {"corrected": result.get("response", "")}
+        result = _gemini(prompt, temp=0.2, tokens=2048)
+        return {"corrected": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 서버 오류: {str(e)}")
 

@@ -4,15 +4,20 @@ from pydantic import BaseModel
 from typing import Optional, List, AsyncGenerator
 import json, httpx, re, asyncio
 
+import google.generativeai as genai
+
 from app.core.config import settings
 from app.core.redis_cache import cache_get, cache_set, make_key
 
 router = APIRouter()
 
-# Ollama 엔드포인트 — 환경변수 OLLAMA_BASE_URL 로 제어
-OLLAMA = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate"
-MODEL  = "gemma3:27b-cloud"
+MODEL = "gemini-2.0-flash"
 _CACHE_TTL = 3600
+
+
+def _get_model() -> genai.GenerativeModel:
+    genai.configure(api_key=settings.GEMINI_API_KEY)
+    return genai.GenerativeModel(MODEL)
 
 
 # ══════════════════════════════════════════════════════════
@@ -309,14 +314,10 @@ async def _llm(prompt: str, temp: float = 0.2, tokens: int = 1500) -> str:
     if cached is not None:
         return cached
 
-    async with httpx.AsyncClient(timeout=120.0) as c:
-        r = await c.post(OLLAMA, json={
-            "model": MODEL, "prompt": prompt, "stream": False,
-            "options": {"temperature": temp, "num_predict": tokens,
-                        "top_p": 0.85, "repeat_penalty": 1.1}
-        })
-        r.raise_for_status()
-        result = r.json().get("response", "").strip()
+    model = _get_model()
+    cfg = genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens)
+    response = await model.generate_content_async(prompt, generation_config=cfg)
+    result = response.text.strip() if response.text else ""
 
     await cache_set(key, result, ttl=_CACHE_TTL)
     return result
@@ -326,25 +327,13 @@ async def _llm(prompt: str, temp: float = 0.2, tokens: int = 1500) -> str:
 # LLM 스트리밍 제너레이터
 # ══════════════════════════════════════════════════════════
 async def _llm_stream(prompt: str, temp: float = 0.2, tokens: int = 2000) -> AsyncGenerator[str, None]:
-    """Ollama stream=True → 토큰 단위 async generator"""
-    async with httpx.AsyncClient(timeout=120.0) as c:
-        async with c.stream("POST", OLLAMA, json={
-            "model": MODEL, "prompt": prompt, "stream": True,
-            "options": {"temperature": temp, "num_predict": tokens,
-                        "top_p": 0.85, "repeat_penalty": 1.1}
-        }) as response:
-            async for line in response.aiter_lines():
-                if not line.strip():
-                    continue
-                try:
-                    data = json.loads(line)
-                    token = data.get("response", "")
-                    if token:
-                        yield token
-                    if data.get("done", False):
-                        break
-                except json.JSONDecodeError:
-                    continue
+    """Gemini stream=True → 토큰 단위 async generator"""
+    model = _get_model()
+    cfg = genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens)
+    response = await model.generate_content_async(prompt, generation_config=cfg, stream=True)
+    async for chunk in response:
+        if chunk.text:
+            yield chunk.text
 
 
 # ══════════════════════════════════════════════════════════
@@ -845,15 +834,15 @@ async def ocr_image(req: OcrReq):
         "줄바꿈과 구조는 원본과 최대한 유사하게 유지하세요."
     )
     try:
-        async with httpx.AsyncClient(timeout=60.0) as c:
-            r = await c.post(OLLAMA, json={
-                "model": MODEL, "prompt": ocr_prompt,
-                "images": [b64], "stream": False,
-                "options": {"temperature": 0.1, "num_predict": 2000}
-            })
-            r.raise_for_status()
-            text = r.json().get("response", "").strip()
-            return {"text": text or "텍스트를 찾을 수 없습니다."}
+        import base64 as b64lib
+        model = _get_model()
+        image_bytes = b64lib.b64decode(b64)
+        response = await model.generate_content_async([
+            ocr_prompt,
+            {"mime_type": "image/jpeg", "data": image_bytes},
+        ])
+        text = response.text.strip() if response.text else ""
+        return {"text": text or "텍스트를 찾을 수 없습니다."}
     except Exception:
         return {"text": "OCR 처리 중 오류가 발생했습니다."}
 
