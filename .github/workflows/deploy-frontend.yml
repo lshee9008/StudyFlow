@@ -1,4 +1,4 @@
-name: "Deploy Frontend → Vercel"
+name: Deploy Frontend to Vercel
 
 on:
   push:
@@ -6,22 +6,19 @@ on:
     paths:
       - "front/**"
       - ".github/workflows/deploy-frontend.yml"
-  workflow_dispatch:   # 수동 트리거
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
-    name: Flutter Web Build & Vercel Deploy
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: front/study_flow
 
     steps:
-      # ── 소스 체크아웃 ─────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Flutter 설치 ──────────────────────────────────
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -29,37 +26,18 @@ jobs:
           channel: stable
           cache: true
 
-      # ── 의존성 ────────────────────────────────────────
       - name: Install dependencies
         run: flutter pub get
 
-      # ── 분석 ─────────────────────────────────────────
       - name: Analyze
         run: flutter analyze --no-fatal-infos
-        continue-on-error: true   # 경고가 배포를 막지 않도록
+        continue-on-error: true
 
-      # ── 웹 빌드 ───────────────────────────────────────
-      # API_BASE 는 GitHub Secret 에서 주입
-      # 예: https://studyflow-api.onrender.com
-      - name: Build web (release)
-        run: |
-          flutter build web \
-            --release \
-            --dart-define=API_BASE=${{ secrets.API_BASE_URL }}
+      - name: Build web
+        run: flutter build web --release --dart-define=API_BASE=${{ secrets.API_BASE_URL }}
 
-      # ── Vercel 배포 ────────────────────────────────────
-      # vercel.json 이 front/study_flow/ 에 있어야 outputDirectory: build/web 를 인식
       - name: Deploy to Vercel
-        id: vercel-deploy
-        working-directory: front/study_flow
+        run: npx vercel@latest --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: |
-          DEPLOYMENT_URL=$(npx vercel@latest --prod --yes --token="$VERCEL_TOKEN")
-          echo "deployment_url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-
-      # ── 배포 URL 출력 ─────────────────────────────────
-      - name: Print deploy URL
-        run: echo "✅ 배포 완료: ${{ steps.vercel-deploy.outputs.deployment_url }}"
