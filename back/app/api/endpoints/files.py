@@ -103,19 +103,77 @@ class ServerSummarizeRequest(BaseModel):
 async def summarize_with_prompt(req: ServerSummarizeRequest):
     """
     파일의 prompt 필드를 서버에서 읽어 AI에 적용.
-    클라이언트는 prompt를 보내지 않아도 됨.
+    ai.py 의 _build_reduce_prompt 를 그대로 사용해 일관된 품질 보장.
     """
-    # 서버 프롬프트 우선, 없으면 기본값
-    system_prompt = req.custom_prompt or (
-        f"다음 내용을 구조화된 마크다운 노트로 정리해 주세요.\n"
-        f"제목: {req.title}\n태그: {req.tags}"
-    )
+    import json
+    import re
 
-    full_prompt = f"{system_prompt}\n\n[본문]:\n{req.content}"
+    def _extract(content: str) -> str:
+        try:
+            blocks = json.loads(content)
+            parts = []
+            for b in blocks:
+                if not isinstance(b, dict):
+                    continue
+                t = b.get("type", "text")
+                c = (b.get("content") or b.get("controller", {}).get("text") or "").strip()
+                if not c:
+                    continue
+                if t == "h1":
+                    parts.append(f"# {c}")
+                elif t == "h2":
+                    parts.append(f"## {c}")
+                elif t == "h3":
+                    parts.append(f"### {c}")
+                elif t == "bullet":
+                    parts.append(f"- {c}")
+                elif t == "code":
+                    parts.append(f"```\n{c}\n```")
+                else:
+                    parts.append(c)
+            return "\n\n".join(parts)
+        except Exception:
+            return content
+
+    raw = _extract(req.content.strip())
+    if len(re.sub(r'\s', '', raw)) < 20:
+        return {"summary": ""}
+
+    user_instruction = req.custom_prompt or ""
+
+    if user_instruction:
+        full_prompt = (
+            f"사용자 지시: {user_instruction}\n"
+            f"제목: {req.title}  태그: {req.tags}\n\n"
+            f"[본문]\n{raw}\n\n"
+            "위 지시에 따라 마크다운으로 정리하세요. 본문에 없는 내용 추가 금지."
+        )
+    else:
+        h1s = [line[2:].strip() for line in raw.split('\n') if line.startswith('# ')]
+        hint = f"문서 주제: {' / '.join(h1s[:4])}\n" if h1s else ""
+        full_prompt = (
+            f"당신은 대학원 수준의 학습 노트 전문가입니다.\n"
+            f"{hint}제목: {req.title}  태그: {req.tags}\n\n"
+            f"[본문]\n{raw}\n\n"
+            "아래 형식으로 구조화된 학습 요약 노트를 작성하세요.\n\n"
+            "## 핵심 개념\n"
+            "- **개념명**: 정의 및 원리 (본문 근거 포함)\n\n"
+            "## 상세 내용\n"
+            "- 세부 설명, 과정, 인과관계\n\n"
+            "## 핵심 정리\n"
+            "- 반드시 기억할 3~5가지 포인트\n\n"
+            "작성 규칙:\n"
+            "- 본문에 있는 내용만 사용 (창작 금지)\n"
+            "- 개념명·용어는 **굵게** 표시\n"
+            "- 빈 섹션 출력 금지\n"
+            "- 이모티콘·장식 기호 금지\n"
+            "- ## 계층 구조를 적극 활용\n"
+            "- 마지막 문장까지 완결된 형태로 끝내기"
+        )
 
     try:
-        result = _gemini(full_prompt, temp=0.4, tokens=2048)
-        return {"summary": result}
+        result = _gemini(full_prompt, temp=0.2, tokens=3000)
+        return {"summary": result if result.strip() else ""}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 서버 오류: {str(e)}")
 

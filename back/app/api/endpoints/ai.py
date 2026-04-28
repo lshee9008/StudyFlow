@@ -16,8 +16,8 @@ from app.core.redis_cache import cache_get, cache_set, make_key
 router = APIRouter()
 
 _CACHE_TTL = 3600
-_SUMMARY_TOKENS = 6000
-_SUMMARY_MAP_TOKENS = 900
+_SUMMARY_TOKENS = 3000     # 요약 최대 토큰 (6000 → 3000: 품질↑ 속도↑)
+_SUMMARY_MAP_TOKENS = 600  # Map 단계 청크 압축 토큰
 
 
 def _get_model() -> genai.GenerativeModel:
@@ -565,19 +565,20 @@ class BlockReq(BaseModel):
 async def analyze_block(req: BlockReq):
     if _meaningful(req.text) < 15:
         return {"analysis": ""}
-    title_hint = f"문서 제목: {req.context_title}\n" if req.context_title else ""
+    title_hint = f"제목: {req.context_title}\n" if req.context_title else ""
     p = (
+        f"당신은 대학원 수준의 학습 노트 분석 전문가입니다.\n"
         f"{title_hint}"
-        f"분석할 문단:\n{req.text[:900]}\n\n"
-        "위 문단 하나만 분석하세요. 문단에 없는 내용 추가 금지.\n\n"
-        "다음 형식으로 마크다운 불릿 3개 출력:\n"
-        "- **핵심 의미**: 이 문단이 말하는 핵심 내용 (1~2문장)\n"
-        "- **관련 개념**: 이 문단을 이해하는 데 필요한 개념 또는 주의점\n"
-        "- **활용 예시**: 이 내용이 실제로 쓰이는 상황 (없으면 이 줄 생략)\n\n"
-        "규칙: 각 불릿은 2줄 이내, 개념명은 **굵게**, 이모티콘 금지"
+        f"분석할 문단:\n{req.text[:1200]}\n\n"
+        "위 문단 하나에 대해서만 분석합니다. 본문에 없는 내용 추가 금지.\n\n"
+        "아래 형식으로 정확히 출력하세요:\n\n"
+        "- **핵심 의미**: 이 문단의 핵심을 1~2문장으로 (본문 기반)\n"
+        "- **관련 개념**: 이해에 필요한 배경 지식 또는 주의점 (개념명 **굵게**)\n"
+        "- **활용 예시**: 이 내용이 실제로 쓰이는 상황 한 줄 (없으면 생략)\n\n"
+        "규칙: 각 불릿 2줄 이내 · 이모티콘 금지 · 본문 밖 내용 창작 금지"
     )
     try:
-        result = await _llm(p, temp=0.15, tokens=500)
+        result = await _llm(p, temp=0.15, tokens=600)
         return {"analysis": result if _meaningful(result) > 10 else ""}
     except Exception:
         return {"analysis": ""}
@@ -636,14 +637,15 @@ async def quiz(req: QuizReq):
         return {"quiz": []}
     p = (
         f"본문:\n{text[:3000]}\n\n"
-        f"위 본문을 바탕으로 객관식 {req.count}문제를 만드세요.\n\n"
-        "출력 규칙:\n"
-        "- 반드시 순수 JSON 배열만 출력 (앞뒤 설명 없이, 코드블록 없이)\n"
-        "- 각 문제: question(질문), options(4개 선택지 배열), answer(정답 인덱스 0~3), explanation(해설)\n"
-        "- answer는 반드시 정수(0,1,2,3 중 하나)\n"
-        "- 선택지는 반드시 4개\n\n"
-        "출력 예시:\n"
-        '[{"question":"질문 내용","options":["보기1","보기2","보기3","보기4"],"answer":0,"explanation":"해설 내용"}]'
+        f"위 본문으로 객관식 {req.count}문제를 만드세요.\n\n"
+        "중요: JSON 배열만 출력하세요. 그 외 텍스트 절대 금지.\n"
+        "형식: [{\"question\":\"질문\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"answer\":0,\"explanation\":\"해설\"}]\n\n"
+        "규칙:\n"
+        "- question: 구체적인 질문 (본문 기반)\n"
+        "- options: 정확히 4개 문자열 배열\n"
+        "- answer: 정답 인덱스 정수 (0, 1, 2, 3 중 하나)\n"
+        "- explanation: 정답 근거 (본문 기반, 1~2문장)\n"
+        "- 본문에 없는 내용으로 문제 생성 금지"
     )
     try:
         raw = await _llm(p, temp=0.1, tokens=1200)
@@ -768,70 +770,67 @@ class GraphReq(BaseModel):
 
 @router.post("/graph")
 async def graph(req: GraphReq):
-    import traceback as _tb
     text = _extract_text_structured(req.content.strip())
-    mc = _meaningful(text)
-    print(f"[Graph] content_len={len(req.content)} text_len={len(text)} meaningful={mc}")
-    if mc < 30:
-        print("[Graph] skip: too short")
+    if _meaningful(text) < 30:
         return {"nodes": [], "edges": []}
+
+    # 제목 또는 요약을 컨텍스트로 활용
+    context_hint = ""
+    if req.title:
+        context_hint += f"제목: {req.title}\n"
+    if req.tags:
+        context_hint += f"태그: {req.tags}\n"
+    if req.summary:
+        context_hint += f"요약 참고:\n{req.summary[:800]}\n"
+
     p = (
-        "당신은 강의 노트를 시각적 개념 보드로 재구성하는 전문가입니다.\n"
-        f"제목: {req.title}\n"
-        f"태그: {req.tags}\n"
-        f"기존 요약: {req.summary[:2000]}\n\n"
-        f"원문:\n{text[:6000]}\n\n"
-        "아래 규칙으로 화이트보드형 지식 그래프를 순수 JSON만으로 출력하세요.\n"
-        "1. nodes는 8~20개\n"
-        "2. 루트 1개, 핵심 개념 3~5개, 세부 노드 여러 개\n"
-        "3. 각 노드: id, label, description, type(core/branch/detail), group\n"
-        "4. description은 1~2문장 짧게\n"
-        "5. edges: source, target, label\n\n"
-        "출력 형식 (설명 없이 JSON만):\n"
-        '{"nodes":[{"id":"root","label":"주제","description":"설명","type":"core","group":""},...],'
-        '"edges":[{"source":"root","target":"n1","label":"포함"},...]}'
+        f"{context_hint}"
+        f"텍스트:\n{text[:3000]}\n\n"
+        "핵심 개념 최대 14개와 관계를 순수 JSON으로만 출력 (설명·마크다운 없이):\n\n"
+        '{"nodes":['
+        '{"id":"root","label":"주제","description":"한 줄 설명","type":"core"},'
+        '{"id":"n1","label":"핵심개념1","description":"한 줄 설명","type":"branch"},'
+        '{"id":"n2","label":"세부개념1","description":"한 줄 설명","type":"detail"}'
+        '],"edges":['
+        '{"source":"root","target":"n1","label":"포함"},'
+        '{"source":"n1","target":"n2","label":"구성"}'
+        "]}\n\n"
+        "규칙:\n"
+        "- type: core(루트 1개) / branch(핵심 3~5개) / detail(세부)\n"
+        "- 반드시 root → branch → detail 계층 연결\n"
+        "- description은 20자 이내 한 줄\n"
+        "- id는 영문+숫자 조합 (root, n1, n2 ...)\n"
+        "- 중복 id 금지"
     )
+
     try:
-        print(f"[Graph] calling LLM (prompt_len={len(p)})...")
-        raw = await _llm(p, temp=0.15, tokens=2000)
-        print(f"[Graph] LLM raw_len={len(raw)} preview={repr(raw[:120])}")
+        raw = await _llm(p, temp=0.1, tokens=1200)
         raw = raw.replace("```json", "").replace("```", "").strip()
-        # JSON 객체 추출 — 가장 바깥 { } 쌍 찾기
         s, e = raw.find("{"), raw.rfind("}")
         if s == -1 or e == -1 or e <= s:
-            print("[Graph] no JSON braces found in response")
             return {"nodes": [], "edges": []}
         chunk = raw[s:e + 1]
         try:
             parsed = json.loads(chunk)
-        except json.JSONDecodeError as je:
-            print(f"[Graph] JSON parse error: {je} — trying repair")
-            # 잘린 JSON 복구 시도: 마지막 완성된 node까지만 추출
-            last_comma = chunk.rfind('},')
+        except json.JSONDecodeError:
+            # 잘린 JSON 복구: 마지막 완성된 노드까지만
+            last_comma = chunk.rfind("},")
             if last_comma > s:
                 try:
-                    repaired = chunk[:last_comma + 1] + ']}'
+                    repaired = chunk[:last_comma + 1] + "]}"
                     parsed = json.loads(repaired)
-                    print("[Graph] repaired JSON OK")
                 except Exception:
-                    print("[Graph] repair failed too")
                     return {"nodes": [], "edges": []}
             else:
                 return {"nodes": [], "edges": []}
+
         nodes = parsed.get("nodes", [])
         edges = parsed.get("edges", [])
-        print(f"[Graph] parsed nodes={len(nodes)} edges={len(edges)}")
         normalized = _normalize_graph_payload(nodes, edges, text)
-        clean_nodes = normalized["nodes"]
-        clean_edges = normalized["edges"]
-        if not clean_nodes:
-            print("[Graph] clean_nodes empty after processing")
+        if not normalized["nodes"]:
             return {"nodes": [], "edges": []}
-        print(f"[Graph] success — returning {len(clean_nodes)} nodes")
-        return {"nodes": clean_nodes, "edges": clean_edges}
-    except Exception as ex:
-        print(f"[Graph] exception: {ex}")
-        _tb.print_exc()
+        return normalized
+    except Exception:
         return {"nodes": [], "edges": []}
 
 
