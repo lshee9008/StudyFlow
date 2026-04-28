@@ -63,6 +63,9 @@ class FileEditorState {
   // 요약 스트리밍 진행 메시지 ("3개 섹션 분석 중..." 등)
   final String summaryProgress;
 
+  // 현재 분석 중인 블록 인덱스 (-1 = 없음)
+  final int analyzingBlockIndex;
+
   FileEditorState({
     required this.blocks,
     this.isLoading = false,
@@ -90,6 +93,7 @@ class FileEditorState {
     this.proofreadResult,
     this.isProofreadLoading = false,
     this.summaryProgress = '',
+    this.analyzingBlockIndex = -1,
   });
 
   FileEditorState copyWith({
@@ -120,6 +124,7 @@ class FileEditorState {
     String? proofreadResult,
     bool? isProofreadLoading,
     String? summaryProgress,
+    int? analyzingBlockIndex,
   }) => FileEditorState(
     blocks: blocks ?? this.blocks,
     isLoading: isLoading ?? this.isLoading,
@@ -147,6 +152,7 @@ class FileEditorState {
     proofreadResult: proofreadResult ?? this.proofreadResult,
     isProofreadLoading: isProofreadLoading ?? this.isProofreadLoading,
     summaryProgress: summaryProgress ?? this.summaryProgress,
+    analyzingBlockIndex: analyzingBlockIndex ?? this.analyzingBlockIndex,
   );
 
   String get fullContent => blocks.map((b) => b.controller.text).join('\n');
@@ -858,6 +864,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   Future<void> analyzeBlock({
     required String text,
     required String title,
+    int blockIndex = -1,
   }) async {
     if (text.trim().length < 5) return;
     _lastAnalyzedText = text;
@@ -888,6 +895,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       fileTags: state.fileTags,
       proofreadResult: state.proofreadResult,
       isProofreadLoading: state.isProofreadLoading,
+      analyzingBlockIndex: blockIndex,
     );
     try {
       final res = await http
@@ -896,7 +904,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'text': text, 'context_title': title}),
           )
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 20));
       if (!mounted) return;
       if (res.statusCode == 200) {
         final analysis =
@@ -904,13 +912,14 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         state = state.copyWith(
           currentAnalysis: analysis.toString().trim(),
           isAnalysisLoading: false,
+          analyzingBlockIndex: -1,
         );
       } else {
-        state = state.copyWith(isAnalysisLoading: false);
+        state = state.copyWith(isAnalysisLoading: false, analyzingBlockIndex: -1);
       }
     } catch (_) {
       if (!mounted) return;
-      state = state.copyWith(isAnalysisLoading: false);
+      state = state.copyWith(isAnalysisLoading: false, analyzingBlockIndex: -1);
     }
   }
 
@@ -924,10 +933,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
             Uri.parse('$_api/api/ai/memo'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'content': state.fullContent.substring(
-                0,
-                state.fullContent.length.clamp(0, 3000),
-              ),
+              'content': state.fullContentForAI,
               'title': title,
             }),
           )
@@ -953,15 +959,11 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     if (state.meaningfulCharCount < 10) return;
     state = state.copyWith(isQuizLoading: true);
     try {
-      final content = state.fullContent.substring(
-        0,
-        state.fullContent.length.clamp(0, 3000),
-      );
       final res = await http
           .post(
             Uri.parse('$_api/api/ai/quiz'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'content': content, 'count': 3}),
+            body: jsonEncode({'content': state.fullContentForAI, 'count': 3}),
           )
           .timeout(const Duration(seconds: 60));
       if (!mounted) return;

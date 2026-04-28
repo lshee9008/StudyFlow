@@ -271,7 +271,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _onFocus(String text) {
+  void _onFocus(String text, {int blockIndex = -1}) {
     _focT?.cancel();
     _focT = Timer(const Duration(milliseconds: 800), () {
       // 마크다운 기호 제거
@@ -285,7 +285,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       if (clean.length >= 5) {
         ref
             .read(fileEditorProvider.notifier)
-            .analyzeBlock(text: clean, title: _tCtrl.text);
+            .analyzeBlock(text: clean, title: _tCtrl.text, blockIndex: blockIndex);
       }
     });
   }
@@ -1020,6 +1020,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           isGraphLoading: s.isGraphLoading,
           proofreadResult: s.proofreadResult,
           isProofreadLoading: s.isProofreadLoading,
+          analyzingBlockIndex: s.analyzingBlockIndex,
         ),
       ),
     );
@@ -1175,6 +1176,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                                 proofreadResult: panelState.proofreadResult,
                                 isProofreadLoading:
                                     panelState.isProofreadLoading,
+                                analyzingBlockIndex:
+                                    panelState.analyzingBlockIndex,
                               ),
                             ),
                           ),
@@ -1266,6 +1269,9 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   // ── 에디터 ───────────────────────────────────────
   Widget _buildEditor() {
     final blocks = ref.watch(fileEditorProvider.select((s) => s.blocks));
+    final analyzingIdx = ref.watch(
+      fileEditorProvider.select((s) => s.analyzingBlockIndex),
+    );
     final editorMeta = ref.watch(
       fileEditorProvider.select(
         (s) => (
@@ -1408,6 +1414,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                   block: blocks[i],
                   prevType: i > 0 ? blocks[i - 1].type : null,
                   isSelected: _selectedBlocks.contains(i),
+                  isAnalyzing: analyzingIdx == i,
                   listNumber: blocks[i].type == BlockType.number
                       ? () {
                           int n = 1;
@@ -1441,7 +1448,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                   },
                   onFocus: () {
                     _chg(ft: blocks[i].controller.text);
-                    _onFocus(blocks[i].controller.text);
+                    _onFocus(blocks[i].controller.text, blockIndex: i);
                   },
                   onSelect: () => setState(() {
                     if (_selectedBlocks.contains(i)) {
@@ -3238,6 +3245,7 @@ class _NBlock extends StatefulWidget {
   final Block block;
   final BlockType? prevType;
   final bool isSelected;
+  final bool isAnalyzing;
   final int listNumber;
   final KeyEventResult Function(FocusNode, KeyEvent, int) onKey;
   final Function(String, int) onText;
@@ -3252,6 +3260,7 @@ class _NBlock extends StatefulWidget {
     required this.block,
     this.prevType,
     this.isSelected = false,
+    this.isAnalyzing = false,
     this.listNumber = 0,
     required this.onKey,
     required this.onText,
@@ -3429,7 +3438,9 @@ class _NBState extends State<_NBlock> {
               right: 10,
             ),
             decoration: BoxDecoration(
-              color: widget.isSelected
+              color: widget.isAnalyzing
+                  ? _acc.withValues(alpha: 0.10)
+                  : widget.isSelected
                   ? _acc.withValues(alpha: 0.07)
                   : widget.block.type == BlockType.code
                   ? _bg2.withValues(alpha: 0.84)
@@ -3439,7 +3450,9 @@ class _NBState extends State<_NBlock> {
                   ? Colors.white.withValues(alpha: 0.018)
                   : null,
               borderRadius: BorderRadius.circular(16),
-              border: widget.isSelected
+              border: widget.isAnalyzing
+                  ? Border.all(color: _acc.withValues(alpha: 0.5), width: 1.5)
+                  : widget.isSelected
                   ? Border.all(color: _acc.withValues(alpha: 0.3))
                   : widget.block.type == BlockType.code
                   ? Border.all(color: _bdr.withValues(alpha: 0.8))
@@ -5129,9 +5142,16 @@ class _AnaPanel extends StatelessWidget {
                 margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: _bg3.withValues(alpha: 0.88),
+                  color: st.isAnalysisLoading
+                      ? _acc.withValues(alpha: 0.08)
+                      : _bg3.withValues(alpha: 0.88),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: _bdr.withValues(alpha: 0.9)),
+                  border: Border.all(
+                    color: st.isAnalysisLoading
+                        ? _acc.withValues(alpha: 0.4)
+                        : _bdr.withValues(alpha: 0.9),
+                    width: st.isAnalysisLoading ? 1.5 : 1.0,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -5148,17 +5168,25 @@ class _AnaPanel extends StatelessWidget {
                               color: _acc.withValues(alpha: 0.18),
                             ),
                           ),
-                          child: const Icon(
-                            Icons.manage_search_rounded,
-                            color: _acc,
-                            size: 13,
-                          ),
+                          child: st.isAnalysisLoading
+                              ? const Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.8,
+                                    color: _acc,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.manage_search_rounded,
+                                  color: _acc,
+                                  size: 13,
+                                ),
                         ),
                         const SizedBox(width: 9),
-                        const Text(
-                          '분석 중인 문단',
+                        Text(
+                          st.isAnalysisLoading ? 'AI 분석 중...' : '분석한 문단',
                           style: TextStyle(
-                            color: _txt0,
+                            color: st.isAnalysisLoading ? _acc : _txt0,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             letterSpacing: -0.1,

@@ -344,13 +344,18 @@ async def _llm(prompt: str, temp: float = 0.2, tokens: int = 1500) -> str:
 # LLM 스트리밍 제너레이터
 # ══════════════════════════════════════════════════════════
 async def _llm_stream(prompt: str, temp: float = 0.2, tokens: int = 2000) -> AsyncGenerator[str, None]:
-    """Gemini stream=True → 토큰 단위 async generator"""
+    """Gemini stream=True → 토큰 단위 async generator
+
+    Gemini 2.5 Flash는 내부적으로 청크를 버퍼링할 수 있으므로
+    각 청크 후 asyncio.sleep(0)으로 이벤트 루프에 제어권을 돌려줌
+    """
     model = _get_model()
     cfg = genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens)
     response = await model.generate_content_async(prompt, generation_config=cfg, stream=True)
     async for chunk in response:
         if chunk.text:
             yield chunk.text
+            await asyncio.sleep(0)  # 이벤트 루프 양보 → SSE 즉시 플러시
 
 
 # ══════════════════════════════════════════════════════════
@@ -560,19 +565,20 @@ class BlockReq(BaseModel):
 async def analyze_block(req: BlockReq):
     if _meaningful(req.text) < 15:
         return {"analysis": ""}
+    title_hint = f"문서 제목: {req.context_title}\n" if req.context_title else ""
     p = (
-        f"제목: {req.context_title}\n"
-        f"포커스 문단:\n{req.text[:900]}\n\n"
-        "아래 포커스 문단만 분석하세요.\n"
-        "- 다른 문단, 문서 전체, 일반적인 전체 요약으로 확장하지 마세요.\n"
-        "- 입력에 없는 사실을 새로 만들지 마세요.\n"
-        "- 답변은 짧은 마크다운 불릿 3개만 출력하세요.\n"
-        "- **핵심 의미**: 이 문단이 직접 말하는 내용\n"
-        "- **관련 개념/주의사항**: 이 문단을 이해할 때 바로 연결되는 개념 또는 주의점\n"
-        "- **실제 활용**: 이 문단의 내용이 쓰이는 상황 (없으면 생략)"
+        f"{title_hint}"
+        f"분석할 문단:\n{req.text[:900]}\n\n"
+        "위 문단 하나만 분석하세요. 문단에 없는 내용 추가 금지.\n\n"
+        "다음 형식으로 마크다운 불릿 3개 출력:\n"
+        "- **핵심 의미**: 이 문단이 말하는 핵심 내용 (1~2문장)\n"
+        "- **관련 개념**: 이 문단을 이해하는 데 필요한 개념 또는 주의점\n"
+        "- **활용 예시**: 이 내용이 실제로 쓰이는 상황 (없으면 이 줄 생략)\n\n"
+        "규칙: 각 불릿은 2줄 이내, 개념명은 **굵게**, 이모티콘 금지"
     )
     try:
-        return {"analysis": await _llm(p, temp=0.2, tokens=400)}
+        result = await _llm(p, temp=0.15, tokens=500)
+        return {"analysis": result if _meaningful(result) > 10 else ""}
     except Exception:
         return {"analysis": ""}
 
@@ -592,16 +598,24 @@ async def memo(req: MemoReq):
         return {"memo": ""}
     p = (
         f"제목: {req.title}\n"
-        f"본문: {text[:3000]}\n\n"
-        "시험에 나올 핵심 암기 사항만 추출하세요 (본문에 있는 내용만):\n\n"
+        f"본문:\n{text[:3000]}\n\n"
+        "시험에 나올 핵심 암기 사항만 추출하세요 (본문에 있는 내용만, 창작 금지).\n\n"
         "## 핵심 개념\n"
+        "아래 표를 완성하세요 (반드시 헤더와 구분선 포함, 최소 3행 이상):\n\n"
         "| 개념 | 설명 | 중요도 |\n"
-        "|------|------|--------|\n\n"
+        "|------|------|--------|\n"
+        "| 개념명 | 한 줄 정의 | ★★★ |\n\n"
         "## 암기 포인트\n"
-        "- **개념**: 한 줄 설명"
+        "- **개념명**: 핵심 내용 한 줄 요약\n\n"
+        "작성 규칙:\n"
+        "- 표는 반드시 완결된 형태로 출력 (잘리지 않게)\n"
+        "- 개념명은 **굵게**\n"
+        "- 중요도: ★★★(매우중요) / ★★(중요) / ★(보통)\n"
+        "- 이모티콘 금지\n"
+        "- 본문에 없는 내용 추가 금지"
     )
     try:
-        r = await _llm(p, temp=0.15, tokens=1000)
+        r = await _llm(p, temp=0.15, tokens=1200)
         return {"memo": r if _meaningful(r) > 20 else ""}
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -621,17 +635,37 @@ async def quiz(req: QuizReq):
     if _meaningful(text) < 30:
         return {"quiz": []}
     p = (
-        f"본문: {text[:3000]}\n\n"
-        f"위 본문으로 객관식 {req.count}문제를 만드세요.\n"
-        "순수 JSON 배열만 출력 (설명 없이):\n"
-        '[{"question":"?","options":["A","B","C","D"],"answer":0,"explanation":"근거"}]'
+        f"본문:\n{text[:3000]}\n\n"
+        f"위 본문을 바탕으로 객관식 {req.count}문제를 만드세요.\n\n"
+        "출력 규칙:\n"
+        "- 반드시 순수 JSON 배열만 출력 (앞뒤 설명 없이, 코드블록 없이)\n"
+        "- 각 문제: question(질문), options(4개 선택지 배열), answer(정답 인덱스 0~3), explanation(해설)\n"
+        "- answer는 반드시 정수(0,1,2,3 중 하나)\n"
+        "- 선택지는 반드시 4개\n\n"
+        "출력 예시:\n"
+        '[{"question":"질문 내용","options":["보기1","보기2","보기3","보기4"],"answer":0,"explanation":"해설 내용"}]'
     )
     try:
-        raw = await _llm(p, temp=0.1, tokens=900)
+        raw = await _llm(p, temp=0.1, tokens=1200)
+        # 코드블록 제거
         raw = raw.replace("```json", "").replace("```", "").strip()
+        # JSON 배열 추출 — 가장 바깥 [ ] 쌍 찾기
         s, e = raw.find("["), raw.rfind("]")
-        if s != -1 and e != -1:
-            parsed = json.loads(raw[s:e + 1])
+        if s != -1 and e != -1 and e > s:
+            chunk = raw[s:e + 1]
+            try:
+                parsed = json.loads(chunk)
+            except json.JSONDecodeError:
+                # 잘린 JSON 복구 시도: 마지막 완성된 객체까지만 사용
+                last_obj_end = chunk.rfind("},")
+                if last_obj_end > 0:
+                    try:
+                        repaired = chunk[:last_obj_end + 1] + "]"
+                        parsed = json.loads(repaired)
+                    except Exception:
+                        return {"quiz": []}
+                else:
+                    return {"quiz": []}
             return {"quiz": _normalize_quiz_items(parsed, text, req.count)}
         return {"quiz": []}
     except Exception:
@@ -671,10 +705,20 @@ async def ask(req: AskReq):
             src = "웹 검색"
         except Exception:
             pass
-    ref_text = f"참고 ({src}):\n{ctx[:2500]}\n\n" if ctx else ""
-    p = f"{ref_text}질문: {req.query}\n\n간결하고 정확하게 한국어로 답변:"
+    ref_text = f"[참고 자료 — {src}]\n{ctx[:2500]}\n\n" if ctx else ""
+    p = (
+        f"{ref_text}"
+        f"질문: {req.query}\n\n"
+        "위 질문에 대해 한국어로 명확하고 구조적으로 답변하세요.\n\n"
+        "답변 형식:\n"
+        "- 핵심 답변을 첫 문장에 바로 제시\n"
+        "- 필요하면 불릿이나 번호 목록으로 구조화\n"
+        "- 근거나 예시가 있으면 간략히 포함\n"
+        "- 불확실한 내용은 '~일 수 있습니다' 형태로 표현\n"
+        "- 200자~500자 이내로 간결하게"
+    )
     try:
-        a = await _llm(p, temp=0.3, tokens=700)
+        a = await _llm(p, temp=0.3, tokens=800)
         return {"answer": a, "source": src}
     except Exception as e:
         raise HTTPException(500, str(e))
