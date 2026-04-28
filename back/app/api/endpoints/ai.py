@@ -2,7 +2,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, AsyncGenerator
-import json, httpx, re, asyncio
+import json
+import httpx
+import re
+import asyncio
 
 import google.generativeai as genai
 
@@ -112,7 +115,7 @@ def _semantic_chunks(text: str, max_chars: int = 1500, overlap: int = 200) -> Li
     result = [raw[0]]
     for i in range(1, len(raw)):
         tail = raw[i - 1][-overlap:].strip()
-        if tail and not tail[-1] in '.。\n':
+        if tail and tail[-1] not in '.。\n':
             idx = max(tail.rfind(' '), tail.rfind('\n'))
             if idx > len(tail) // 2:
                 tail = tail[idx + 1:]
@@ -736,7 +739,7 @@ async def graph(req: GraphReq):
         # JSON 객체 추출 — 가장 바깥 { } 쌍 찾기
         s, e = raw.find("{"), raw.rfind("}")
         if s == -1 or e == -1 or e <= s:
-            print(f"[Graph] no JSON braces found in response")
+            print("[Graph] no JSON braces found in response")
             return {"nodes": [], "edges": []}
         chunk = raw[s:e + 1]
         try:
@@ -749,9 +752,9 @@ async def graph(req: GraphReq):
                 try:
                     repaired = chunk[:last_comma + 1] + ']}'
                     parsed = json.loads(repaired)
-                    print(f"[Graph] repaired JSON OK")
+                    print("[Graph] repaired JSON OK")
                 except Exception:
-                    print(f"[Graph] repair failed too")
+                    print("[Graph] repair failed too")
                     return {"nodes": [], "edges": []}
             else:
                 return {"nodes": [], "edges": []}

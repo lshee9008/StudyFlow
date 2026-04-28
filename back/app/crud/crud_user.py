@@ -1,5 +1,5 @@
 from sqlmodel import Session
-from app.models.users import Users, UserCreate, UserRead
+from app.models.users import Users, UserCreate
 
 def create_user(session: Session, user_in: UserCreate) -> Users:
     # 1. 변환: 클라이언트가 보낸 데이터(user_in)를 DB 테이블 형태(Users)로 바꿉니다.

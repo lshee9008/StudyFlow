@@ -39,6 +39,13 @@ jobs:
     needs: lint
 
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get clean
+          docker system prune -af || true
+          df -h
+
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx

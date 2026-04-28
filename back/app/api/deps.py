@@ -1,5 +1,4 @@
-from typing import Generator, Any
-from sqlmodel import Session
+from typing import Any
 from app.core.database import get_session
 import uuid
 
