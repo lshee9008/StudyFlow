@@ -11,8 +11,10 @@ from app.crud import crud_files
 
 
 def _gemini(prompt: str, temp: float = 0.2, tokens: int = 2048) -> str:
+    if not settings.GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
+    model = genai.GenerativeModel(settings.GEMINI_MODEL)
     cfg = genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens)
     response = model.generate_content(prompt, generation_config=cfg)
     return response.text.strip() if response.text else ""

@@ -15,13 +15,14 @@ from app.core.redis_cache import cache_get, cache_set, make_key
 
 router = APIRouter()
 
-MODEL = "gemini-2.5-flash-preview-04-17"
 _CACHE_TTL = 3600
 
 
 def _get_model() -> genai.GenerativeModel:
+    if not settings.GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    return genai.GenerativeModel(MODEL)
+    return genai.GenerativeModel(settings.GEMINI_MODEL)
 
 
 # ══════════════════════════════════════════════════════════
