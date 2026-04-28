@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/block_model.dart';
 import '../../core/db_helper/files_db_helper.dart';
+import '../../core/provider_config.dart' show baseUrl;
 import '../../core/theme.dart';
 import '../../core/ui/app_components.dart';
 import '../project/project_provider.dart';
@@ -4073,7 +4074,7 @@ class _SelToolbarState extends State<_SelToolbar>
     try {
       final res = await http
           .post(
-            Uri.parse('http://127.0.0.1:8000/api/ai/edit-selection'),
+            Uri.parse('$baseUrl/api/ai/edit-selection'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'selected_text': widget.selectedText,

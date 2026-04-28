@@ -37,7 +37,11 @@ jobs:
         continue-on-error: true
 
       - name: Build web
-        run: flutter build web --release
+        run: |
+          API_BASE_VALUE="${API_BASE:-https://awake-reverence-production-0a05.up.railway.app}"
+          flutter build web --release --dart-define=API_BASE="$API_BASE_VALUE"
+        env:
+          API_BASE: ${{ secrets.API_BASE }}
 
       - name: Deploy to Vercel
         run: npx vercel@latest deploy --prod --yes
