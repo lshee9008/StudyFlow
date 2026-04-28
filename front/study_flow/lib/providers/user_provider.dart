@@ -1,10 +1,11 @@
-import 'package:firebase_auth/firebase_auth.dart' show User;
+import 'package:firebase_auth/firebase_auth.dart' show User, FirebaseAuth;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import '../../core/db_helper/users_db_helper.dart';
+import '../../core/firebase_auth_service.dart';
 import '../../core/provider_config.dart';
 import '../../models/user_model.dart';
 
@@ -29,8 +30,24 @@ class UserNotifier extends StateNotifier<UserModel?> {
   Future<UserModel?> loadUser({UserModel? loadUser}) async {
     print("UserNotifier - loadUser called");
 
-    // ✅ 웹에서는 로컬 DB 없음 → 바로 null(미로그인) 처리
+    // ✅ 웹: 로컬 DB 없음 → Firebase 세션으로 처리
     if (kIsWeb) {
+      // 1) Google 리디렉션 결과 확인 (Google 로그인 후 돌아왔을 때)
+      try {
+        final redirectResult = await FirebaseAuthService.getGoogleRedirectResult();
+        if (redirectResult?.user != null) {
+          await loginWithFirebase(redirectResult!.user!);
+          return state;
+        }
+      } catch (e) {
+        print("getRedirectResult error: $e");
+      }
+      // 2) 기존 Firebase 세션 확인 (이메일 로그인 유지)
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        await loginWithFirebase(currentUser);
+        return state;
+      }
       state = null;
       return null;
     }

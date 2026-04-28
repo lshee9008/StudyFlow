@@ -34,11 +34,12 @@ class FirebaseAuthService {
   // ── 구글 로그인 ────────────────────────────────
   static Future<UserCredential?> signInWithGoogle() async {
     if (kIsWeb) {
-      // 웹: 팝업 방식
+      // 웹: 리디렉션 방식 (popup은 iframe 보안 정책으로 불안정)
       final provider = GoogleAuthProvider();
       provider.addScope('email');
       provider.addScope('profile');
-      return await _auth.signInWithPopup(provider);
+      await _auth.signInWithRedirect(provider);
+      return null; // 리디렉션 후 getGoogleRedirectResult()로 처리
     } else {
       // 네이티브: GoogleSignIn 패키지
       final googleUser = await _googleSignIn.signIn();
@@ -49,6 +50,18 @@ class FirebaseAuthService {
         idToken: googleAuth.idToken,
       );
       return await _auth.signInWithCredential(credential);
+    }
+  }
+
+  // ── 구글 리디렉션 결과 (웹 전용) ──────────────
+  static Future<UserCredential?> getGoogleRedirectResult() async {
+    if (!kIsWeb) return null;
+    try {
+      final result = await _auth.getRedirectResult();
+      if (result.user != null) return result;
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 
