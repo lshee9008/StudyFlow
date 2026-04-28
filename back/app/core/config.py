@@ -6,7 +6,7 @@ class Settings:
     # ── Database ────────────────────────────────────────────
     # local  : sqlite:///./studyflow.db
     # render : postgresql://user:pw@host/db  (자동 주입)
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./studyflow.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./studyflow.db").replace("postgres://", "postgresql://", 1)
 
     # ── Redis ───────────────────────────────────────────────
     # local  : redis://localhost:6379/0
