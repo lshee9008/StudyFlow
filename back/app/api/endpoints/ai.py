@@ -11,7 +11,7 @@ from app.core.redis_cache import cache_get, cache_set, make_key
 
 router = APIRouter()
 
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-2.5-flash-preview-04-17"
 _CACHE_TTL = 3600
 
 

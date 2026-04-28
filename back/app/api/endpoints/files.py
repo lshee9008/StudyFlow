@@ -10,7 +10,7 @@ from app.core.config import settings
 
 def _gemini(prompt: str, temp: float = 0.2, tokens: int = 2048) -> str:
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
     cfg = genai.types.GenerationConfig(temperature=temp, max_output_tokens=tokens)
     response = model.generate_content(prompt, generation_config=cfg)
     return response.text.strip() if response.text else ""
