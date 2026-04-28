@@ -439,62 +439,55 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         if (!line.startsWith('data: ')) continue;
         final data = line.substring(6).trim();
         if (data == '[DONE]') break;
-        try {
-          final evt = jsonDecode(data) as Map<String, dynamic>;
-          switch (evt['type']) {
-            case 'progress':
-              state = state.copyWith(
-                summaryProgress: evt['message'] as String? ?? '',
-              );
-              break;
+        final evt = jsonDecode(data) as Map<String, dynamic>;
+        switch (evt['type']) {
+          case 'progress':
+            state = state.copyWith(
+              summaryProgress: evt['message'] as String? ?? '',
+            );
+            break;
 
-            case 'token':
-              streamText += evt['text'] as String? ?? '';
-              if (!firstTokenReceived) {
-                // 첫 토큰 도착 시점에만 이전 요약 교체 (그 전까지는 유지)
-                firstTokenReceived = true;
-              }
+          case 'token':
+            streamText += evt['text'] as String? ?? '';
+            if (!firstTokenReceived) {
+              // 첫 토큰 도착 시점에만 이전 요약 교체 (그 전까지는 유지)
+              firstTokenReceived = true;
+            }
+            state = state.copyWith(
+              summaryBlocks: [
+                ...saved,
+                SummaryBlock(content: streamText, isSaved: false),
+              ],
+            );
+            break;
+
+          case 'done':
+            final finalText = ((evt['text'] as String?) ?? streamText).trim();
+            if (finalText.isNotEmpty) {
+              _lastSummaryHash = hash;
               state = state.copyWith(
                 summaryBlocks: [
                   ...saved,
-                  SummaryBlock(content: streamText, isSaved: false),
+                  SummaryBlock(content: finalText, isSaved: false),
                 ],
+                isSummaryLoading: false,
+                summaryProgress: '',
+                lastSentContent: full,
               );
-              break;
+            } else {
+              // 완전히 비어있으면 로딩만 종료, 블록은 현재 상태 유지
+              state = state.copyWith(
+                isSummaryLoading: false,
+                summaryProgress: '',
+              );
+            }
+            break;
 
-            case 'done':
-              final finalText = ((evt['text'] as String?) ?? streamText).trim();
-              if (finalText.isNotEmpty) {
-                _lastSummaryHash = hash;
-                state = state.copyWith(
-                  summaryBlocks: [
-                    ...saved,
-                    SummaryBlock(content: finalText, isSaved: false),
-                  ],
-                  isSummaryLoading: false,
-                  summaryProgress: '',
-                  lastSentContent: full,
-                );
-              } else {
-                // 완전히 비어있으면 로딩만 종료, 블록은 현재 상태 유지
-                state = state.copyWith(
-                  isSummaryLoading: false,
-                  summaryProgress: '',
-                );
-              }
-              break;
-
-            case 'error':
-              // 에러여도 현재 보이는 블록은 그대로 유지
-              if (mounted) {
-                state = state.copyWith(
-                  isSummaryLoading: false,
-                  summaryProgress: '',
-                );
-              }
-              break;
-          }
-        } catch (_) {}
+          case 'error':
+            final message =
+                (evt['message'] as String?) ?? '요약 스트리밍에 실패했습니다.';
+            throw Exception(message);
+        }
       }
 
       // [DONE] 없이 스트림 끝난 경우
@@ -550,11 +543,32 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
             );
           }
         } else {
-          state = state.copyWith(isSummaryLoading: false, summaryProgress: '');
+          final message = utf8.decode(res.bodyBytes);
+          state = state.copyWith(
+            summaryBlocks: [
+              ...saved,
+              SummaryBlock(
+                content: '요약 생성에 실패했습니다.\n\n서버 응답: $message',
+                isSaved: false,
+              ),
+            ],
+            isSummaryLoading: false,
+            summaryProgress: '',
+          );
         }
-      } catch (_) {
+      } catch (error) {
         if (mounted) {
-          state = state.copyWith(isSummaryLoading: false, summaryProgress: '');
+          state = state.copyWith(
+            summaryBlocks: [
+              ...saved,
+              SummaryBlock(
+                content: '요약 생성에 실패했습니다.\n\n$error',
+                isSaved: false,
+              ),
+            ],
+            isSummaryLoading: false,
+            summaryProgress: '',
+          );
         }
       }
     } finally {

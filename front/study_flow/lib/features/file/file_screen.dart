@@ -57,7 +57,7 @@ class FileScreen extends ConsumerStatefulWidget {
 
 class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   static const Duration _autoSaveDelay = Duration(milliseconds: 1500);
-  static const Duration _summaryDelay = Duration(seconds: 8);
+  static const Duration _summaryDelay = Duration(seconds: 12);
   static const Duration _webSyncInterval = Duration(minutes: 3);
 
   final _tCtrl = TextEditingController();
@@ -251,8 +251,12 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         _saveAc.forward(from: 0);
       }
     });
-    final mc = ref.read(fileEditorProvider).meaningfulCharCount;
-    if ((mc - _lastSumLen).abs() > 80) {
+    final editorState = ref.read(fileEditorProvider);
+    final mc = editorState.meaningfulCharCount;
+    final hasSummary = editorState.summaryBlocks.isNotEmpty;
+    if (!hasSummary &&
+        !editorState.isSummaryLoading &&
+        (mc - _lastSumLen).abs() > 240) {
       _sumT?.cancel();
       _sumT = Timer(_summaryDelay, _doSum);
     }

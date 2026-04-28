@@ -16,6 +16,8 @@ from app.core.redis_cache import cache_get, cache_set, make_key
 router = APIRouter()
 
 _CACHE_TTL = 3600
+_SUMMARY_TOKENS = 6000
+_SUMMARY_MAP_TOKENS = 900
 
 
 def _get_model() -> genai.GenerativeModel:
@@ -385,7 +387,8 @@ def _build_reduce_prompt(title: str, tags: str, text: str, user_instruction: str
         "- 개념명·용어는 **굵게** 표시\n"
         "- 빈 섹션 출력 금지\n"
         "- 이모티콘·장식 기호 금지\n"
-        "- ## 계층 구조를 적극 활용"
+        "- ## 계층 구조를 적극 활용\n"
+        "- 마지막 문장까지 완결된 형태로 끝내기"
     )
 
 
@@ -396,7 +399,7 @@ def _build_map_prompt(chunk: str, index: int, total: int) -> str:
         "규칙:\n"
         "- 개념명과 정의는 반드시 포함\n"
         "- 본문에 없는 내용 추가 금지\n"
-        "- bullet 형식, 5~8줄 이내\n\n"
+        "- bullet 형식, 6~10줄 이내\n\n"
         f"[내용]\n{chunk}\n\n"
         "핵심 추출:"
     )
@@ -428,7 +431,8 @@ def _build_merge_prompt(title: str, tags: str, summaries: List[str], user_instru
         "- 본문에 없는 내용 추가 금지\n"
         "- 개념명은 **굵게**\n"
         "- 자연스러운 문단 흐름 유지\n"
-        "- 이모티콘·장식 기호 금지"
+        "- 이모티콘·장식 기호 금지\n"
+        "- 마지막 섹션까지 완결된 형태로 끝내기"
     )
 
 
@@ -455,17 +459,17 @@ async def summarize(req: SumReq):
     try:
         if len(chunks) == 1:
             prompt = _build_reduce_prompt(req.title, req.tags, raw, user_instruction)
-            result = await _llm(prompt, temp=0.2, tokens=2000)
+            result = await _llm(prompt, temp=0.2, tokens=_SUMMARY_TOKENS)
         else:
             map_results = await asyncio.gather(*[
-                _llm(_build_map_prompt(c, i, len(chunks)), temp=0.15, tokens=500)
+                _llm(_build_map_prompt(c, i, len(chunks)), temp=0.15, tokens=_SUMMARY_MAP_TOKENS)
                 for i, c in enumerate(chunks)
             ])
             valid = [r for r in map_results if _meaningful(r) > 10]
             if not valid:
                 return {"summary": ""}
             merge_prompt = _build_merge_prompt(req.title, req.tags, valid, user_instruction)
-            result = await _llm(merge_prompt, temp=0.2, tokens=2000)
+            result = await _llm(merge_prompt, temp=0.2, tokens=_SUMMARY_TOKENS)
 
         return {"summary": result if _meaningful(result) > 10 else ""}
     except Exception as e:
@@ -508,7 +512,7 @@ async def summarize_stream(req: SumReq):
 
                 # Map: 병렬 청크 압축
                 map_results = await asyncio.gather(*[
-                    _llm(_build_map_prompt(c, i, len(chunks)), temp=0.15, tokens=500)
+                    _llm(_build_map_prompt(c, i, len(chunks)), temp=0.15, tokens=_SUMMARY_MAP_TOKENS)
                     for i, c in enumerate(chunks)
                 ])
                 valid = [r for r in map_results if _meaningful(r) > 10]
@@ -523,7 +527,7 @@ async def summarize_stream(req: SumReq):
 
             # Reduce: 스트리밍 출력
             full_text = ""
-            async for token in _llm_stream(reduce_prompt, temp=0.2, tokens=2000):
+            async for token in _llm_stream(reduce_prompt, temp=0.2, tokens=_SUMMARY_TOKENS):
                 full_text += token
                 yield _sse({"type": "token", "text": token})
 
