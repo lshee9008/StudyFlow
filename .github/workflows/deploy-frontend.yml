@@ -34,7 +34,7 @@ jobs:
         continue-on-error: true
 
       - name: Build web
-        run: flutter build web --release --dart-define=API_BASE=${{ secrets.API_BASE_URL }}
+        run: flutter build web --release
 
       - name: Deploy to Vercel
         run: npx vercel@latest deploy --prod --yes
