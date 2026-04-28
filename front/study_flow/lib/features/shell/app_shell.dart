@@ -8,11 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../core/firebase_auth_service.dart';
 import '../../core/theme.dart';
 import '../../core/ui/app_components.dart';
 import '../../models/user_model.dart';
 import '../../providers/user_provider.dart';
 import '../home/home_content.dart';
+import '../login/initial_screen.dart';
 import '../project/project_model.dart';
 import '../project/project_provider.dart';
 import '../project/project_screen.dart';
@@ -61,6 +63,18 @@ class _AppShellState extends ConsumerState<AppShell>
   void _toggleSidebar() {
     setState(() => _sidebarCollapsed = !_sidebarCollapsed);
     HapticFeedback.selectionClick();
+  }
+
+  Future<void> _logout() async {
+    final user = ref.read(userProvider);
+    await FirebaseAuthService.signOut();
+    await ref.read(userProvider.notifier).logoutExistingUser(user?.id ?? '');
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const InitialScreen()),
+      (_) => false,
+    );
   }
 
   Future<void> _showNewProjectSheet(BuildContext ctx, UserModel user) async {
@@ -154,6 +168,7 @@ class _AppShellState extends ConsumerState<AppShell>
                   ).push(MaterialPageRoute(
                     builder: (_) => ProfileSettingsScreen(user: user),
                   )),
+                  onLogout: _logout,
                 ),
               ),
 
@@ -222,6 +237,7 @@ class _ShellSidebar extends StatefulWidget {
   final ValueChanged<ProjectModel> onOpenProject;
   final VoidCallback onNewProject;
   final VoidCallback onSettings;
+  final VoidCallback onLogout;
 
   const _ShellSidebar({
     required this.user,
@@ -235,6 +251,7 @@ class _ShellSidebar extends StatefulWidget {
     required this.onOpenProject,
     required this.onNewProject,
     required this.onSettings,
+    required this.onLogout,
   });
 
   @override
@@ -417,6 +434,7 @@ class _ShellSidebarState extends State<_ShellSidebar>
             user: widget.user,
             collapsed: widget.collapsed,
             onSettings: widget.onSettings,
+            onLogout: widget.onLogout,
           ),
         ],
       ),
@@ -995,11 +1013,13 @@ class _SidebarProfile extends StatefulWidget {
   final UserModel user;
   final bool collapsed;
   final VoidCallback onSettings;
+  final VoidCallback onLogout;
 
   const _SidebarProfile({
     required this.user,
     required this.collapsed,
     required this.onSettings,
+    required this.onLogout,
   });
 
   @override
@@ -1008,6 +1028,30 @@ class _SidebarProfile extends StatefulWidget {
 
 class _SidebarProfileState extends State<_SidebarProfile> {
   bool _hovered = false;
+
+  // collapsed 상태에서 팝업 메뉴
+  void _showPopup(BuildContext ctx) async {
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final pos = box.localToGlobal(Offset.zero);
+    final size = box.size;
+    final result = await showMenu<String>(
+      context: ctx,
+      position: RelativeRect.fromLTRB(
+        pos.dx + size.width,
+        pos.dy,
+        pos.dx,
+        pos.dy + size.height,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      items: [
+        const PopupMenuItem(value: 'settings', child: Text('설정')),
+        const PopupMenuItem(value: 'logout', child: Text('로그아웃')),
+      ],
+    );
+    if (result == 'settings') widget.onSettings();
+    if (result == 'logout') widget.onLogout();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1035,28 +1079,53 @@ class _SidebarProfileState extends State<_SidebarProfile> {
       ),
     );
 
+    // ── 접힌 상태: 아바타 탭 → 팝업 ─────────────────────────────────
+    if (widget.collapsed) {
+      return Builder(
+        builder: (ctx) => MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            onTap: () => _showPopup(ctx),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _hovered
+                    ? colors.border.withValues(alpha: 0.22)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Tooltip(message: widget.user.name, child: Center(child: avatar)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ── 펼쳐진 상태: 이름 클릭 → 설정 / 로그아웃 버튼 ───────────────
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onSettings,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-          padding: EdgeInsets.symmetric(
-            horizontal: widget.collapsed ? 6 : 10,
-            vertical: 8,
-          ),
-          decoration: BoxDecoration(
-            color: _hovered
-                ? colors.border.withValues(alpha: 0.22)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: widget.collapsed
-              ? Tooltip(message: widget.user.name, child: Center(child: avatar))
-              : Row(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        margin: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: _hovered
+              ? colors.border.withValues(alpha: 0.22)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            // 아바타 + 이름 (설정으로)
+            Expanded(
+              child: GestureDetector(
+                onTap: widget.onSettings,
+                child: Row(
                   children: [
                     avatar,
                     const SizedBox(width: 10),
@@ -1102,17 +1171,70 @@ class _SidebarProfileState extends State<_SidebarProfile> {
                         ],
                       ),
                     ),
-                    AnimatedOpacity(
-                      opacity: _hovered ? 1.0 : 0.45,
-                      duration: const Duration(milliseconds: 150),
-                      child: Icon(
-                        LucideIcons.settings,
-                        size: 13,
-                        color: colors.textSecondary,
-                      ),
-                    ),
                   ],
                 ),
+              ),
+            ),
+            // 로그아웃 버튼
+            _SidebarLogoutBtn(onTap: widget.onLogout, hovered: _hovered),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 사이드바 로그아웃 버튼 ───────────────────────────────────────
+class _SidebarLogoutBtn extends StatefulWidget {
+  final VoidCallback onTap;
+  final bool hovered;
+  const _SidebarLogoutBtn({required this.onTap, required this.hovered});
+
+  @override
+  State<_SidebarLogoutBtn> createState() => _SidebarLogoutBtnState();
+}
+
+class _SidebarLogoutBtnState extends State<_SidebarLogoutBtn> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    return AnimatedOpacity(
+      opacity: (widget.hovered || _hovered) ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 150),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: Tooltip(
+          message: '로그아웃',
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: _hovered
+                    ? Colors.red.withValues(alpha: 0.10)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: _hovered
+                      ? Colors.red.withValues(alpha: 0.30)
+                      : Colors.transparent,
+                ),
+              ),
+              child: Icon(
+                LucideIcons.logOut,
+                size: 12,
+                color: _hovered
+                    ? Colors.red.withValues(alpha: 0.8)
+                    : colors.textSecondary,
+              ),
+            ),
+          ),
         ),
       ),
     );

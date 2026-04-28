@@ -539,160 +539,260 @@ class _ProjectHeader extends StatelessWidget {
   }
 }
 
-class _ProjectIconRow extends StatelessWidget {
+// ─── 아이콘 버튼 (버튼 클릭 → 모달 오픈) ───────────────────────
+
+class _ProjectIconRow extends StatefulWidget {
   final String current;
   final ValueChanged<String> onChanged;
 
   const _ProjectIconRow({required this.current, required this.onChanged});
 
-  static const _choices = [
-    // 학습 / Study
-    '📘', '📗', '📕', '📙', '📚', '📖', '🎓', '✏️',
-    // 과학 / Science & Tech
-    '🧠', '🔬', '🔭', '🧪', '💻', '🤖', '🔐', '🌐',
-    // 에너지 / Goals
-    '💡', '⚡', '🎯', '🏆', '🚀', '🔥', '⭐', '💪',
-    // 도구 / Tools & Work
-    '🛠️', '📊', '📋', '🗂️', '📝', '📌', '🗓️', '📁',
-    // 감성 / Life
-    '🎨', '🎵', '🌿', '☕', '🌸', '🌍', '🦋', '🎮',
-  ];
+  @override
+  State<_ProjectIconRow> createState() => _ProjectIconRowState();
+}
+
+class _ProjectIconRowState extends State<_ProjectIconRow> {
+  bool _hovered = false;
+
+  Future<void> _openPicker() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _IconPickerSheet(current: widget.current),
+    );
+    if (picked != null) widget.onChanged(picked);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: _choices
-          .map((e) => _EmojiChip(
-                emoji: e,
-                selected: e == current,
-                onTap: () => onChanged(e),
-              ))
-          .toList(),
+    final colors = AppTheme.colorsOf(context);
+    final display = widget.current.isNotEmpty ? widget.current : '📁';
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: _openPicker,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: _hovered
+                ? colors.accent.withValues(alpha: 0.06)
+                : colors.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _hovered
+                  ? colors.accent.withValues(alpha: 0.35)
+                  : colors.border,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(display, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Text(
+                '아이콘 변경',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: _hovered ? colors.accent : colors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                LucideIcons.chevronDown,
+                size: 13,
+                color: _hovered ? colors.accent : colors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
-class _EmojiChip extends StatefulWidget {
-  final String emoji;
-  final bool selected;
-  final VoidCallback onTap;
-  const _EmojiChip({
-    required this.emoji,
-    required this.selected,
-    required this.onTap,
-  });
+// ─── 아이콘 피커 바텀시트 ──────────────────────────────────────────
+
+class _IconPickerSheet extends StatefulWidget {
+  final String current;
+  const _IconPickerSheet({required this.current});
 
   @override
-  State<_EmojiChip> createState() => _EmojiChipState();
+  State<_IconPickerSheet> createState() => _IconPickerSheetState();
 }
 
-class _EmojiChipState extends State<_EmojiChip>
+class _IconPickerSheetState extends State<_IconPickerSheet>
     with SingleTickerProviderStateMixin {
-  bool _hovered = false;
-  late AnimationController _scale;
+  late TabController _tabs;
+  String _selected = '';
+
+  static const _categories = [
+    ('학습', ['📘', '📗', '📕', '📙', '📚', '📖', '🎓', '✏️', '🖊️', '📓']),
+    ('과학·기술', ['🧠', '🔬', '🔭', '🧪', '💻', '🤖', '🔐', '🌐', '⚙️', '🛰️']),
+    ('목표', ['💡', '⚡', '🎯', '🏆', '🚀', '🔥', '⭐', '💪', '🏅', '✅']),
+    ('도구', ['🛠️', '📊', '📋', '🗂️', '📝', '📌', '🗓️', '📁', '🗃️', '📎']),
+    ('감성', ['🎨', '🎵', '🌿', '☕', '🌸', '🌍', '🦋', '🎮', '🍀', '🌙']),
+  ];
 
   @override
   void initState() {
     super.initState();
-    _scale = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 120),
-      lowerBound: 0.0,
-      upperBound: 1.0,
-    );
+    _selected = widget.current;
+    _tabs = TabController(length: _categories.length, vsync: this);
   }
 
   @override
   void dispose() {
-    _scale.dispose();
+    _tabs.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = AppTheme.colorsOf(context);
-    final accent = colors.accent;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) {
-        setState(() => _hovered = true);
-        _scale.forward();
-      },
-      onExit: (_) {
-        setState(() => _hovered = false);
-        _scale.reverse();
-      },
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedBuilder(
-          animation: _scale,
-          builder: (_, child) => Transform.scale(
-            scale: 1.0 + _scale.value * 0.08,
-            child: child,
-          ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: widget.selected
-                  ? accent.withValues(alpha: 0.14)
-                  : _hovered
-                  ? colors.border.withValues(alpha: 0.35)
-                  : colors.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: widget.selected
-                    ? accent.withValues(alpha: 0.7)
-                    : _hovered
-                    ? colors.border
-                    : colors.border.withValues(alpha: 0.5),
-                width: widget.selected ? 1.5 : 1.0,
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        border: Border.all(color: colors.border.withValues(alpha: 0.5)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colors.border,
+                borderRadius: BorderRadius.circular(2),
               ),
-              boxShadow: widget.selected
-                  ? [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.22),
-                        blurRadius: 8,
-                        spreadRadius: 0,
-                      ),
-                    ]
-                  : null,
             ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Text(
-                  widget.emoji,
-                  style: TextStyle(
-                    fontSize: widget.selected ? 20 : 18,
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Row(
+                children: [
+                  Text(
+                    '아이콘 선택',
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
                   ),
-                ),
-                if (widget.selected)
-                  Positioned(
-                    bottom: 4,
+                  const Spacer(),
+                  if (_selected.isNotEmpty) ...[
+                    Text(_selected, style: const TextStyle(fontSize: 22)),
+                    const SizedBox(width: 12),
+                  ],
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context, _selected),
                     child: Container(
-                      width: 4,
-                      height: 4,
+                      height: 34,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: accent,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: accent.withValues(alpha: 0.5),
-                            blurRadius: 3,
+                        gradient: AppGradients.accent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '선택',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
+            // Category tabs
+            TabBar(
+              controller: _tabs,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              dividerColor: colors.border,
+              indicatorColor: colors.accent,
+              labelColor: colors.accent,
+              unselectedLabelColor: colors.textSecondary,
+              labelStyle: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              unselectedLabelStyle: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              tabs: _categories
+                  .map((c) => Tab(text: c.$1))
+                  .toList(),
+            ),
+            // Emoji grid
+            SizedBox(
+              height: 200,
+              child: TabBarView(
+                controller: _tabs,
+                children: _categories.map((cat) {
+                  return Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: cat.$2.map((emoji) {
+                        final isSelected = emoji == _selected;
+                        return MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => setState(() => _selected = emoji),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 130),
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? colors.accent.withValues(alpha: 0.14)
+                                    : colors.background,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? colors.accent.withValues(alpha: 0.7)
+                                      : colors.border.withValues(alpha: 0.5),
+                                  width: isSelected ? 1.5 : 1.0,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  emoji,
+                                  style: TextStyle(
+                                    fontSize: isSelected ? 22 : 19,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
     );

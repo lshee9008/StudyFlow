@@ -526,19 +526,6 @@ class AppServiceHeader extends StatelessWidget {
             ],
           ),
         ),
-        _HeaderIconBadge(
-          icon: LucideIcons.command,
-          badge: 0,
-          onTap: () {},
-          label: '⌘K',
-        ),
-        const SizedBox(width: AppSpace.xs),
-        _HeaderIconBadge(
-          icon: LucideIcons.bell,
-          badge: notificationCount,
-          onTap: onNotifications ?? () {},
-        ),
-        const SizedBox(width: AppSpace.xs),
         Material(
           color: colors.surface,
           borderRadius: BorderRadius.circular(10),
@@ -821,19 +808,6 @@ class _AppWorkspaceShellState extends State<AppWorkspaceShell> {
                                   ),
                                 ),
                               ),
-                              _HeaderIconBadge(
-                                icon: LucideIcons.command,
-                                badge: 0,
-                                onTap: widget.onSearch,
-                                label: '⌘K',
-                              ),
-                              const SizedBox(width: AppSpace.xs),
-                              _HeaderIconBadge(
-                                icon: LucideIcons.bell,
-                                badge: 1,
-                                onTap: widget.onSettings,
-                              ),
-                              const SizedBox(width: AppSpace.xs),
                               if (widget.secondaryAction != null) ...[
                                 widget.secondaryAction!,
                                 const SizedBox(width: AppSpace.xs),

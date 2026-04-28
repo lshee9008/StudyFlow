@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -6,7 +5,6 @@ import '../../core/theme.dart';
 import 'auth_shared.dart';
 import 'create_membership_screen.dart';
 import 'login_screen.dart';
-import 'registered_users_screen.dart';
 
 class LoginOrCreateMembershipScreen extends StatelessWidget {
   const LoginOrCreateMembershipScreen({super.key});
@@ -54,20 +52,6 @@ class LoginOrCreateMembershipScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!kIsWeb) ...[
-                const SizedBox(height: AppSpace.sm),
-                _EntryTile(
-                  icon: LucideIcons.laptop,
-                  title: '저장 계정',
-                  subtitle: '이 기기',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const RegisteredUsersScreen(),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),

@@ -185,7 +185,6 @@ class _AuroraLayer extends StatelessWidget {
 class _TopNav extends StatelessWidget {
   final AnimationController enterCtrl;
   final VoidCallback onStart;
-
   const _TopNav({required this.enterCtrl, required this.onStart});
 
   @override
@@ -250,9 +249,7 @@ class _TopNav extends StatelessWidget {
           const Spacer(),
           // Nav links (wide only)
           if (MediaQuery.of(context).size.width > 640) ...[
-            _NavLink(label: '기능'),
-            const SizedBox(width: 24),
-            _NavLink(label: '시작하기'),
+            _NavLink(label: '회원가입', onTap: onStart),
             const SizedBox(width: 20),
           ],
           _GlowButton(label: '로그인', onTap: onStart),
@@ -264,7 +261,8 @@ class _TopNav extends StatelessWidget {
 
 class _NavLink extends StatefulWidget {
   final String label;
-  const _NavLink({required this.label});
+  final VoidCallback? onTap;
+  const _NavLink({required this.label, this.onTap});
 
   @override
   State<_NavLink> createState() => _NavLinkState();
@@ -281,14 +279,17 @@ class _NavLinkState extends State<_NavLink> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedDefaultTextStyle(
-        duration: const Duration(milliseconds: 150),
-        style: GoogleFonts.inter(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: _hovered ? colors.textPrimary : colors.textSecondary,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 150),
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: _hovered ? colors.textPrimary : colors.textSecondary,
+          ),
+          child: Text(widget.label),
         ),
-        child: Text(widget.label),
       ),
     );
   }
@@ -457,7 +458,7 @@ class _HeroCopy extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'AI 기반 학습 워크스페이스',
+                  'AI 기반 학습 노트',
                   style: GoogleFonts.inter(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -511,7 +512,7 @@ class _HeroCopy extends StatelessWidget {
         AppFadeSlide(
           delay: const Duration(milliseconds: 220),
           child: Text(
-            '강의 기록, 요약, 복습 포인트를\n하나의 흐름으로 연결해 다음 학습으로 자연스럽게 이어집니다.',
+            '노트를 쓰면 AI가 자동으로 요약하고,\n다음 학습으로 자연스럽게 이어주는 워크스페이스.',
             style: GoogleFonts.inter(
               fontSize: 15,
               color: colors.textSecondary,
@@ -528,10 +529,10 @@ class _HeroCopy extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: const [
-              _FeaturePill(icon: LucideIcons.fileText, label: '노트 편집'),
+              _FeaturePill(icon: LucideIcons.fileText, label: '노트 작성'),
               _FeaturePill(icon: LucideIcons.brain, label: 'AI 요약'),
-              _FeaturePill(icon: LucideIcons.gitBranch, label: '지식 그래프'),
-              _FeaturePill(icon: LucideIcons.search, label: '의미 검색'),
+              _FeaturePill(icon: LucideIcons.search, label: '전체 검색'),
+              _FeaturePill(icon: LucideIcons.folderKanban, label: '프로젝트 관리'),
             ],
           ),
         ),
@@ -539,13 +540,7 @@ class _HeroCopy extends StatelessWidget {
         // CTA
         AppFadeSlide(
           delay: const Duration(milliseconds: 340),
-          child: Row(
-            children: [
-              _PrimaryCTA(onTap: onStart),
-              const SizedBox(width: 12),
-              _SecondaryCTA(label: '기능 살펴보기'),
-            ],
-          ),
+          child: _PrimaryCTA(onTap: onStart),
         ),
         const SizedBox(height: 32),
         // Social proof
@@ -717,58 +712,6 @@ class _PrimaryCTAState extends State<_PrimaryCTA>
   }
 }
 
-class _SecondaryCTA extends StatefulWidget {
-  final String label;
-  const _SecondaryCTA({required this.label});
-
-  @override
-  State<_SecondaryCTA> createState() => _SecondaryCTAState();
-}
-
-class _SecondaryCTAState extends State<_SecondaryCTA> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppTheme.colorsOf(context);
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        decoration: BoxDecoration(
-          color: _hovered ? colors.border.withValues(alpha: 0.3) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: colors.border),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              LucideIcons.playCircle,
-              size: 14,
-              color: _hovered ? colors.textPrimary : colors.textSecondary,
-            ),
-            const SizedBox(width: 7),
-            Text(
-              widget.label,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: _hovered ? colors.textPrimary : colors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _SocialProofRow extends StatelessWidget {
   final AppColors colors;
   const _SocialProofRow({required this.colors});
@@ -819,7 +762,7 @@ class _SocialProofRow extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Text(
-          '300+ 학습자가 이미 시작했어요',
+          '지금 바로 무료로 시작하세요',
           style: GoogleFonts.inter(
             fontSize: 12,
             color: colors.textSecondary.withValues(alpha: 0.7),

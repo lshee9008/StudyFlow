@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../core/firebase_auth_service.dart';
 import '../../core/theme.dart';
 import '../../core/ui/app_components.dart';
 import '../../models/user_model.dart';
@@ -91,6 +92,19 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     }
 
     setState(() => _message = error);
+  }
+
+  Future<void> _logout() async {
+    await FirebaseAuthService.signOut();
+    await ref
+        .read(userProvider.notifier)
+        .logoutExistingUser(widget.user.id ?? '');
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const InitialScreen()),
+      (_) => false,
+    );
   }
 
   Future<void> _requestDelete() async {
@@ -240,8 +254,30 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
             ),
           ),
           const SizedBox(height: 56),
-          Text('워크스페이스 관리', style: Theme.of(context).textTheme.titleSmall),
+          Text('계정 관리', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: AppSpace.md),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('로그아웃', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: AppSpace.xs),
+                Text(
+                  '현재 기기에서 로그아웃합니다.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: AppSpace.lg),
+                AppButton(
+                  label: '로그아웃',
+                  onPressed: _logout,
+                  primary: false,
+                  icon: LucideIcons.logOut,
+                  width: double.infinity,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpace.lg),
           AppCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
