@@ -1,9 +1,9 @@
 // API 베이스 URL
-// - 로컬 개발: http://127.0.0.1:8000 (기본값)
-// - 프로덕션: flutter build web --dart-define=API_BASE=https://studyflow-api.onrender.com
+// - 로컬 개발: http://127.0.0.1:8000
+// - 프로덕션: https://awake-reverence-production-0a05.up.railway.app
 const String baseUrl = String.fromEnvironment(
   'API_BASE',
-  defaultValue: 'http://127.0.0.1:8000',
+  defaultValue: 'https://awake-reverence-production-0a05.up.railway.app',
 );
 
 bool isOnlineMode = true;
