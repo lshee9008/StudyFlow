@@ -1,20 +1,22 @@
 // ============================================================
-// main.dart  (Web-Compatible v2)
+// main.dart  (Web-Compatible v3 + Firebase)
 // ============================================================
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
-// sqflite_common_ffi는 모바일/데스크톱 전용
+import 'core/firebase_options.dart';
 import 'core/theme.dart';
 import 'features/home/home_screen.dart';
 
-import 'package:intl/date_symbol_data_local.dart'; // ← 추가
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('ko_KR', null); // ← 추가
-
+  await initializeDateFormatting('ko_KR', null);
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   if (!kIsWeb) {
     await _initSqflite();
   }

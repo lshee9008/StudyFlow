@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StudyFlow Demo Panel</title>
+    <style>
+      :root {
+        --bg: #08090b;
+        --surface: #101216;
+        --surface-2: #151922;
+        --surface-3: #1b2230;
+        --border: #252b36;
+        --text: #f4f7fb;
+        --muted: #9aa5b5;
+        --faint: #687386;
+        --accent: #7a92ff;
+        --green: #63d297;
+        --amber: #e3b363;
+        --rose: #ef6f6c;
+        --radius: 18px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          radial-gradient(circle at 72% 18%, rgba(122, 146, 255, 0.18), transparent 32%),
+          radial-gradient(circle at 20% 72%, rgba(99, 210, 151, 0.09), transparent 30%),
+          var(--bg);
+        background-size: 28px 28px, 28px 28px, auto, auto, auto;
+        color: var(--text);
+        font-family:
+          Pretendard,
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        letter-spacing: 0;
+      }
+
+      .panel {
+        width: min(297mm, calc(100vw - 24px));
+        min-height: 420mm;
+        margin: 0 auto;
+        padding: 10mm;
+      }
+
+      .shell {
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        overflow: hidden;
+        background: rgba(16, 18, 22, 0.82);
+        backdrop-filter: blur(18px);
+        min-height: calc(420mm - 20mm);
+      }
+
+      .logo-bar {
+        min-height: 132px;
+        padding: 34px 38px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 24px;
+        align-items: center;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0));
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+
+      .mark {
+        width: 58px;
+        height: 58px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        color: white;
+        background: linear-gradient(135deg, #7a92ff, #5770f4);
+        font-size: 30px;
+        font-weight: 900;
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 52px;
+        line-height: 1;
+        font-weight: 850;
+      }
+
+      .version {
+        display: inline-flex;
+        align-items: center;
+        height: 34px;
+        padding: 0 14px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 700;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .tagline {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.6;
+      }
+
+      .purpose {
+        padding: 44px 38px 48px;
+        display: grid;
+        grid-template-columns: 0.95fr 1.05fr;
+        gap: 42px;
+        align-items: end;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .eyebrow {
+        margin: 0 0 14px;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .purpose h2 {
+        margin: 0;
+        max-width: 760px;
+        font-size: 44px;
+        line-height: 1.16;
+        font-weight: 820;
+      }
+
+      .purpose-copy {
+        margin: 0;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.8;
+      }
+
+      .metrics {
+        margin-top: 28px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+      }
+
+      .metric {
+        padding: 18px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 26px;
+        font-weight: 850;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 6px;
+        color: var(--faint);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .features {
+        padding: 44px 38px 50px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 26px;
+      }
+
+      .section-head h2 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 820;
+      }
+
+      .section-head p {
+        margin: 0;
+        max-width: 520px;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.65;
+      }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 20px;
+      }
+
+      .feature-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .feature-card {
+        padding: 20px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .feature-card .icon {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 11px;
+        margin-bottom: 16px;
+        background: rgba(122, 146, 255, 0.13);
+        color: var(--accent);
+        font-size: 19px;
+      }
+
+      .feature-card h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .feature-card p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.65;
+      }
+
+      .screens {
+        display: grid;
+        gap: 14px;
+      }
+
+      .screen {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: #0b0d12;
+      }
+
+      .screen-top {
+        height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--faint);
+      }
+
+      .dot:nth-child(1) {
+        background: var(--rose);
+      }
+
+      .dot:nth-child(2) {
+        background: var(--amber);
+      }
+
+      .dot:nth-child(3) {
+        background: var(--green);
+      }
+
+      .screen-title {
+        margin-left: 12px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .workspace-shot {
+        min-height: 328px;
+        display: grid;
+        grid-template-columns: 180px 1fr 260px;
+        gap: 0;
+      }
+
+      .sidebar {
+        padding: 18px 14px;
+        border-right: 1px solid var(--border);
+        background: #0e121a;
+      }
+
+      .side-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 24px;
+        font-size: 14px;
+        font-weight: 850;
+      }
+
+      .tiny-mark {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--accent);
+      }
+
+      .nav-row {
+        height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 0 10px;
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .nav-row.active {
+        color: var(--text);
+        background: rgba(122, 146, 255, 0.16);
+      }
+
+      .shot-main {
+        padding: 22px;
+      }
+
+      .shot-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 18px;
+      }
+
+      .shot-header strong {
+        font-size: 20px;
+      }
+
+      .pill {
+        height: 30px;
+        display: inline-flex;
+        align-items: center;
+        padding: 0 12px;
+        border: 1px solid rgba(122, 146, 255, 0.32);
+        border-radius: 999px;
+        color: var(--accent);
+        background: rgba(122, 146, 255, 0.11);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .doc-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .doc-row {
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: 40px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .doc-icon {
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border-radius: 11px;
+        background: var(--surface-3);
+      }
+
+      .doc-text strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .doc-text span {
+        display: block;
+        margin-top: 4px;
+        color: var(--faint);
+        font-size: 12px;
+      }
+
+      .ai-panel {
+        padding: 18px;
+        border-left: 1px solid var(--border);
+        background: #101522;
+      }
+
+      .ai-card {
+        padding: 16px;
+        border: 1px solid rgba(122, 146, 255, 0.28);
+        border-radius: 14px;
+        background: rgba(122, 146, 255, 0.1);
+      }
+
+      .ai-card h4 {
+        margin: 0 0 12px;
+        font-size: 15px;
+      }
+
+      .line {
+        height: 9px;
+        margin-top: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .line.short {
+        width: 66%;
+      }
+
+      .graph-shot {
+        min-height: 240px;
+        position: relative;
+        padding: 24px;
+        background:
+          radial-gradient(circle, rgba(255, 255, 255, 0.085) 1px, transparent 1px),
+          #0e121a;
+        background-size: 16px 16px;
+      }
+
+      .node {
+        position: absolute;
+        width: 138px;
+        padding: 12px;
+        border: 1px solid rgba(122, 146, 255, 0.36);
+        border-radius: 13px;
+        background: #161c29;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .node.core {
+        left: 44%;
+        top: 76px;
+        color: white;
+        background: #6f86f4;
+      }
+
+      .node.a {
+        left: 12%;
+        top: 52px;
+      }
+
+      .node.b {
+        right: 13%;
+        top: 48px;
+      }
+
+      .node.c {
+        left: 28%;
+        bottom: 34px;
+      }
+
+      .node.d {
+        right: 28%;
+        bottom: 30px;
+      }
+
+      .edge {
+        position: absolute;
+        height: 1px;
+        background: rgba(122, 146, 255, 0.35);
+        transform-origin: left center;
+      }
+
+      .edge.e1 {
+        left: 29%;
+        top: 112px;
+        width: 210px;
+        transform: rotate(4deg);
+      }
+
+      .edge.e2 {
+        left: 53%;
+        top: 112px;
+        width: 210px;
+        transform: rotate(-4deg);
+      }
+
+      .edge.e3 {
+        left: 43%;
+        top: 146px;
+        width: 160px;
+        transform: rotate(55deg);
+      }
+
+      .edge.e4 {
+        left: 51%;
+        top: 146px;
+        width: 160px;
+        transform: rotate(125deg);
+      }
+
+      .stack {
+        padding: 42px 38px 44px;
+      }
+
+      .stack-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .stack-item {
+        min-height: 112px;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .stack-item strong {
+        font-size: 16px;
+      }
+
+      .stack-item span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .footer {
+        padding-top: 22px;
+        color: var(--faint);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      @media (max-width: 980px) {
+        .panel {
+          padding: 18px;
+          width: 100%;
+          min-height: 100vh;
+        }
+
+        .shell {
+          min-height: auto;
+        }
+
+        .logo-bar,
+        .purpose,
+        .feature-grid,
+        .workspace-shot {
+          grid-template-columns: 1fr;
+        }
+
+        .purpose h2 {
+          font-size: 32px;
+        }
+
+        .brand h1 {
+          font-size: 38px;
+        }
+
+        .stack-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .sidebar,
+        .ai-panel {
+          border: 0;
+        }
+      }
+
+      @page {
+        size: A3 portrait;
+        margin: 0;
+      }
+
+      @media print {
+        html,
+        body {
+          width: 297mm;
+          min-height: 420mm;
+          background: var(--bg);
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+
+        .panel {
+          width: 297mm;
+          min-height: 420mm;
+          padding: 10mm;
+        }
+
+        .shell {
+          min-height: calc(420mm - 20mm);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="panel">
+      <section class="shell">
+        <header class="logo-bar">
+          <div>
+            <div class="brand">
+              <div class="mark">S</div>
+              <h1>StudyFlow</h1>
+            </div>
+            <p class="tagline">강의 노트, AI 요약, 복습 그래프를 하나의 학습 흐름으로 연결하는 EdTech SaaS</p>
+          </div>
+          <span class="version">Demo Panel · v1.0</span>
+        </header>
+
+        <section class="purpose">
+          <div>
+            <p class="eyebrow">Service Purpose</p>
+            <h2>공부 자료를 쌓아두는 앱이 아니라, 다음 학습 행동까지 이어주는 워크스페이스.</h2>
+          </div>
+          <div>
+            <p class="purpose-copy">
+              StudyFlow는 수업 자료를 노트로 정리하고, AI가 핵심 요약과 문단 분석, 퀴즈,
+              지식 그래프를 생성해 복습 루프를 완성합니다.
+            </p>
+            <div class="metrics">
+              <div class="metric"><strong>01</strong><span>노트 정리</span></div>
+              <div class="metric"><strong>02</strong><span>AI 학습 보조</span></div>
+              <div class="metric"><strong>03</strong><span>복습 루프</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="features">
+          <div class="section-head">
+            <h2>주요 기능</h2>
+            <p>사용자는 노트 작성에서 요약, 분석, 퀴즈, 그래프 탐색까지 한 화면 안에서 자연스럽게 이어갈 수 있습니다.</p>
+          </div>
+
+          <div class="feature-grid">
+            <div class="feature-list">
+              <article class="feature-card">
+                <div class="icon">✦</div>
+                <h3>AI 요약과 문단 분석</h3>
+                <p>전체 노트 요약과 현재 포커스 문단 분석을 분리해 필요한 순간에 바로 이해를 돕습니다.</p>
+              </article>
+              <article class="feature-card">
+                <div class="icon">⌁</div>
+                <h3>지식 그래프</h3>
+                <p>핵심 개념과 연결 관계를 보드 형태로 시각화하고, 노드 수정과 연결 편집을 지원합니다.</p>
+              </article>
+              <article class="feature-card">
+                <div class="icon">✓</div>
+                <h3>퀴즈와 암기 노트</h3>
+                <p>학습 자료 기반의 객관식 퀴즈와 암기 포인트를 생성해 복습 시간을 줄입니다.</p>
+              </article>
+            </div>
+
+            <div class="screens">
+              <article class="screen">
+                <div class="screen-top">
+                  <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                  <span class="screen-title">Workspace</span>
+                </div>
+                <div class="workspace-shot">
+                  <aside class="sidebar">
+                    <div class="side-logo"><span class="tiny-mark">S</span>StudyFlow</div>
+                    <div class="nav-row active">⌘ 홈</div>
+                    <div class="nav-row">⌕ 검색</div>
+                    <div class="nav-row">◷ 포커스</div>
+                  </aside>
+                  <div class="shot-main">
+                    <div class="shot-header">
+                      <strong>운영체제</strong>
+                      <span class="pill">12 Notes</span>
+                    </div>
+                    <div class="doc-list">
+                      <div class="doc-row"><div class="doc-icon">📄</div><div class="doc-text"><strong>CPU와 메모리</strong><span>방금 전 수정</span></div><span class="pill">요약</span></div>
+                      <div class="doc-row"><div class="doc-icon">🧠</div><div class="doc-text"><strong>운영체제 2주차</strong><span>문단 분석 완료</span></div><span class="pill">Graph</span></div>
+                      <div class="doc-row"><div class="doc-icon">⚡</div><div class="doc-text"><strong>버스와 캐시</strong><span>퀴즈 3문항 생성</span></div><span class="pill">Quiz</span></div>
+                    </div>
+                  </div>
+                  <aside class="ai-panel">
+                    <div class="ai-card">
+                      <h4>핵심 요약</h4>
+                      <div class="line"></div>
+                      <div class="line short"></div>
+                      <div class="line"></div>
+                    </div>
+                  </aside>
+                </div>
+              </article>
+
+              <article class="screen">
+                <div class="screen-top">
+                  <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                  <span class="screen-title">Knowledge Graph</span>
+                </div>
+                <div class="graph-shot">
+                  <span class="edge e1"></span><span class="edge e2"></span><span class="edge e3"></span><span class="edge e4"></span>
+                  <div class="node a">응용 소프트웨어</div>
+                  <div class="node core">운영체제 핵심</div>
+                  <div class="node b">하드웨어</div>
+                  <div class="node c">메모리 관리</div>
+                  <div class="node d">입출력 장치</div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div class="section-head">
+            <h2>기술 스택</h2>
+            <p>Flutter 기반의 웹/앱 클라이언트와 FastAPI 백엔드, AI 기능, 배포 파이프라인을 하나로 구성했습니다.</p>
+          </div>
+          <div class="stack-grid">
+            <div class="stack-item"><strong>Flutter</strong><span>Web · Mobile UI</span></div>
+            <div class="stack-item"><strong>Riverpod</strong><span>상태 관리</span></div>
+            <div class="stack-item"><strong>FastAPI</strong><span>AI / 파일 API</span></div>
+            <div class="stack-item"><strong>SQLite</strong><span>로컬 데이터</span></div>
+            <div class="stack-item"><strong>Vercel</strong><span>프론트 배포</span></div>
+            <div class="stack-item"><strong>Render</strong><span>백엔드 배포</span></div>
+            <div class="stack-item"><strong>OpenAI</strong><span>요약 · 분석</span></div>
+            <div class="stack-item"><strong>Vector Search</strong><span>문맥 검색</span></div>
+            <div class="stack-item"><strong>GitHub Actions</strong><span>CI/CD</span></div>
+            <div class="stack-item"><strong>Firebase</strong><span>인증 연동</span></div>
+          </div>
+          <div class="footer">StudyFlow Demo Panel · 2026 · Built for learning flow</div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

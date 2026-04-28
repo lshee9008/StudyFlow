@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -158,6 +159,78 @@ class UserNotifier extends StateNotifier<UserModel?> {
       }
     }
     return '인터넷 연결을 확인해주세요.';
+  }
+
+  // ── Firebase 로그인 (이메일 + 구글 공통) ─────────
+  Future<String?> loginWithFirebase(User firebaseUser) async {
+    try {
+      // 백엔드에서 유저 조회
+      final getRes = await http.get(
+        Uri.parse('$baseUrl/api/users/${firebaseUser.uid}'),
+      );
+
+      if (getRes.statusCode == 200) {
+        final data = json.decode(utf8.decode(getRes.bodyBytes));
+        state = UserModel(
+          id: data['id'],
+          name: data['name'],
+          join_path: data['join_path'] ?? 'firebase',
+          password: '',
+          social_id: firebaseUser.uid,
+          is_login: 1,
+        );
+        return null;
+      }
+
+      // 신규 유저 → 백엔드에 생성
+      final displayName = firebaseUser.displayName ??
+          firebaseUser.email?.split('@').first ??
+          '사용자';
+      final provider = firebaseUser.providerData.isNotEmpty
+          ? firebaseUser.providerData.first.providerId
+          : 'password';
+
+      final newUser = UserModel(
+        id: firebaseUser.uid,
+        name: displayName,
+        join_path: provider,
+        password: '',
+        social_id: firebaseUser.uid,
+        is_login: 1,
+      );
+
+      final postRes = await http.post(
+        Uri.parse('$baseUrl/api/users/'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'id': newUser.id,
+          'name': newUser.name,
+          'join_path': newUser.join_path,
+          'password': '',
+          'social_id': newUser.social_id,
+        }),
+      );
+
+      if (postRes.statusCode == 200) {
+        state = newUser;
+        return null;
+      }
+      return '계정 생성에 실패했습니다.';
+    } catch (e) {
+      // 백엔드 없어도 Firebase 유저로 진행
+      final displayName = firebaseUser.displayName ??
+          firebaseUser.email?.split('@').first ??
+          '사용자';
+      state = UserModel(
+        id: firebaseUser.uid,
+        name: displayName,
+        join_path: 'firebase',
+        password: '',
+        social_id: firebaseUser.uid,
+        is_login: 1,
+      );
+      return null;
+    }
   }
 
   // ── 기존 유저 선택 (모바일 전용) ────────────────
