@@ -315,9 +315,9 @@ class _ShellSidebarState extends State<_ShellSidebar>
                     child: Center(
                       child: Image.asset(
                         'assets/images/logo_icon.png',
-                        width: 16,
-                        height: 16,
-                        color: Colors.white,
+                        width: 20,
+                        height: 20,
+                        fit: BoxFit.contain,
                       ),
                     ),
                   ),
@@ -622,9 +622,9 @@ class _GlowWordmarkIconState extends State<_GlowWordmarkIcon>
           child: Center(
             child: Image.asset(
               'assets/images/logo_icon.png',
-              width: 16,
-              height: 16,
-              color: Colors.white,
+              width: 20,
+              height: 20,
+              fit: BoxFit.contain,
             ),
           ),
         );

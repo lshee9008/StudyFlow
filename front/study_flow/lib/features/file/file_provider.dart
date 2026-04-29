@@ -405,9 +405,11 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       customPrompt =
           '${fp.isNotEmpty ? "사용자 지시: $fp\n\n" : ""}'
           '기존 요약:\n$savedText\n\n'
-          '위에 없는 새 내용만 추가로 요약하세요. 새 내용 없으면 빈 응답.';
+          '기존 요약을 참고하되 전체 본문을 다시 읽고, 문단 흐름과 순서를 유지한 하나의 완성된 학습 노트로 재정리하세요. '
+          '새 내용만 따로 쓰지 말고 전체 흐름을 자연스럽게 이어주세요.';
     } else if (fp.isNotEmpty) {
-      customPrompt = fp;
+      customPrompt =
+          '$fp\n\n문단 순서와 설명 흐름을 유지하고, 중요한 세부 내용이 날아가지 않게 충분히 자세히 정리하세요.';
     }
 
     final body = jsonEncode({

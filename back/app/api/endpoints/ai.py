@@ -16,8 +16,10 @@ from app.core.redis_cache import cache_get, cache_set, make_key
 router = APIRouter()
 
 _CACHE_TTL = 3600
-_SUMMARY_TOKENS = 8192
-_SUMMARY_MAP_TOKENS = 1400
+_SUMMARY_TOKENS = 12000
+_SUMMARY_MAP_TOKENS = 2600
+_SUMMARY_CHUNK_CHARS = 3200
+_SUMMARY_CHUNK_OVERLAP = 350
 
 
 def _get_model() -> genai.GenerativeModel:
@@ -551,21 +553,21 @@ def _build_reduce_prompt(title: str, tags: str, text: str, user_instruction: str
             f"사용자 지시: {user_instruction}\n"
             f"{hint}제목: {title}  태그: {tags}\n\n"
             f"[본문]\n{text}\n\n"
-            "위 지시에 따라 시험 대비용 학습 노트로 충분히 자세히 정리하세요.\n"
-            "본문의 주요 개념, 정의, 원리, 예시, 비교, 암기 포인트를 빠뜨리지 마세요.\n"
+            "위 지시에 따르되, 원문 문단의 순서와 흐름을 최대한 유지해 정리하세요.\n"
+            "삭제식 요약이 아니라 문단별 내용을 읽기 좋은 학습 노트로 다듬는 방식입니다.\n"
+            "주요 개념, 정의, 원리, 예시, 비교, 암기 포인트를 빠뜨리지 마세요.\n"
             "본문에 없는 내용 추가 금지. 마크다운 제목과 불릿으로 읽기 쉽게 작성하세요."
         )
     return (
-        f"당신은 강의 전체를 빠짐없이 정리하는 시험 대비 학습 노트 전문가입니다.\n"
+        f"당신은 강의 내용을 문단 흐름 그대로 살려 정리하는 시험 대비 학습 노트 전문가입니다.\n"
         f"{hint}제목: {title}  태그: {tags}\n\n"
         f"[본문]\n{text}\n\n"
-        "아래 형식으로 충분히 자세한 학습 요약 노트를 작성하세요.\n\n"
-        "## 전체 흐름\n"
-        "- 강의가 다루는 큰 주제와 흐름을 3~5줄로 정리\n\n"
-        "## 핵심 개념\n"
-        "- **개념명**: 정의, 역할, 원리, 본문 근거를 함께 설명\n\n"
-        "## 세부 내용\n"
-        "- 본문에 나온 하위 개념, 구성 요소, 절차, 인과관계, 비교를 빠짐없이 정리\n\n"
+        "원문 순서를 유지하며 충분히 자세한 학습 노트로 정리하세요.\n\n"
+        "## 문단 흐름 정리\n"
+        "- 원문에 나온 순서대로 단원/문단을 따라가며 정리\n"
+        "- 각 문단의 핵심 주장, 정의, 이유, 예시를 함께 보존\n\n"
+        "## 핵심 개념과 세부 설명\n"
+        "- **개념명**: 정의, 역할, 원리, 본문 근거, 관련 예시\n\n"
         "## 시험 포인트\n"
         "- 헷갈리기 쉬운 부분, 암기해야 할 용어, 출제 가능 포인트\n\n"
         "## 핵심 정리\n"
@@ -573,6 +575,8 @@ def _build_reduce_prompt(title: str, tags: str, text: str, user_instruction: str
         "작성 규칙:\n"
         "- 본문에 있는 내용만 사용 (창작 금지)\n"
         "- 원문에 나온 중요한 항목은 생략하지 말기\n"
+        "- 원문 단락의 진행 순서를 바꾸지 말기\n"
+        "- 과도하게 줄이지 말고 원문 정보량의 60% 이상을 보존\n"
         "- 개념명·용어는 **굵게** 표시\n"
         "- 빈 섹션 출력 금지\n"
         "- 이모티콘·장식 기호 금지\n"
@@ -584,13 +588,17 @@ def _build_reduce_prompt(title: str, tags: str, text: str, user_instruction: str
 def _build_map_prompt(chunk: str, index: int, total: int) -> str:
     """청크 압축 프롬프트 — Map 단계"""
     return (
-        f"다음 학습 내용에서 나중에 통합 요약에 반드시 들어가야 할 내용을 추출하세요. (섹션 {index + 1}/{total})\n\n"
+        f"다음 학습 내용은 전체 문서의 {index + 1}/{total}번째 구간입니다.\n"
+        "이 구간을 압축해 버리지 말고, 원문 문단 순서와 설명 흐름을 유지한 섹션 노트로 정리하세요.\n\n"
         "규칙:\n"
+        "- 원문에 나온 순서대로 정리\n"
         "- 개념명, 정의, 원리, 구성 요소, 예시, 비교, 암기 포인트를 포함\n"
+        "- 불필요한 반복만 줄이고 세부 설명은 보존\n"
         "- 본문에 없는 내용 추가 금지\n"
-        "- bullet 형식, 10~18줄 이내\n\n"
+        "- 적절한 소제목과 bullet 사용\n"
+        "- 너무 짧게 쓰지 말고 이 구간 정보량의 60% 이상 유지\n\n"
         f"[내용]\n{chunk}\n\n"
-        "핵심 추출:"
+        "섹션 노트:"
     )
 
 
@@ -603,26 +611,27 @@ def _build_merge_prompt(title: str, tags: str, summaries: List[str], user_instru
             f"제목: {title}  태그: {tags}\n\n"
             f"[섹션별 분석]\n{combined}\n\n"
             "위 지시에 따라 하나의 완성된 시험 대비 노트로 통합하세요.\n"
-            "중복은 제거하되 중요한 개념, 정의, 원리, 예시, 비교, 암기 포인트는 생략하지 마세요."
+            "섹션 순서를 유지하고, 중복만 줄이되 중요한 개념, 정의, 원리, 예시, 비교, 암기 포인트는 생략하지 마세요."
         )
     return (
-        f"당신은 강의 전체를 빠짐없이 정리하는 시험 대비 학습 노트 전문가입니다.\n"
+        f"당신은 강의 전체 흐름을 보존해 하나의 노트로 엮는 시험 대비 학습 노트 전문가입니다.\n"
         f"제목: {title}  태그: {tags}\n\n"
-        f"[섹션별 핵심 분석]\n{combined}\n\n"
-        "위 섹션들을 하나의 완성된 학습 노트로 통합하세요.\n\n"
-        "## 전체 흐름\n"
-        "- 강의가 다루는 큰 주제와 흐름\n\n"
-        "## 핵심 개념\n"
-        "- **개념명**: 정의, 역할, 원리, 관련 개념\n\n"
-        "## 세부 내용\n"
-        "- 구성 요소, 절차, 인과관계, 비교, 예시를 자연스럽게 통합\n\n"
+        f"[섹션별 노트]\n{combined}\n\n"
+        "위 섹션들을 순서대로 이어 하나의 완성된 학습 노트로 통합하세요.\n\n"
+        "## 문단 흐름 정리\n"
+        "- 섹션 1부터 마지막 섹션까지 원래 순서대로 설명\n"
+        "- 각 단원의 정의, 배경, 과정, 예시, 비교를 자연스럽게 연결\n\n"
+        "## 핵심 개념과 세부 설명\n"
+        "- **개념명**: 정의, 역할, 원리, 관련 개념, 본문 근거\n\n"
         "## 시험 포인트\n"
         "- 헷갈리기 쉬운 부분, 암기 포인트, 출제 가능 포인트\n\n"
         "## 핵심 정리\n"
         "- 전체 내용에서 가장 중요한 5~8가지\n\n"
         "작성 규칙:\n"
-        "- 섹션 간 중복 제거 후 통합\n"
+        "- 섹션 순서를 반드시 유지\n"
+        "- 섹션 간 중복만 제거 후 통합\n"
         "- 중요한 항목은 생략하지 말기\n"
+        "- 짧게 압축하지 말고 원문 흐름과 세부 설명을 살리기\n"
         "- 본문에 없는 내용 추가 금지\n"
         "- 개념명은 **굵게**\n"
         "- 자연스러운 문단 흐름 유지\n"
@@ -649,7 +658,11 @@ async def summarize(req: SumReq):
         return {"summary": ""}
 
     user_instruction = req.custom_prompt or req.server_prompt or ""
-    chunks = _semantic_chunks(raw, max_chars=1500, overlap=200)
+    chunks = _semantic_chunks(
+        raw,
+        max_chars=_SUMMARY_CHUNK_CHARS,
+        overlap=_SUMMARY_CHUNK_OVERLAP,
+    )
 
     try:
         if len(chunks) == 1:
@@ -696,7 +709,11 @@ async def summarize_stream(req: SumReq):
             return
 
         user_instruction = req.custom_prompt or req.server_prompt or ""
-        chunks = _semantic_chunks(raw, max_chars=1500, overlap=200)
+        chunks = _semantic_chunks(
+            raw,
+            max_chars=_SUMMARY_CHUNK_CHARS,
+            overlap=_SUMMARY_CHUNK_OVERLAP,
+        )
 
         try:
             if len(chunks) == 1:
@@ -705,11 +722,15 @@ async def summarize_stream(req: SumReq):
             else:
                 yield _sse({"type": "progress", "message": f"{len(chunks)}개 섹션 분석 중..."})
 
-                # Map: 병렬 청크 압축
-                map_results = await asyncio.gather(*[
+                # Map: 병렬 청크 정리. 긴 문서에서도 SSE가 조용히 끊기지 않도록 진행 이벤트 유지.
+                map_task = asyncio.gather(*[
                     _llm(_build_map_prompt(c, i, len(chunks)), temp=0.15, tokens=_SUMMARY_MAP_TOKENS)
                     for i, c in enumerate(chunks)
                 ])
+                while not map_task.done():
+                    yield _sse({"type": "progress", "message": "문단 흐름을 따라 정리 중..."})
+                    await asyncio.sleep(8)
+                map_results = await map_task
                 valid = [r for r in map_results if _meaningful(r) > 10]
 
                 if not valid:

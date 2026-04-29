@@ -98,9 +98,9 @@ class AuthScaffold extends StatelessWidget {
                               child: Center(
                                 child: Image.asset(
                                   'assets/images/logo_icon.png',
-                                  width: 14,
-                                  height: 14,
-                                  color: Colors.white,
+                                  width: 18,
+                                  height: 18,
+                                  fit: BoxFit.contain,
                                 ),
                               ),
                             ),

@@ -215,9 +215,9 @@ class _TopNav extends StatelessWidget {
                 child: Center(
                 child: Image.asset(
                   'assets/images/logo_icon.png',
-                  width: 16,
-                  height: 16,
-                  color: Colors.white,
+                  width: 20,
+                  height: 20,
+                  fit: BoxFit.contain,
                 ),
               ),
               ),
@@ -945,9 +945,9 @@ class _MockSidebar extends StatelessWidget {
                   child: Center(
                     child: Image.asset(
                       'assets/images/logo_icon.png',
-                      width: 11,
-                      height: 11,
-                      color: Colors.white,
+                      width: 14,
+                      height: 14,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
@@ -1249,4 +1249,3 @@ class _MockProjectCard extends StatelessWidget {
     );
   }
 }
-
