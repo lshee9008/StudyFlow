@@ -907,8 +907,8 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .timeout(const Duration(seconds: 20));
       if (!mounted) return;
       if (res.statusCode == 200) {
-        final analysis =
-            jsonDecode(utf8.decode(res.bodyBytes))['analysis'] ?? '';
+        final payload = jsonDecode(utf8.decode(res.bodyBytes));
+        final analysis = payload is Map ? payload['analysis'] ?? '' : '';
         state = state.copyWith(
           currentAnalysis: analysis.toString().trim(),
           isAnalysisLoading: false,
@@ -940,7 +940,8 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .timeout(const Duration(seconds: 60));
       if (!mounted) return;
       if (res.statusCode == 200) {
-        final memo = jsonDecode(utf8.decode(res.bodyBytes))['memo'] ?? '';
+        final payload = jsonDecode(utf8.decode(res.bodyBytes));
+        final memo = payload is Map ? payload['memo'] ?? '' : '';
         state = state.copyWith(
           currentMemo: memo.toString().trim(),
           isMemoLoading: false,
@@ -968,8 +969,10 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .timeout(const Duration(seconds: 60));
       if (!mounted) return;
       if (res.statusCode == 200) {
+        final payload = jsonDecode(utf8.decode(res.bodyBytes));
+        final rawQuiz = payload is Map ? payload['quiz'] : null;
         final quiz = _normalizeQuiz(
-          jsonDecode(utf8.decode(res.bodyBytes))['quiz'] as List? ?? [],
+          rawQuiz is List ? rawQuiz : [],
         );
         state = state.copyWith(
           quizData: quiz,
@@ -1061,10 +1064,11 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       if (!mounted) return;
       debugPrint('[Graph] response status=${res.statusCode}');
       if (res.statusCode == 200) {
+        final payload = jsonDecode(utf8.decode(res.bodyBytes));
         final decoded = _normalizeGraph(
-          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>,
-        )!;
-        final nodes = (decoded['nodes'] as List?) ?? [];
+          payload is Map<String, dynamic> ? payload : null,
+        );
+        final nodes = (decoded?['nodes'] as List?) ?? [];
         debugPrint('[Graph] parsed nodes=${nodes.length}');
         if (nodes.isEmpty) {
           state = state.copyWith(

@@ -16,8 +16,8 @@ from app.core.redis_cache import cache_get, cache_set, make_key
 router = APIRouter()
 
 _CACHE_TTL = 3600
-_SUMMARY_TOKENS = 3000     # 요약 최대 토큰 (6000 → 3000: 품질↑ 속도↑)
-_SUMMARY_MAP_TOKENS = 600  # Map 단계 청크 압축 토큰
+_SUMMARY_TOKENS = 8192
+_SUMMARY_MAP_TOKENS = 1400
 
 
 def _get_model() -> genai.GenerativeModel:
@@ -211,6 +211,108 @@ def _normalize_quiz_items(raw_items, fallback_text: str, count: int = 3):
     return cleaned
 
 
+def _extract_study_terms(text: str, limit: int = 10):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    heading_terms = [
+        re.sub(r"^#+\s*", "", line).strip()
+        for line in lines
+        if line.startswith("#")
+    ]
+    bold_terms = re.findall(r"\*\*([^*\n]{2,50})\*\*", text)
+    bullet_terms = [
+        re.sub(r"^[-•\d.\s]+", "", line).split(":")[0].strip()
+        for line in lines
+        if re.match(r"^([-•]|\d+\.)\s+", line)
+    ]
+
+    terms = []
+    for term in [*heading_terms, *bold_terms, *bullet_terms]:
+        cleaned = re.sub(r"\s+", " ", term).strip(" -:：")
+        if not cleaned or cleaned in terms or len(cleaned) > 60:
+            continue
+        terms.append(cleaned)
+        if len(terms) >= limit:
+            break
+
+    if terms:
+        return terms
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?。])\s+|\n+", text)
+        if len(sentence.strip()) > 16
+    ]
+    for sentence in sentences[:limit]:
+        terms.append(sentence[:32].strip(" -:："))
+    return terms
+
+
+def _fallback_analysis(text: str, title: str = "") -> str:
+    clean = re.sub(r"\s+", " ", text).strip()
+    terms = _extract_study_terms(clean, limit=3)
+    primary = terms[0] if terms else clean[:40] or title or "이 문단"
+    meaning = clean[:180] if clean else f"{primary}에 대한 핵심 설명입니다."
+    related = ", ".join(terms[:3]) if terms else primary
+    return (
+        f"- **핵심 의미**: {meaning}\n"
+        f"- **관련 개념**: **{related}**를 중심으로 앞뒤 문맥과 연결해 이해해야 합니다.\n"
+        f"- **시험 포인트**: 정의, 역할, 원인과 결과를 구분해 설명할 수 있어야 합니다."
+    )
+
+
+def _fallback_memo(text: str, title: str = "") -> str:
+    terms = _extract_study_terms(text, limit=8)
+    if not terms:
+        terms = [title or "핵심 개념", "정의", "역할", "구성 요소", "주의점"]
+
+    rows = []
+    for index, term in enumerate(terms[:8]):
+        importance = "★★★" if index < 3 else ("★★" if index < 6 else "★")
+        desc = _infer_node_description(text, term)[:90]
+        rows.append(f"| **{term}** | {desc} | {importance} |")
+
+    points = [
+        f"- **{term}**: {_infer_node_description(text, term)[:120]}"
+        for term in terms[:8]
+    ]
+    reviews = [
+        f"- {term}의 정의와 역할을 한 문장으로 설명하기"
+        for term in terms[:5]
+    ]
+    return (
+        "## 핵심 개념\n"
+        "| 개념 | 설명 | 중요도 |\n"
+        "|------|------|--------|\n"
+        + "\n".join(rows)
+        + "\n\n## 암기 포인트\n"
+        + "\n".join(points)
+        + "\n\n## 빠른 복습\n"
+        + "\n".join(reviews)
+    )
+
+
+def _fallback_quiz(text: str, count: int = 3):
+    terms = _extract_study_terms(text, limit=max(4, count + 2))
+    if not terms:
+        terms = ["핵심 개념", "정의", "역할", "구성 요소"]
+    items = []
+    for index in range(max(1, count)):
+        term = terms[index % len(terms)]
+        desc = _infer_node_description(text, term)[:120]
+        distractors = [
+            f"{term}은 본문과 무관한 개념이다.",
+            f"{term}은 항상 생략해도 되는 부가 요소이다.",
+            f"{term}은 다른 구성 요소와 연결되지 않는다.",
+        ]
+        items.append({
+            "question": f"Q{index + 1}. 본문에서 **{term}**에 대한 설명으로 가장 알맞은 것은?",
+            "options": [desc, *distractors],
+            "answer": 0,
+            "explanation": desc,
+        })
+    return _normalize_quiz_items(items, text, count)
+
+
 def _normalize_node_type(raw_type: str) -> str:
     token = (raw_type or "").strip().lower()
     if token in {"core", "root", "main"}:
@@ -321,6 +423,81 @@ def _normalize_graph_payload(nodes, edges, text: str):
     return {"nodes": ordered_nodes, "edges": clean_edges}
 
 
+def _fallback_graph_from_text(text: str, title: str = ""):
+    """LLM JSON 생성이 실패해도 화면에 의미 있는 기본 그래프를 제공한다."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    root_label = title.strip() or next(
+        (
+            re.sub(r"^#+\s*", "", line).strip()
+            for line in lines
+            if line.startswith("#")
+        ),
+        "핵심 요약",
+    )
+
+    heading_terms = [
+        re.sub(r"^#+\s*", "", line).strip()
+        for line in lines
+        if line.startswith("#")
+    ]
+    bold_terms = re.findall(r"\*\*([^*\n]{2,40})\*\*", text)
+    bullet_terms = [
+        re.sub(r"^[-•\d.\s]+", "", line).split(":")[0].strip()
+        for line in lines
+        if re.match(r"^([-•]|\d+\.)\s+", line)
+    ]
+
+    terms = []
+    for term in [*heading_terms, *bold_terms, *bullet_terms]:
+        cleaned = re.sub(r"\s+", " ", term).strip(" -:：")
+        if not cleaned or cleaned == root_label:
+            continue
+        if cleaned not in terms:
+            terms.append(cleaned)
+        if len(terms) >= 10:
+            break
+
+    if not terms:
+        sentences = [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?。])\s+|\n+", text)
+            if len(sentence.strip()) > 18
+        ]
+        for sentence in sentences[:8]:
+            term = sentence[:24].strip(" -:：")
+            if term and term not in terms:
+                terms.append(term)
+
+    nodes = [{
+        "id": "root",
+        "label": root_label[:40],
+        "description": _infer_node_description(text, root_label),
+        "type": "core",
+        "group": "",
+    }]
+    edges = []
+
+    branch_count = min(5, max(1, len(terms)))
+    for index, term in enumerate(terms[:10], start=1):
+        node_type = "branch" if index <= branch_count else "detail"
+        parent = "root" if node_type == "branch" else f"n{((index - branch_count - 1) % branch_count) + 1}"
+        node_id = f"n{index}"
+        nodes.append({
+            "id": node_id,
+            "label": term[:40],
+            "description": _infer_node_description(text, term),
+            "type": node_type,
+            "group": "",
+        })
+        edges.append({
+            "source": parent,
+            "target": node_id,
+            "label": "핵심" if node_type == "branch" else "세부",
+        })
+
+    return _normalize_graph_payload(nodes, edges, text)
+
+
 # ══════════════════════════════════════════════════════════
 # LLM 호출 — 비스트리밍 (Redis 캐시 포함)
 # ══════════════════════════════════════════════════════════
@@ -374,21 +551,28 @@ def _build_reduce_prompt(title: str, tags: str, text: str, user_instruction: str
             f"사용자 지시: {user_instruction}\n"
             f"{hint}제목: {title}  태그: {tags}\n\n"
             f"[본문]\n{text}\n\n"
-            "위 지시에 따라 마크다운으로 정리하세요. 본문에 없는 내용 추가 금지."
+            "위 지시에 따라 시험 대비용 학습 노트로 충분히 자세히 정리하세요.\n"
+            "본문의 주요 개념, 정의, 원리, 예시, 비교, 암기 포인트를 빠뜨리지 마세요.\n"
+            "본문에 없는 내용 추가 금지. 마크다운 제목과 불릿으로 읽기 쉽게 작성하세요."
         )
     return (
-        f"당신은 대학원 수준의 학습 노트 전문가입니다.\n"
+        f"당신은 강의 전체를 빠짐없이 정리하는 시험 대비 학습 노트 전문가입니다.\n"
         f"{hint}제목: {title}  태그: {tags}\n\n"
         f"[본문]\n{text}\n\n"
-        "아래 형식으로 구조화된 학습 요약 노트를 작성하세요.\n\n"
+        "아래 형식으로 충분히 자세한 학습 요약 노트를 작성하세요.\n\n"
+        "## 전체 흐름\n"
+        "- 강의가 다루는 큰 주제와 흐름을 3~5줄로 정리\n\n"
         "## 핵심 개념\n"
-        "- **개념명**: 정의 및 원리 (본문 근거 포함)\n\n"
-        "## 상세 내용\n"
-        "- 세부 설명, 과정, 인과관계\n\n"
+        "- **개념명**: 정의, 역할, 원리, 본문 근거를 함께 설명\n\n"
+        "## 세부 내용\n"
+        "- 본문에 나온 하위 개념, 구성 요소, 절차, 인과관계, 비교를 빠짐없이 정리\n\n"
+        "## 시험 포인트\n"
+        "- 헷갈리기 쉬운 부분, 암기해야 할 용어, 출제 가능 포인트\n\n"
         "## 핵심 정리\n"
-        "- 반드시 기억할 3~5가지 포인트\n\n"
+        "- 반드시 기억할 5~8가지 포인트\n\n"
         "작성 규칙:\n"
         "- 본문에 있는 내용만 사용 (창작 금지)\n"
+        "- 원문에 나온 중요한 항목은 생략하지 말기\n"
         "- 개념명·용어는 **굵게** 표시\n"
         "- 빈 섹션 출력 금지\n"
         "- 이모티콘·장식 기호 금지\n"
@@ -400,11 +584,11 @@ def _build_reduce_prompt(title: str, tags: str, text: str, user_instruction: str
 def _build_map_prompt(chunk: str, index: int, total: int) -> str:
     """청크 압축 프롬프트 — Map 단계"""
     return (
-        f"다음 학습 내용의 핵심만 간결하게 추출하세요. (섹션 {index + 1}/{total})\n\n"
+        f"다음 학습 내용에서 나중에 통합 요약에 반드시 들어가야 할 내용을 추출하세요. (섹션 {index + 1}/{total})\n\n"
         "규칙:\n"
-        "- 개념명과 정의는 반드시 포함\n"
+        "- 개념명, 정의, 원리, 구성 요소, 예시, 비교, 암기 포인트를 포함\n"
         "- 본문에 없는 내용 추가 금지\n"
-        "- bullet 형식, 6~10줄 이내\n\n"
+        "- bullet 형식, 10~18줄 이내\n\n"
         f"[내용]\n{chunk}\n\n"
         "핵심 추출:"
     )
@@ -418,21 +602,27 @@ def _build_merge_prompt(title: str, tags: str, summaries: List[str], user_instru
             f"사용자 지시: {user_instruction}\n"
             f"제목: {title}  태그: {tags}\n\n"
             f"[섹션별 분석]\n{combined}\n\n"
-            "위 지시에 따라 하나의 완성된 노트로 통합하세요. 중복 제거, 자연스러운 흐름 유지."
+            "위 지시에 따라 하나의 완성된 시험 대비 노트로 통합하세요.\n"
+            "중복은 제거하되 중요한 개념, 정의, 원리, 예시, 비교, 암기 포인트는 생략하지 마세요."
         )
     return (
-        f"당신은 대학원 수준의 학습 노트 전문가입니다.\n"
+        f"당신은 강의 전체를 빠짐없이 정리하는 시험 대비 학습 노트 전문가입니다.\n"
         f"제목: {title}  태그: {tags}\n\n"
         f"[섹션별 핵심 분석]\n{combined}\n\n"
         "위 섹션들을 하나의 완성된 학습 노트로 통합하세요.\n\n"
+        "## 전체 흐름\n"
+        "- 강의가 다루는 큰 주제와 흐름\n\n"
         "## 핵심 개념\n"
-        "- **개념명**: 정의 (섹션 간 중복 통합)\n\n"
-        "## 상세 내용\n"
-        "- 원리, 과정, 세부사항 (자연스러운 흐름)\n\n"
+        "- **개념명**: 정의, 역할, 원리, 관련 개념\n\n"
+        "## 세부 내용\n"
+        "- 구성 요소, 절차, 인과관계, 비교, 예시를 자연스럽게 통합\n\n"
+        "## 시험 포인트\n"
+        "- 헷갈리기 쉬운 부분, 암기 포인트, 출제 가능 포인트\n\n"
         "## 핵심 정리\n"
-        "- 전체 내용에서 가장 중요한 3~5가지\n\n"
+        "- 전체 내용에서 가장 중요한 5~8가지\n\n"
         "작성 규칙:\n"
         "- 섹션 간 중복 제거 후 통합\n"
+        "- 중요한 항목은 생략하지 말기\n"
         "- 본문에 없는 내용 추가 금지\n"
         "- 개념명은 **굵게**\n"
         "- 자연스러운 문단 흐름 유지\n"
@@ -572,16 +762,17 @@ async def analyze_block(req: BlockReq):
         f"분석할 문단:\n{req.text[:1200]}\n\n"
         "위 문단 하나에 대해서만 분석합니다. 본문에 없는 내용 추가 금지.\n\n"
         "아래 형식으로 정확히 출력하세요:\n\n"
-        "- **핵심 의미**: 이 문단의 핵심을 1~2문장으로 (본문 기반)\n"
-        "- **관련 개념**: 이해에 필요한 배경 지식 또는 주의점 (개념명 **굵게**)\n"
-        "- **활용 예시**: 이 내용이 실제로 쓰이는 상황 한 줄 (없으면 생략)\n\n"
-        "규칙: 각 불릿 2줄 이내 · 이모티콘 금지 · 본문 밖 내용 창작 금지"
+        "- **핵심 의미**: 이 문단의 핵심을 2~3문장으로 설명\n"
+        "- **관련 개념**: 연결되는 개념, 배경, 헷갈리기 쉬운 지점\n"
+        "- **시험 포인트**: 시험에서 어떤 식으로 물을 수 있는지\n"
+        "- **한 줄 정리**: 기억해야 할 결론\n\n"
+        "규칙: 본문 기반 · 개념명 **굵게** · 이모티콘 금지 · 빈 항목 금지"
     )
     try:
-        result = await _llm(p, temp=0.15, tokens=600)
-        return {"analysis": result if _meaningful(result) > 10 else ""}
+        result = await _llm(p, temp=0.15, tokens=900)
+        return {"analysis": result if _meaningful(result) > 35 else _fallback_analysis(req.text, req.context_title)}
     except Exception:
-        return {"analysis": ""}
+        return {"analysis": _fallback_analysis(req.text, req.context_title)}
 
 
 # ══════════════════════════════════════════════════════════
@@ -599,15 +790,17 @@ async def memo(req: MemoReq):
         return {"memo": ""}
     p = (
         f"제목: {req.title}\n"
-        f"본문:\n{text[:3000]}\n\n"
-        "시험에 나올 핵심 암기 사항만 추출하세요 (본문에 있는 내용만, 창작 금지).\n\n"
+        f"본문:\n{text[:5000]}\n\n"
+        "시험 직전에 볼 수 있는 핵심 암기 노트를 작성하세요. 본문에 있는 내용만 사용하고 창작은 금지합니다.\n\n"
         "## 핵심 개념\n"
-        "아래 표를 완성하세요 (반드시 헤더와 구분선 포함, 최소 3행 이상):\n\n"
+        "아래 표를 완성하세요 (반드시 헤더와 구분선 포함, 최소 5행 이상):\n\n"
         "| 개념 | 설명 | 중요도 |\n"
         "|------|------|--------|\n"
         "| 개념명 | 한 줄 정의 | ★★★ |\n\n"
         "## 암기 포인트\n"
-        "- **개념명**: 핵심 내용 한 줄 요약\n\n"
+        "- **개념명**: 헷갈리기 쉬운 점과 기억할 내용을 함께 정리\n\n"
+        "## 빠른 복습\n"
+        "- 시험 전에 마지막으로 확인할 문장 5~8개\n\n"
         "작성 규칙:\n"
         "- 표는 반드시 완결된 형태로 출력 (잘리지 않게)\n"
         "- 개념명은 **굵게**\n"
@@ -616,9 +809,12 @@ async def memo(req: MemoReq):
         "- 본문에 없는 내용 추가 금지"
     )
     try:
-        r = await _llm(p, temp=0.15, tokens=1200)
-        return {"memo": r if _meaningful(r) > 20 else ""}
+        r = await _llm(p, temp=0.15, tokens=2000)
+        return {"memo": r if _meaningful(r) > 80 else _fallback_memo(text, req.title)}
     except Exception as e:
+        fallback = _fallback_memo(text, req.title)
+        if _meaningful(fallback) > 20:
+            return {"memo": fallback}
         raise HTTPException(500, str(e))
 
 
@@ -636,19 +832,21 @@ async def quiz(req: QuizReq):
     if _meaningful(text) < 30:
         return {"quiz": []}
     p = (
-        f"본문:\n{text[:3000]}\n\n"
+        f"본문:\n{text[:5000]}\n\n"
         f"위 본문으로 객관식 {req.count}문제를 만드세요.\n\n"
         "중요: JSON 배열만 출력하세요. 그 외 텍스트 절대 금지.\n"
         "형식: [{\"question\":\"질문\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"answer\":0,\"explanation\":\"해설\"}]\n\n"
         "규칙:\n"
-        "- question: 구체적인 질문 (본문 기반)\n"
+        "- question: 구체적인 질문 (본문 기반, Q번호 포함 가능)\n"
         "- options: 정확히 4개 문자열 배열\n"
         "- answer: 정답 인덱스 정수 (0, 1, 2, 3 중 하나)\n"
-        "- explanation: 정답 근거 (본문 기반, 1~2문장)\n"
-        "- 본문에 없는 내용으로 문제 생성 금지"
+        "- explanation: 정답 근거 (본문 기반, 2~3문장)\n"
+        "- 쉬운 문제만 만들지 말고 개념 비교, 원인/결과, 역할을 섞기\n"
+        "- 본문에 없는 내용으로 문제 생성 금지\n"
+        "- JSON이 끊기지 않도록 완결된 배열로 끝내기"
     )
     try:
-        raw = await _llm(p, temp=0.1, tokens=1200)
+        raw = await _llm(p, temp=0.1, tokens=2200)
         # 코드블록 제거
         raw = raw.replace("```json", "").replace("```", "").strip()
         # JSON 배열 추출 — 가장 바깥 [ ] 쌍 찾기
@@ -665,13 +863,22 @@ async def quiz(req: QuizReq):
                         repaired = chunk[:last_obj_end + 1] + "]"
                         parsed = json.loads(repaired)
                     except Exception:
-                        return {"quiz": []}
+                        return {"quiz": _fallback_quiz(text, req.count)}
                 else:
-                    return {"quiz": []}
-            return {"quiz": _normalize_quiz_items(parsed, text, req.count)}
-        return {"quiz": []}
+                    return {"quiz": _fallback_quiz(text, req.count)}
+            normalized = _normalize_quiz_items(parsed, text, req.count)
+            return {"quiz": normalized if normalized else _fallback_quiz(text, req.count)}
+
+        obj_start, obj_end = raw.find("{"), raw.rfind("}")
+        if obj_start != -1 and obj_end != -1 and obj_end > obj_start:
+            parsed_obj = json.loads(raw[obj_start:obj_end + 1])
+            raw_quiz = parsed_obj.get("quiz") or parsed_obj.get("questions") or []
+            normalized = _normalize_quiz_items(raw_quiz, text, req.count)
+            return {"quiz": normalized if normalized else _fallback_quiz(text, req.count)}
+
+        return {"quiz": _fallback_quiz(text, req.count)}
     except Exception:
-        return {"quiz": []}
+        return {"quiz": _fallback_quiz(text, req.count)}
 
 
 # ══════════════════════════════════════════════════════════
@@ -785,8 +992,9 @@ async def graph(req: GraphReq):
 
     p = (
         f"{context_hint}"
-        f"텍스트:\n{text[:3000]}\n\n"
-        "핵심 개념 최대 14개와 관계를 순수 JSON으로만 출력 (설명·마크다운 없이):\n\n"
+        f"텍스트:\n{text[:5000]}\n\n"
+        "아래 학습 내용을 마인드맵 지식 그래프로 변환하세요.\n"
+        "반드시 순수 JSON 객체만 출력하고 설명, 마크다운, 코드블록은 출력하지 마세요.\n\n"
         '{"nodes":['
         '{"id":"root","label":"주제","description":"한 줄 설명","type":"core"},'
         '{"id":"n1","label":"핵심개념1","description":"한 줄 설명","type":"branch"},'
@@ -797,41 +1005,34 @@ async def graph(req: GraphReq):
         "]}\n\n"
         "규칙:\n"
         "- type: core(루트 1개) / branch(핵심 3~5개) / detail(세부)\n"
+        "- 노트의 큰 제목/단원을 branch로 만들고, 하위 개념을 detail로 만들기\n"
         "- 반드시 root → branch → detail 계층 연결\n"
-        "- description은 20자 이내 한 줄\n"
+        "- 노드 8~16개, 엣지 7개 이상 생성\n"
+        "- description은 35자 이내 한 줄\n"
         "- id는 영문+숫자 조합 (root, n1, n2 ...)\n"
         "- 중복 id 금지"
     )
 
     try:
-        raw = await _llm(p, temp=0.1, tokens=1200)
+        raw = await _llm(p, temp=0.12, tokens=2400)
         raw = raw.replace("```json", "").replace("```", "").strip()
         s, e = raw.find("{"), raw.rfind("}")
         if s == -1 or e == -1 or e <= s:
-            return {"nodes": [], "edges": []}
+            return _fallback_graph_from_text(text, req.title)
         chunk = raw[s:e + 1]
         try:
             parsed = json.loads(chunk)
         except json.JSONDecodeError:
-            # 잘린 JSON 복구: 마지막 완성된 노드까지만
-            last_comma = chunk.rfind("},")
-            if last_comma > s:
-                try:
-                    repaired = chunk[:last_comma + 1] + "]}"
-                    parsed = json.loads(repaired)
-                except Exception:
-                    return {"nodes": [], "edges": []}
-            else:
-                return {"nodes": [], "edges": []}
+            return _fallback_graph_from_text(text, req.title)
 
         nodes = parsed.get("nodes", [])
         edges = parsed.get("edges", [])
         normalized = _normalize_graph_payload(nodes, edges, text)
         if not normalized["nodes"]:
-            return {"nodes": [], "edges": []}
+            return _fallback_graph_from_text(text, req.title)
         return normalized
     except Exception:
-        return {"nodes": [], "edges": []}
+        return _fallback_graph_from_text(text, req.title)
 
 
 # ══════════════════════════════════════════════════════════
