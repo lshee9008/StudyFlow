@@ -298,18 +298,51 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     final ctrl = HardwareKeyboard.instance.isControlPressed;
     final shift = HardwareKeyboard.instance.isShiftPressed;
 
-    // Ctrl/Cmd+A: 전체 선택
+    // ── 블록 다중 선택 상태 처리 ────────────────────
+    if (_selectedBlocks.isNotEmpty) {
+      // Backspace / Delete → 선택된 블록 모두 삭제
+      if (e.logicalKey == LogicalKeyboardKey.backspace ||
+          e.logicalKey == LogicalKeyboardKey.delete) {
+        _deleteSelectedBlocks();
+        return KeyEventResult.handled;
+      }
+      // Escape → 선택 해제
+      if (e.logicalKey == LogicalKeyboardKey.escape) {
+        setState(() => _selectedBlocks.clear());
+        return KeyEventResult.handled;
+      }
+      // 다른 키 → 선택 해제 후 일반 편집 모드 진입
+      if (!meta && !ctrl &&
+          e.logicalKey != LogicalKeyboardKey.tab &&
+          e.logicalKey != LogicalKeyboardKey.arrowUp &&
+          e.logicalKey != LogicalKeyboardKey.arrowDown &&
+          e.logicalKey != LogicalKeyboardKey.arrowLeft &&
+          e.logicalKey != LogicalKeyboardKey.arrowRight) {
+        setState(() => _selectedBlocks.clear());
+        // 키 이벤트는 그냥 통과시켜 편집 처리
+      }
+    }
+
+    // Ctrl/Cmd+A: 2단계 선택 (노션 방식)
     if ((meta || ctrl) && e.logicalKey == LogicalKeyboardKey.keyA) {
       final blocks = ref.read(fileEditorProvider).blocks;
-      setState(() {
-        _selectedBlocks.clear();
-        _selectedBlocks.addAll(List.generate(blocks.length, (i) => i));
-      });
       final b = blocks[i];
-      b.controller.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: b.controller.text.length,
-      );
+      final allTextSelected = b.controller.selection ==
+          TextSelection(baseOffset: 0, extentOffset: b.controller.text.length);
+      if (!allTextSelected || _selectedBlocks.isNotEmpty) {
+        // 1단계: 현재 블록 텍스트 전체 선택
+        setState(() => _selectedBlocks.clear());
+        b.controller.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: b.controller.text.length,
+        );
+      } else {
+        // 2단계: 모든 블록 선택
+        setState(() {
+          _selectedBlocks.clear();
+          _selectedBlocks.addAll(List.generate(blocks.length, (idx) => idx));
+        });
+      }
       return KeyEventResult.handled;
     }
 
@@ -581,6 +614,29 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     }
 
     return KeyEventResult.ignored;
+  }
+
+  // ── 선택된 블록 일괄 삭제 ──────────────────────────
+  void _deleteSelectedBlocks() {
+    if (_selectedBlocks.isEmpty) return;
+    final sorted = _selectedBlocks.toList()..sort((a, b) => b.compareTo(a));
+    // 삭제 후 포커스를 줄 인덱스 결정
+    final minIdx = (_selectedBlocks.reduce((a, b) => a < b ? a : b) - 1).clamp(0, 9999);
+    for (final idx in sorted) {
+      ref.read(fileEditorProvider.notifier).removeBlock(idx);
+    }
+    setState(() => _selectedBlocks.clear());
+    _chg();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final upd = ref.read(fileEditorProvider).blocks;
+      if (upd.isNotEmpty) {
+        final target = minIdx.clamp(0, upd.length - 1);
+        upd[target].focusNode.requestFocus();
+        upd[target].controller.selection = TextSelection.collapsed(
+          offset: upd[target].controller.text.length,
+        );
+      }
+    });
   }
 
   /// 블록으로 포커스 이동 (커서를 텍스트 끝에)
@@ -1244,7 +1300,6 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                     title: fileTitle,
                     subtitle: projectName ?? '학습 노트',
                     view: _view,
-                    selectedCount: _selectedBlocks.length,
                     onBack: () => Navigator.pop(context),
                     onCopy: () {
                       Clipboard.setData(
@@ -1277,19 +1332,34 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                       }
                     },
                     onProofread: () => _showProofreadMenu(),
-                    onDeleteSel: _selectedBlocks.isEmpty
-                        ? null
-                        : () {
-                            final sorted = _selectedBlocks.toList()
-                              ..sort((a, b) => b.compareTo(a));
-                            for (final idx in sorted)
-                              ref
-                                  .read(fileEditorProvider.notifier)
-                                  .removeBlock(idx);
-                            setState(() => _selectedBlocks.clear());
-                            _chg();
-                          },
                   ),
+                ),
+                // 블록 선택 시 플로팅 선택 바 (노션 스타일)
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, anim) => SizeTransition(
+                    sizeFactor: CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+                    child: FadeTransition(opacity: anim, child: child),
+                  ),
+                  child: _selectedBlocks.isNotEmpty
+                      ? _SelectionBar(
+                          key: const ValueKey('sel-bar'),
+                          count: _selectedBlocks.length,
+                          onDelete: _deleteSelectedBlocks,
+                          onClear: () => setState(() => _selectedBlocks.clear()),
+                          onCopy: () {
+                            final blocks = ref.read(fileEditorProvider).blocks;
+                            final sorted = _selectedBlocks.toList()..sort();
+                            final text = sorted
+                                .where((idx) => idx < blocks.length)
+                                .map((idx) => blocks[idx].controller.text)
+                                .join('\n');
+                            Clipboard.setData(ClipboardData(text: text));
+                            _snack('${_selectedBlocks.length}개 블록 복사됨');
+                            setState(() => _selectedBlocks.clear());
+                          },
+                        )
+                      : const SizedBox.shrink(key: ValueKey('no-sel')),
                 ),
                 // 뽀모도로 타이머
                 if (_pomRunning || _pomSecs != _pomWork)
@@ -1628,6 +1698,10 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                     _chg();
                   },
                   onFocus: () {
+                    // 텍스트 편집 모드 진입 → 블록 다중 선택 해제
+                    if (_selectedBlocks.isNotEmpty) {
+                      setState(() => _selectedBlocks.clear());
+                    }
                     _chg(ft: blocks[i].controller.text);
                     _onFocus(blocks[i].controller.text, blockIndex: i);
                   },
@@ -1779,11 +1853,10 @@ class _AppBar extends StatelessWidget {
   final bool saving;
   final DateTime? savedAt;
   final Animation<double> saveAnim;
-  final int charCount, view, selectedCount;
+  final int charCount, view;
   final String title;
   final String subtitle;
   final VoidCallback onBack, onCopy, onMdCopy, onView, onMindmap, onProofread;
-  final VoidCallback? onDeleteSel;
   const _AppBar({
     required this.saving,
     this.savedAt,
@@ -1792,14 +1865,12 @@ class _AppBar extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.view,
-    required this.selectedCount,
     required this.onBack,
     required this.onCopy,
     required this.onMdCopy,
     required this.onView,
     required this.onMindmap,
     required this.onProofread,
-    this.onDeleteSel,
   });
 
   @override
@@ -1858,43 +1929,6 @@ class _AppBar extends StatelessWidget {
             const SizedBox(width: 10),
             _SaveChip(saving: saving, savedAt: savedAt, anim: saveAnim),
             const SizedBox(width: 12),
-            // 다중 선택 시 삭제 버튼
-            if (selectedCount > 0) ...[
-              GestureDetector(
-                onTap: onDeleteSel,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _red.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _red.withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.delete_outline_rounded,
-                        size: 13,
-                        color: _red,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        '$selectedCount개',
-                        style: const TextStyle(
-                          color: _red,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
             // 글자 수
             if (!isMobile)
               Padding(
@@ -2137,6 +2171,144 @@ class _MobileMoreBtn extends StatelessWidget {
 }
 
 // ══════════════════ 교정 배너 ════════════════════════
+// ══════════════════ 선택 바 (노션 스타일) ════════════
+class _SelectionBar extends StatelessWidget {
+  final int count;
+  final VoidCallback onDelete;
+  final VoidCallback onClear;
+  final VoidCallback onCopy;
+  const _SelectionBar({
+    super.key,
+    required this.count,
+    required this.onDelete,
+    required this.onClear,
+    required this.onCopy,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+        decoration: BoxDecoration(
+          color: _acc.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _acc.withValues(alpha: 0.28)),
+        ),
+        child: Row(
+          children: [
+            // 선택 카운트
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _acc.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '$count개 선택됨',
+                style: GoogleFonts.inter(
+                  color: _acc,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Backspace로 삭제 · Esc로 해제',
+              style: GoogleFonts.inter(
+                color: _txt2,
+                fontSize: 11,
+              ),
+            ),
+            const Spacer(),
+            // 복사 버튼
+            _SelBarBtn(
+              icon: Icons.copy_rounded,
+              label: '복사',
+              onTap: onCopy,
+            ),
+            const SizedBox(width: 6),
+            // 삭제 버튼
+            _SelBarBtn(
+              icon: Icons.delete_outline_rounded,
+              label: '삭제',
+              color: _red,
+              onTap: onDelete,
+            ),
+            const SizedBox(width: 6),
+            // 해제 버튼
+            GestureDetector(
+              onTap: onClear,
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(color: _bdr.withValues(alpha: 0.5)),
+                ),
+                child: const Icon(Icons.close_rounded, size: 13, color: _txt2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelBarBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _SelBarBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color = _txt1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: color == _red
+              ? _red.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: color == _red
+                ? _red.withValues(alpha: 0.28)
+                : _bdr.withValues(alpha: 0.5),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ProofreadBanner extends StatelessWidget {
   final String result;
   final VoidCallback onApply, onDismiss;
@@ -3628,7 +3800,7 @@ class _NBState extends State<_NBlock> {
               color: widget.isAnalyzing
                   ? _acc.withValues(alpha: 0.10)
                   : widget.isSelected
-                  ? _acc.withValues(alpha: 0.07)
+                  ? _acc.withValues(alpha: 0.12)
                   : widget.block.type == BlockType.code
                   ? _bg2.withValues(alpha: 0.84)
                   : widget.block.type == BlockType.quote
@@ -3640,7 +3812,7 @@ class _NBState extends State<_NBlock> {
               border: widget.isAnalyzing
                   ? Border.all(color: _acc.withValues(alpha: 0.5), width: 1.5)
                   : widget.isSelected
-                  ? Border.all(color: _acc.withValues(alpha: 0.3))
+                  ? Border.all(color: _acc.withValues(alpha: 0.55), width: 1.5)
                   : widget.block.type == BlockType.code
                   ? Border.all(color: _bdr.withValues(alpha: 0.8))
                   : showControls
@@ -3663,24 +3835,50 @@ class _NBState extends State<_NBlock> {
                   width: 72,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 120),
-                    opacity: showControls ? 1 : 0,
+                    opacity: (showControls || widget.isSelected) ? 1 : 0,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 4,
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: _bg3.withValues(alpha: 0.86),
+                        color: widget.isSelected
+                            ? _acc.withValues(alpha: 0.14)
+                            : _bg3.withValues(alpha: 0.86),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
-                          color: _bdr.withValues(alpha: 0.82),
+                          color: widget.isSelected
+                              ? _acc.withValues(alpha: 0.4)
+                              : _bdr.withValues(alpha: 0.82),
                         ),
                       ),
                       child: Row(
                         children: [
-                        _HandleAction(
-                          icon: LucideIcons.plus,
-                          onTap: widget.onAddBelow,
+                        // 선택 체크 아이콘 or 추가 버튼
+                        GestureDetector(
+                          onTap: widget.isSelected ? widget.onSelect : widget.onAddBelow,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: widget.isSelected
+                                  ? _acc.withValues(alpha: 0.2)
+                                  : _bg2.withValues(alpha: 0.92),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: widget.isSelected
+                                    ? _acc.withValues(alpha: 0.6)
+                                    : _bdr.withValues(alpha: 0.72),
+                              ),
+                            ),
+                            child: Icon(
+                              widget.isSelected
+                                  ? Icons.check_rounded
+                                  : LucideIcons.plus,
+                              size: 13,
+                              color: widget.isSelected ? _acc : _txt1,
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 4),
                         Expanded(
