@@ -299,34 +299,36 @@ class _ShellSidebarState extends State<_ShellSidebar>
         children: [
           // ── Logo + collapse toggle ────────────────────────────────────
           if (widget.collapsed)
-            // Collapsed: mini logo icon + toggle, vertically stacked
-            SizedBox(
-              height: 62,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      gradient: AppGradients.accent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Center(
-                      child: Image.asset(
-                        'assets/images/logo_icon.png',
-                        width: 20,
-                        height: 20,
-                        fit: BoxFit.contain,
+            // Collapsed: logo icon (클릭 시 펼치기)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 14, 0, 10),
+              child: Center(
+                child: Tooltip(
+                  message: '사이드바 펼치기',
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: widget.onToggleCollapse,
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          gradient: AppGradients.accent,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: AppShadows.accentGlow(AppTheme.accent, intensity: 0.25),
+                        ),
+                        child: Center(
+                          child: Image.asset(
+                            'assets/images/logo_icon.png',
+                            width: 20,
+                            height: 20,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  _CollapseToggle(
-                    collapsed: widget.collapsed,
-                    onTap: widget.onToggleCollapse,
-                  ),
-                ],
+                ),
               ),
             )
           else
@@ -342,7 +344,7 @@ class _ShellSidebarState extends State<_ShellSidebar>
                 ],
               ),
             ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
 
           // ── Primary nav ───────────────────────────────────────────────
           Padding(

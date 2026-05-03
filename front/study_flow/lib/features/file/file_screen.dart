@@ -97,6 +97,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   // Slash
   OverlayEntry? _slash;
   int _slashIdx = 0;
+  int _slashBlockIdx = -1; // 슬래시 메뉴가 열린 블록 인덱스
   List<_Opt> _slashOpts = [];
 
   late AnimationController _saveAc;
@@ -292,7 +293,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   // ── 키 핸들러 ─────────────────────────────────────
   KeyEventResult _key(FocusNode n, KeyEvent e, int i) {
-    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final meta = HardwareKeyboard.instance.isMetaPressed;
     final ctrl = HardwareKeyboard.instance.isControlPressed;
     final shift = HardwareKeyboard.instance.isShiftPressed;
@@ -304,12 +305,70 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         _selectedBlocks.clear();
         _selectedBlocks.addAll(List.generate(blocks.length, (i) => i));
       });
-      // 현재 블록의 텍스트도 전체 선택
       final b = blocks[i];
       b.controller.selection = TextSelection(
         baseOffset: 0,
         extentOffset: b.controller.text.length,
       );
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl/Cmd+B: 볼드 토글
+    if ((meta || ctrl) && e.logicalKey == LogicalKeyboardKey.keyB) {
+      final blocks = ref.read(fileEditorProvider).blocks;
+      final bc2 = blocks[i].controller;
+      final sel = bc2.selection;
+      if (!sel.isCollapsed && sel.isValid) {
+        final text = bc2.text;
+        final s = sel.start.clamp(0, text.length);
+        final end = sel.end.clamp(0, text.length);
+        final selected = text.substring(s, end);
+        final isBold = selected.startsWith('**') && selected.endsWith('**') && selected.length > 4;
+        final newText = isBold ? selected.substring(2, selected.length - 2) : '**$selected**';
+        bc2.text = text.substring(0, s) + newText + text.substring(end);
+        bc2.selection = TextSelection(baseOffset: s, extentOffset: s + newText.length);
+        _chg(ft: bc2.text);
+      }
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl/Cmd+I: 이탤릭 토글
+    if ((meta || ctrl) && e.logicalKey == LogicalKeyboardKey.keyI) {
+      final blocks = ref.read(fileEditorProvider).blocks;
+      final bc2 = blocks[i].controller;
+      final sel = bc2.selection;
+      if (!sel.isCollapsed && sel.isValid) {
+        final text = bc2.text;
+        final s = sel.start.clamp(0, text.length);
+        final end = sel.end.clamp(0, text.length);
+        final selected = text.substring(s, end);
+        final isItalic = selected.startsWith('*') && selected.endsWith('*') &&
+            !selected.startsWith('**') && selected.length > 2;
+        final newText = isItalic ? selected.substring(1, selected.length - 1) : '*$selected*';
+        bc2.text = text.substring(0, s) + newText + text.substring(end);
+        bc2.selection = TextSelection(baseOffset: s, extentOffset: s + newText.length);
+        _chg(ft: bc2.text);
+      }
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl/Cmd+D: 블록 복제
+    if ((meta || ctrl) && e.logicalKey == LogicalKeyboardKey.keyD) {
+      if (e is! KeyRepeatEvent) {
+        ref.read(fileEditorProvider.notifier).duplicate(i);
+        _chg();
+        WidgetsBinding.instance.addPostFrameCallback((_) => _foc(i + 1));
+      }
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl/Cmd+Enter: 아래에 새 블록 추가
+    if ((meta || ctrl) && e.logicalKey == LogicalKeyboardKey.enter) {
+      if (e is! KeyRepeatEvent) {
+        ref.read(fileEditorProvider.notifier).insertAfter(i);
+        _chg();
+        WidgetsBinding.instance.addPostFrameCallback((_) => _focStart(i + 1));
+      }
       return KeyEventResult.handled;
     }
 
@@ -343,22 +402,42 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     final bc = blocks[i].controller;
     final bt = blocks[i].type;
 
+    // ── Escape: 선택 해제 / 슬래시 닫기 ─────────────
+    if (e.logicalKey == LogicalKeyboardKey.escape) {
+      if (_selectedBlocks.isNotEmpty) {
+        setState(() => _selectedBlocks.clear());
+        return KeyEventResult.handled;
+      }
+      _removeSlash();
+      return KeyEventResult.ignored;
+    }
+
     // ── Tab / Shift+Tab ──────────────────────────────
     if (e.logicalKey == LogicalKeyboardKey.tab) {
       if (shift) {
-        // Shift+Tab: 내어쓰기 또는 리스트 레벨 감소
-        if (bt == BlockType.bullet || bt == BlockType.checkbox) {
-          // 리스트 레벨 감소 → text로 전환
-          ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
+        if (bt == BlockType.bullet || bt == BlockType.checkbox || bt == BlockType.number) {
+          // 앞쪽 스페이스 2개 제거 (서브 레벨 감소)
+          if (bc.text.startsWith('  ')) {
+            final pos = bc.selection.baseOffset.clamp(0, bc.text.length);
+            bc.text = bc.text.substring(2);
+            bc.selection = TextSelection.collapsed(offset: (pos - 2).clamp(0, bc.text.length));
+          } else {
+            ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
+          }
         } else {
           ref.read(fileEditorProvider.notifier).dedent(i);
         }
       } else {
-        // Tab: 들여쓰기 또는 리스트 레벨 증가
-        if (bt == BlockType.bullet || bt == BlockType.checkbox) {
+        if (bt == BlockType.bullet || bt == BlockType.checkbox || bt == BlockType.number) {
           // 리스트 내에서 Tab → 앞에 스페이스 2개 (서브 리스트 표현)
           final pos = bc.selection.baseOffset.clamp(0, bc.text.length);
           bc.text = '  ${bc.text}';
+          bc.selection = TextSelection.collapsed(offset: pos + 2);
+        } else if (bt == BlockType.code) {
+          // 코드 블록에서 Tab → 스페이스 2개 삽입
+          final pos = bc.selection.baseOffset.clamp(0, bc.text.length);
+          final text = bc.text;
+          bc.text = text.substring(0, pos) + '  ' + text.substring(pos);
           bc.selection = TextSelection.collapsed(offset: pos + 2);
         } else {
           ref.read(fileEditorProvider.notifier).indent(i);
@@ -372,6 +451,14 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     if (e.logicalKey == LogicalKeyboardKey.enter && !meta && !ctrl) {
       final text = bc.text;
       final pos = bc.selection.baseOffset.clamp(0, text.length);
+
+      // 코드 블록: Enter → 줄바꿈 (블록 분리 안 함)
+      if (bt == BlockType.code) {
+        bc.text = '${text.substring(0, pos)}\n${text.substring(pos)}';
+        bc.selection = TextSelection.collapsed(offset: pos + 1);
+        _chg();
+        return KeyEventResult.handled;
+      }
 
       // 빈 리스트 → 탈출 (text로 전환)
       if (text.isEmpty &&
@@ -416,8 +503,16 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       // ✅ 커서가 맨 앞에 있을 때만 위 블록으로 이동
       if (sel.isCollapsed && sel.baseOffset == 0) {
         if (i > 0) {
+          // 빈 블록이면 그냥 삭제 (위로 포커스)
+          if (bc.text.isEmpty) {
+            ref.read(fileEditorProvider.notifier).removeBlock(i);
+            WidgetsBinding.instance.addPostFrameCallback((_) => _foc(i - 1));
+            _chg();
+            return KeyEventResult.handled;
+          }
           // 위 블록과 병합
           ref.read(fileEditorProvider.notifier).mergeWithPrev(i);
+          _chg();
           return KeyEventResult.handled;
         }
       }
@@ -432,19 +527,63 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       }
     }
 
-    // ── 방향키 ───────────────────────────────────────
-    if (e.logicalKey == LogicalKeyboardKey.arrowUp && i > 0) {
-      _foc(i - 1);
+    // ── Delete 키: 앞쪽 삭제 / 다음 블록과 병합 ─────
+    if (e.logicalKey == LogicalKeyboardKey.delete) {
+      final sel = bc.selection;
+      if (sel.isCollapsed && sel.baseOffset == bc.text.length) {
+        if (i < blocks.length - 1) {
+          final nextText = blocks[i + 1].controller.text;
+          final curLen = bc.text.length;
+          bc.text = bc.text + nextText;
+          bc.selection = TextSelection.collapsed(offset: curLen);
+          ref.read(fileEditorProvider.notifier).removeBlock(i + 1);
+          _chg();
+          return KeyEventResult.handled;
+        }
+      }
+    }
+
+    // ── Home / End 키 ────────────────────────────────
+    if (e.logicalKey == LogicalKeyboardKey.home) {
+      final text = bc.text;
+      final pos = bc.selection.baseOffset.clamp(0, text.length);
+      // 현재 줄의 시작으로
+      final lineStart = text.lastIndexOf('\n', pos > 0 ? pos - 1 : 0);
+      final target = lineStart == -1 ? 0 : lineStart + 1;
+      bc.selection = TextSelection.collapsed(offset: target);
       return KeyEventResult.handled;
     }
-    if (e.logicalKey == LogicalKeyboardKey.arrowDown && i < blocks.length - 1) {
-      _foc(i + 1);
+    if (e.logicalKey == LogicalKeyboardKey.end) {
+      final text = bc.text;
+      final pos = bc.selection.baseOffset.clamp(0, text.length);
+      final lineEnd = text.indexOf('\n', pos);
+      final target = lineEnd == -1 ? text.length : lineEnd;
+      bc.selection = TextSelection.collapsed(offset: target);
       return KeyEventResult.handled;
+    }
+
+    // ── 방향키: 텍스트 경계에서만 블록 이동 ─────────
+    if (e.logicalKey == LogicalKeyboardKey.arrowUp && i > 0) {
+      final sel = bc.selection;
+      if (sel.isCollapsed && sel.baseOffset == 0) {
+        _foc(i - 1);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    if (e.logicalKey == LogicalKeyboardKey.arrowDown && i < blocks.length - 1) {
+      final sel = bc.selection;
+      if (sel.isCollapsed && sel.baseOffset == bc.text.length) {
+        _focStart(i + 1);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
     }
 
     return KeyEventResult.ignored;
   }
 
+  /// 블록으로 포커스 이동 (커서를 텍스트 끝에)
   void _foc(int i) {
     final b = ref.read(fileEditorProvider).blocks;
     if (i >= 0 && i < b.length) {
@@ -454,18 +593,42 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     }
   }
 
+  /// 블록으로 포커스 이동 (커서를 텍스트 앞에)
+  void _focStart(int i) {
+    final b = ref.read(fileEditorProvider).blocks;
+    if (i >= 0 && i < b.length) {
+      b[i].focusNode.requestFocus();
+      b[i].controller.selection = const TextSelection.collapsed(offset: 0);
+    }
+  }
+
   // ── 텍스트 변경 ────────────────────────────────────
   void _onText(String text, int i) {
+    final bt = ref.read(fileEditorProvider).blocks[i].type;
+    // 코드 블록: 줄바꿈 허용 (분리 안 함)
+    if (bt == BlockType.code) {
+      _chg(ft: text);
+      return;
+    }
     if (text.contains('\n')) {
       final lines = text.split('\n');
       ref.read(fileEditorProvider).blocks[i].controller.text = lines[0];
+      // 빈 줄 제외하지 않고 모두 삽입 (복붙 시 빈 줄도 유지)
       if (lines.length > 1) {
+        final remaining = lines.sublist(1);
         ref
             .read(fileEditorProvider.notifier)
-            .insertBlocks(i + 1, lines.sublist(1));
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _foc(i + lines.length - 1),
-        );
+            .insertBlocks(i + 1, remaining);
+        final lastIdx = i + remaining.length;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final upd = ref.read(fileEditorProvider).blocks;
+          if (lastIdx < upd.length) {
+            upd[lastIdx].focusNode.requestFocus();
+            upd[lastIdx].controller.selection = TextSelection.collapsed(
+              offset: upd[lastIdx].controller.text.length,
+            );
+          }
+        });
       }
       _chg(ft: lines[0]);
       return;
@@ -528,36 +691,54 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   // ── 슬래시 메뉴 ────────────────────────────────────
   void _showSlash(BuildContext ctx, int i, String q) {
+    // 퍼지 검색: 순서 고려 없이 부분 매칭
     _slashOpts = q.isEmpty
         ? _opts
         : _opts
-              .where((o) => o.label.toLowerCase().contains(q.toLowerCase()))
+              .where(
+                (o) =>
+                    o.label.toLowerCase().contains(q.toLowerCase()) ||
+                    o.hint.toLowerCase().contains(q.toLowerCase()),
+              )
               .toList();
     if (_slashOpts.isEmpty) {
       _removeSlash();
       return;
     }
-    if (_slash == null) _slashIdx = 0;
+    // 블록이 바뀌면 인덱스 초기화
+    if (_slashBlockIdx != i) _slashIdx = 0;
+    _slashBlockIdx = i;
     _slash?.remove();
+    _slash = null;
     final bl = ref.read(fileEditorProvider).blocks;
-    // ✅ CompositedTransformFollower 제거 → RenderBox 기반 절대 위치
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _slash != null) return;
-      final blkCtx = bl[i].focusNode.context;
+      if (!mounted) return;
+      // GlobalKey 기반으로 위치 계산 (더 정확)
+      final blkKey = _blockKeys[i];
       double left = 100, top = 200;
-      if (blkCtx != null) {
-        final box = blkCtx.findRenderObject() as RenderBox?;
+      if (blkKey?.currentContext != null) {
+        final box = blkKey!.currentContext!.findRenderObject() as RenderBox?;
         if (box != null) {
           final pos = box.localToGlobal(Offset.zero);
-          left = (pos.dx + 28).clamp(8.0, MediaQuery.of(ctx).size.width - 290);
-          top = pos.dy + box.size.height + 4;
+          left = (pos.dx + 72).clamp(8.0, MediaQuery.of(ctx).size.width - 300);
+          top = (pos.dy + box.size.height + 2).clamp(8.0, MediaQuery.of(ctx).size.height - 420);
+        }
+      } else {
+        final blkCtx = bl[i].focusNode.context;
+        if (blkCtx != null) {
+          final box = blkCtx.findRenderObject() as RenderBox?;
+          if (box != null) {
+            final pos = box.localToGlobal(Offset.zero);
+            left = (pos.dx + 28).clamp(8.0, MediaQuery.of(ctx).size.width - 300);
+            top = (pos.dy + box.size.height + 4).clamp(8.0, MediaQuery.of(ctx).size.height - 420);
+          }
         }
       }
       _slash = OverlayEntry(
         builder: (_) => Positioned(
           left: left,
           top: top,
-          width: 280,
+          width: 290,
           child: _SlashMenu(
             opts: _slashOpts,
             sel: _slashIdx,
@@ -1450,6 +1631,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                     _chg(ft: blocks[i].controller.text);
                     _onFocus(blocks[i].controller.text, blockIndex: i);
                   },
+                  onBlur: _removeSlash,
                   onSelect: () => setState(() {
                     if (_selectedBlocks.contains(i)) {
                       _selectedBlocks.remove(i);
@@ -2167,7 +2349,7 @@ class _DocumentHero extends StatelessWidget {
           const _Div(),
           const SizedBox(height: 10),
           Text(
-            '빈 줄에서 Enter로 새 블록을 만들고 `/`로 블록 타입을 전환할 수 있습니다.',
+            '`/` 로 블록 추가 · Enter로 새 줄 · Backspace로 블록 병합\nCtrl+B 볼드 · Ctrl+I 이탤릭 · Ctrl+D 복제 · Ctrl+Enter 아래 추가',
             style: GoogleFonts.inter(
               color: _txt2.withValues(alpha: 0.78),
               fontSize: 11.5,
@@ -3249,7 +3431,7 @@ class _NBlock extends StatefulWidget {
   final int listNumber;
   final KeyEventResult Function(FocusNode, KeyEvent, int) onKey;
   final Function(String, int) onText;
-  final VoidCallback onDel, onDup, onFocus, onSelect, onAddBelow;
+  final VoidCallback onDel, onDup, onFocus, onBlur, onSelect, onAddBelow;
   final Function(BlockType) onType;
   final Function(bool) onCheck;
   final void Function(String, TextEditingController, GlobalKey)? onSelChanged;
@@ -3269,6 +3451,7 @@ class _NBlock extends StatefulWidget {
     required this.onType,
     required this.onCheck,
     required this.onFocus,
+    required this.onBlur,
     required this.onSelect,
     required this.onAddBelow,
     this.onSelChanged,
@@ -3340,7 +3523,11 @@ class _NBState extends State<_NBlock> {
     final f = widget.block.focusNode.hasFocus;
     if (_foc != f) {
       setState(() => _foc = f);
-      if (_foc) widget.onFocus();
+      if (_foc) {
+        widget.onFocus();
+      } else {
+        widget.onBlur();
+      }
     }
   }
 
@@ -3608,12 +3795,12 @@ class _NBState extends State<_NBlock> {
 
                 if (widget.block.type == BlockType.bullet)
                   Padding(
-                    padding: const EdgeInsets.only(top: 13, right: 12),
+                    padding: const EdgeInsets.only(top: 14, right: 10),
                     child: Container(
-                      width: 5,
-                      height: 5,
+                      width: 6,
+                      height: 6,
                       decoration: BoxDecoration(
-                        color: _txt1.withValues(alpha: 0.5),
+                        color: _foc ? _acc.withValues(alpha: 0.7) : _txt1.withValues(alpha: 0.45),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -3641,11 +3828,16 @@ class _NBState extends State<_NBlock> {
                 // 인용 좌측 바
                 if (widget.block.type == BlockType.quote)
                   Padding(
-                    padding: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.only(right: 14, top: 2, bottom: 2),
                     child: Container(
-                      width: 3,
+                      width: 3.5,
+                      constraints: const BoxConstraints(minHeight: 24),
                       decoration: BoxDecoration(
-                        color: _txt2.withValues(alpha: 0.35),
+                        gradient: LinearGradient(
+                          colors: [_acc.withValues(alpha: 0.7), _pur.withValues(alpha: 0.5)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -3805,13 +3997,20 @@ class _NBState extends State<_NBlock> {
                                 hoverColor: Colors.transparent,
                                 isDense: true,
                                 contentPadding: EdgeInsets.zero,
-                                hintText:
-                                    (_foc && widget.block.controller.text.isEmpty)
+                                hintText: widget.block.controller.text.isEmpty
                                     ? _hint(widget.block.type)
                                     : '',
                                 hintStyle: TextStyle(
-                                  color: _txt2.withValues(alpha: 0.4),
-                                  fontSize: 16,
+                                  color: _foc
+                                      ? _txt2.withValues(alpha: 0.5)
+                                      : _txt2.withValues(alpha: 0.22),
+                                  fontSize: widget.block.type == BlockType.h1
+                                      ? 28
+                                      : widget.block.type == BlockType.h2
+                                      ? 22
+                                      : widget.block.type == BlockType.h3
+                                      ? 18
+                                      : 15,
                                 ),
                               ),
                               onChanged: (t) => widget.onText(t, widget.idx),
@@ -3830,16 +4029,16 @@ class _NBState extends State<_NBlock> {
   }
 
   String _hint(BlockType t) => switch (t) {
-    BlockType.h1 => '제목 1',
-    BlockType.h2 => '제목 2',
-    BlockType.h3 => '제목 3',
+    BlockType.h1 => '제목 1을 입력하세요',
+    BlockType.h2 => '제목 2를 입력하세요',
+    BlockType.h3 => '제목 3을 입력하세요',
     BlockType.bullet => '항목 입력...',
     BlockType.checkbox => '할 일 추가...',
-    BlockType.code => '코드 또는 표 입력...',
+    BlockType.code => '코드를 입력하세요 (Tab으로 들여쓰기)',
     BlockType.number => '항목 입력...',
-    BlockType.quote => '인용 입력...',
-    BlockType.image => 'https://... 이미지 URL',
-    _ => "내용을 입력하거나  /  로 블록 추가",
+    BlockType.quote => '인용 내용을 입력하세요...',
+    BlockType.image => 'https://example.com/image.png',
+    _ => _foc ? "내용 입력 또는  /  블록 타입 변경" : "",
   };
 
   Widget _HandleAction({required IconData icon, required VoidCallback onTap}) =>

@@ -710,27 +710,35 @@ class _IconPickerSheetState extends State<_IconPickerSheet>
                       color: colors.textPrimary,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '탭하여 바로 적용',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: colors.textSecondary.withValues(alpha: 0.6),
+                    ),
+                  ),
                   const Spacer(),
                   if (_selected.isNotEmpty) ...[
                     Text(_selected, style: const TextStyle(fontSize: 22)),
                     const SizedBox(width: 12),
                   ],
                   GestureDetector(
-                    onTap: () => Navigator.pop(context, _selected),
+                    onTap: () => Navigator.pop(context),
                     child: Container(
-                      height: 34,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      height: 32,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
-                        gradient: AppGradients.accent,
+                        color: colors.border.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
                         child: Text(
-                          '선택',
+                          '닫기',
                           style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: colors.textSecondary,
                           ),
                         ),
                       ),
@@ -762,7 +770,7 @@ class _IconPickerSheetState extends State<_IconPickerSheet>
             ),
             // Emoji grid
             SizedBox(
-              height: 260,
+              height: 280,
               child: TabBarView(
                 controller: _tabs,
                 children: _categories.map((cat) {
@@ -781,27 +789,41 @@ class _IconPickerSheetState extends State<_IconPickerSheet>
                       return MouseRegion(
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
-                          onTap: () => setState(() => _selected = emoji),
-                          onDoubleTap: () => Navigator.pop(context, emoji),
+                          onTap: () {
+                            setState(() => _selected = emoji);
+                            // 탭 한 번으로 즉시 선택 후 닫기
+                            Future.microtask(() {
+                              if (context.mounted) Navigator.pop(context, emoji);
+                            });
+                          },
                           child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 130),
+                            duration: const Duration(milliseconds: 120),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? colors.accent.withValues(alpha: 0.14)
-                                  : colors.background,
-                              borderRadius: BorderRadius.circular(10),
+                                  ? colors.accent.withValues(alpha: 0.18)
+                                  : colors.surface.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: isSelected
-                                    ? colors.accent.withValues(alpha: 0.7)
-                                    : colors.border.withValues(alpha: 0.5),
+                                    ? colors.accent.withValues(alpha: 0.8)
+                                    : colors.border.withValues(alpha: 0.4),
                                 width: isSelected ? 1.5 : 1.0,
                               ),
+                              boxShadow: isSelected
+                                  ? [
+                                      BoxShadow(
+                                        color: colors.accent.withValues(alpha: 0.15),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      )
+                                    ]
+                                  : null,
                             ),
                             child: Center(
                               child: Text(
                                 emoji,
                                 style: TextStyle(
-                                  fontSize: isSelected ? 22 : 19,
+                                  fontSize: isSelected ? 23 : 20,
                                 ),
                               ),
                             ),
