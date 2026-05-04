@@ -2,6 +2,7 @@
 // main.dart  (Web-Compatible v3 + Firebase)
 // ============================================================
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +18,11 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  if (kIsWeb) {
+    // 일반 브라우저에 남은 IndexedDB/localStorage auth 찌꺼기가 로그인 흐름을
+    // 막는 경우가 있어, 웹은 탭 세션 단위로 인증 상태를 관리합니다.
+    await FirebaseAuth.instance.setPersistence(Persistence.SESSION);
+  }
   if (!kIsWeb) {
     await _initSqflite();
   }
