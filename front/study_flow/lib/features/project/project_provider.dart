@@ -10,12 +10,37 @@ import '../../providers/user_provider.dart';
 
 final projectProvider =
     StateNotifierProvider<ProjectNotifier, List<ProjectModel>>((ref) {
-      final userId = ref.read(userProvider)?.id ?? '';
+      final userId = ref.watch(userProvider.select((user) => user?.id ?? ''));
       return ProjectNotifier()..loadProjects(userId);
     });
 
 class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
   ProjectNotifier() : super([]);
+
+  Future<void> _persistProject(ProjectModel project) async {
+    if (!isOnlineMode) return;
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/api/projects/${project.id}'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'id': project.id,
+          'user_id': project.user_id,
+          'create_at': project.create_at.toIso8601String(),
+          'update_at': project.update_at.toIso8601String(),
+          'name': project.name,
+          'tags': project.tags,
+          'icon': project.icon,
+          'is_sync': 1,
+        }),
+      );
+      print('persistProject Status: ${res.statusCode}');
+      project.is_sync = res.statusCode == 200 ? 1 : 0;
+    } catch (e) {
+      print('persistProject error: $e');
+      project.is_sync = 0;
+    }
+  }
 
   // ── 목록 로드 ─────────────────────────────────
   Future<void> loadProjects(String? userId) async {
@@ -206,48 +231,99 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
 
   // ── 이름 업데이트 ──────────────────────────────
   Future<void> updateProjectName(String id, String name) async {
+    ProjectModel? updatedProject;
+    final now = DateTime.now();
+    final next = <ProjectModel>[];
+    for (final p in state) {
+      if (p.id == id) {
+        final updated = p.updateWith(
+          update_at: now,
+          name: name,
+          is_sync: 0,
+        );
+        updatedProject = updated;
+        next.add(updated);
+      } else {
+        next.add(p);
+      }
+    }
+    state = next;
+
     if (!kIsWeb) {
       await ProjectsDBHelper.updateProject(
         id,
-        updateAt: DateTime.now().toIso8601String(),
+        updateAt: now.toIso8601String(),
         name: name,
         isSync: 0,
       );
     }
-    state = [
-      for (final p in state)
-        if (p.id == id) p.updateWith(name: name) else p,
-    ];
+
+    final projectToPersist = updatedProject;
+    if (projectToPersist != null) await _persistProject(projectToPersist);
   }
 
   // ── 태그 업데이트 ──────────────────────────────
   Future<void> updateProjectTags(String id, String tags) async {
+    ProjectModel? updatedProject;
+    final now = DateTime.now();
+    final next = <ProjectModel>[];
+    for (final p in state) {
+      if (p.id == id) {
+        final updated = p.updateWith(
+          update_at: now,
+          tags: tags,
+          is_sync: 0,
+        );
+        updatedProject = updated;
+        next.add(updated);
+      } else {
+        next.add(p);
+      }
+    }
+    state = next;
+
     if (!kIsWeb) {
       await ProjectsDBHelper.updateProject(
         id,
-        updateAt: DateTime.now().toIso8601String(),
+        updateAt: now.toIso8601String(),
         tags: tags,
         isSync: 0,
       );
     }
-    state = [
-      for (final p in state)
-        if (p.id == id) p.updateWith(tags: tags) else p,
-    ];
+
+    final projectToPersist = updatedProject;
+    if (projectToPersist != null) await _persistProject(projectToPersist);
   }
 
   Future<void> updateProjectIcon(String id, String icon) async {
+    ProjectModel? updatedProject;
+    final now = DateTime.now();
+    final next = <ProjectModel>[];
+    for (final p in state) {
+      if (p.id == id) {
+        final updated = p.updateWith(
+          update_at: now,
+          icon: icon,
+          is_sync: 0,
+        );
+        updatedProject = updated;
+        next.add(updated);
+      } else {
+        next.add(p);
+      }
+    }
+    state = next;
+
     if (!kIsWeb) {
       await ProjectsDBHelper.updateProject(
         id,
-        updateAt: DateTime.now().toIso8601String(),
+        updateAt: now.toIso8601String(),
         icon: icon,
         isSync: 0,
       );
     }
-    state = [
-      for (final p in state)
-        if (p.id == id) p.updateWith(icon: icon) else p,
-    ];
+
+    final projectToPersist = updatedProject;
+    if (projectToPersist != null) await _persistProject(projectToPersist);
   }
 }

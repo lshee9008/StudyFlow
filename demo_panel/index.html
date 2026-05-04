@@ -298,6 +298,12 @@
         font-weight: 800;
       }
 
+      .screen-image {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
       .workspace-shot {
         min-height: 328px;
         display: grid;
@@ -687,35 +693,13 @@
               <article class="screen">
                 <div class="screen-top">
                   <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                  <span class="screen-title">Workspace</span>
+                  <span class="screen-title">Editor Summary</span>
                 </div>
-                <div class="workspace-shot">
-                  <aside class="sidebar">
-                    <div class="side-logo"><span class="tiny-mark">S</span>StudyFlow</div>
-                    <div class="nav-row active">⌘ 홈</div>
-                    <div class="nav-row">⌕ 검색</div>
-                    <div class="nav-row">◷ 포커스</div>
-                  </aside>
-                  <div class="shot-main">
-                    <div class="shot-header">
-                      <strong>운영체제</strong>
-                      <span class="pill">12 Notes</span>
-                    </div>
-                    <div class="doc-list">
-                      <div class="doc-row"><div class="doc-icon">📄</div><div class="doc-text"><strong>CPU와 메모리</strong><span>방금 전 수정</span></div><span class="pill">요약</span></div>
-                      <div class="doc-row"><div class="doc-icon">🧠</div><div class="doc-text"><strong>운영체제 2주차</strong><span>문단 분석 완료</span></div><span class="pill">Graph</span></div>
-                      <div class="doc-row"><div class="doc-icon">⚡</div><div class="doc-text"><strong>버스와 캐시</strong><span>퀴즈 3문항 생성</span></div><span class="pill">Quiz</span></div>
-                    </div>
-                  </div>
-                  <aside class="ai-panel">
-                    <div class="ai-card">
-                      <h4>핵심 요약</h4>
-                      <div class="line"></div>
-                      <div class="line short"></div>
-                      <div class="line"></div>
-                    </div>
-                  </aside>
-                </div>
+                <img
+                  class="screen-image"
+                  src="assets/editor-summary.jpg"
+                  alt="StudyFlow editor summary screen"
+                />
               </article>
 
               <article class="screen">
@@ -723,14 +707,11 @@
                   <span class="dot"></span><span class="dot"></span><span class="dot"></span>
                   <span class="screen-title">Knowledge Graph</span>
                 </div>
-                <div class="graph-shot">
-                  <span class="edge e1"></span><span class="edge e2"></span><span class="edge e3"></span><span class="edge e4"></span>
-                  <div class="node a">응용 소프트웨어</div>
-                  <div class="node core">운영체제 핵심</div>
-                  <div class="node b">하드웨어</div>
-                  <div class="node c">메모리 관리</div>
-                  <div class="node d">입출력 장치</div>
-                </div>
+                <img
+                  class="screen-image"
+                  src="assets/knowledge-graph.jpg"
+                  alt="StudyFlow knowledge graph screen"
+                />
               </article>
             </div>
           </div>

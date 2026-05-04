@@ -33,13 +33,23 @@ class FirebaseAuthService {
 
   // ── 구글 로그인 ────────────────────────────────
   static Future<UserCredential?> signInWithGoogle() async {
+    final provider = GoogleAuthProvider()
+      ..addScope('email')
+      ..addScope('profile');
+
     if (kIsWeb) {
-      // 웹: 리디렉션 방식 (popup은 iframe 보안 정책으로 불안정)
-      final provider = GoogleAuthProvider();
-      provider.addScope('email');
-      provider.addScope('profile');
-      await _auth.signInWithRedirect(provider);
-      return null; // 리디렉션 후 getGoogleRedirectResult()로 처리
+      // 웹: 팝업을 우선 사용해 Safari/Vercel redirect 세션 유실을 줄이고,
+      // 팝업이 막힌 경우에만 redirect로 fallback합니다.
+      try {
+        return await _auth.signInWithPopup(provider);
+      } on FirebaseAuthException catch (e) {
+        if (e.code != 'popup-blocked' &&
+            e.code != 'operation-not-supported-in-this-environment') {
+          rethrow;
+        }
+        await _auth.signInWithRedirect(provider);
+        return null; // 리디렉션 후 getGoogleRedirectResult()로 처리
+      }
     } else {
       // 네이티브: GoogleSignIn 패키지
       final googleUser = await _googleSignIn.signIn();

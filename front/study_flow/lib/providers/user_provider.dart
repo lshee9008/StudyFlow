@@ -234,7 +234,11 @@ class UserNotifier extends StateNotifier<UserModel?> {
       }
       return '계정 생성에 실패했습니다.';
     } catch (e) {
-      // 백엔드 없어도 Firebase 유저로 진행
+      // 웹은 로컬 DB가 없어서 백엔드 유저 생성이 실패하면 데이터가 저장되지 않습니다.
+      // 모바일/데스크톱만 오프라인 세션을 허용합니다.
+      if (kIsWeb) {
+        return '계정 동기화에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+      }
       final displayName = firebaseUser.displayName ??
           firebaseUser.email?.split('@').first ??
           '사용자';

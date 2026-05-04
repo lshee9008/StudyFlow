@@ -18,8 +18,17 @@ router = APIRouter()
 _CACHE_TTL = 3600
 _SUMMARY_TOKENS = 12000
 _SUMMARY_MAP_TOKENS = 2600
+_SUMMARY_CONTINUE_TOKENS = 3600
 _SUMMARY_CHUNK_CHARS = 3200
 _SUMMARY_CHUNK_OVERLAP = 350
+_SUMMARY_FORBIDDEN_MARKERS = (
+    "원문 내용이 여기서 끝",
+    "여기서 끝남",
+    "이하 생략",
+    "내용 없음",
+    "추가 내용 없음",
+    "본문 내용이 여기서 끝",
+)
 
 
 def _get_model() -> genai.GenerativeModel:
@@ -556,7 +565,8 @@ def _build_reduce_prompt(title: str, tags: str, text: str, user_instruction: str
             "위 지시에 따르되, 원문 문단의 순서와 흐름을 최대한 유지해 정리하세요.\n"
             "삭제식 요약이 아니라 문단별 내용을 읽기 좋은 학습 노트로 다듬는 방식입니다.\n"
             "주요 개념, 정의, 원리, 예시, 비교, 암기 포인트를 빠뜨리지 마세요.\n"
-            "본문에 없는 내용 추가 금지. 마크다운 제목과 불릿으로 읽기 쉽게 작성하세요."
+            "본문에 없는 내용 추가 금지. 마크다운 제목과 불릿으로 읽기 쉽게 작성하세요.\n"
+            "\"원문 내용이 여기서 끝남\", \"이하 생략\" 같은 메타 문구는 절대 쓰지 마세요."
         )
     return (
         f"당신은 강의 내용을 문단 흐름 그대로 살려 정리하는 시험 대비 학습 노트 전문가입니다.\n"
@@ -581,6 +591,7 @@ def _build_reduce_prompt(title: str, tags: str, text: str, user_instruction: str
         "- 빈 섹션 출력 금지\n"
         "- 이모티콘·장식 기호 금지\n"
         "- ## 계층 구조를 적극 활용\n"
+        "- \"원문 내용이 여기서 끝남\", \"이하 생략\", \"추가 내용 없음\" 같은 메타 문구 금지\n"
         "- 마지막 문장까지 완결된 형태로 끝내기"
     )
 
@@ -597,6 +608,7 @@ def _build_map_prompt(chunk: str, index: int, total: int) -> str:
         "- 본문에 없는 내용 추가 금지\n"
         "- 적절한 소제목과 bullet 사용\n"
         "- 너무 짧게 쓰지 말고 이 구간 정보량의 60% 이상 유지\n\n"
+        "- \"원문 내용이 여기서 끝남\", \"이하 생략\", \"추가 내용 없음\" 같은 메타 문구 금지\n\n"
         f"[내용]\n{chunk}\n\n"
         "섹션 노트:"
     )
@@ -611,7 +623,8 @@ def _build_merge_prompt(title: str, tags: str, summaries: List[str], user_instru
             f"제목: {title}  태그: {tags}\n\n"
             f"[섹션별 분석]\n{combined}\n\n"
             "위 지시에 따라 하나의 완성된 시험 대비 노트로 통합하세요.\n"
-            "섹션 순서를 유지하고, 중복만 줄이되 중요한 개념, 정의, 원리, 예시, 비교, 암기 포인트는 생략하지 마세요."
+            "섹션 순서를 유지하고, 중복만 줄이되 중요한 개념, 정의, 원리, 예시, 비교, 암기 포인트는 생략하지 마세요.\n"
+            "\"원문 내용이 여기서 끝남\", \"이하 생략\" 같은 메타 문구는 절대 쓰지 마세요."
         )
     return (
         f"당신은 강의 전체 흐름을 보존해 하나의 노트로 엮는 시험 대비 학습 노트 전문가입니다.\n"
@@ -636,8 +649,75 @@ def _build_merge_prompt(title: str, tags: str, summaries: List[str], user_instru
         "- 개념명은 **굵게**\n"
         "- 자연스러운 문단 흐름 유지\n"
         "- 이모티콘·장식 기호 금지\n"
+        "- \"원문 내용이 여기서 끝남\", \"이하 생략\", \"추가 내용 없음\" 같은 메타 문구 금지\n"
         "- 마지막 섹션까지 완결된 형태로 끝내기"
     )
+
+
+def _clean_summary_output(text: str) -> str:
+    """Remove model meta notes that make the summary look truncated."""
+    if not text:
+        return ""
+    lines = []
+    for line in text.splitlines():
+        if any(marker in line for marker in _SUMMARY_FORBIDDEN_MARKERS):
+            continue
+        lines.append(line.rstrip())
+    cleaned = "\n".join(lines).strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned
+
+
+def _summary_needs_continuation(text: str) -> bool:
+    if _meaningful(text) < 80:
+        return False
+    if any(marker in text for marker in _SUMMARY_FORBIDDEN_MARKERS):
+        return True
+    tail = text.rstrip()[-120:]
+    if re.search(r"(^|\n)\s*(?:[-*]|\d+[.)])\s*$", tail):
+        return True
+    if re.search(r"(?:[:(（,，·/]|및|와|과|또는|그리고|으로|로|를|을)\s*$", tail):
+        return True
+    if not re.search(r"(다\.|요\.|[.!?)]|```)$", text.rstrip()):
+        return True
+    return False
+
+
+def _build_continue_prompt(title: str, tags: str, source: str, current: str) -> str:
+    return (
+        "아래 학습 노트 요약이 중간에 끊겼거나 일부 항목이 덜 마감되었습니다.\n"
+        "기존 내용을 반복하지 말고, 원문 흐름을 따라 남은 핵심 내용을 이어서 완성하세요.\n\n"
+        f"제목: {title}  태그: {tags}\n\n"
+        f"[원문]\n{source[:10000]}\n\n"
+        f"[현재까지 작성된 요약]\n{current[-5000:]}\n\n"
+        "이어쓰기 규칙:\n"
+        "- 현재 요약의 마지막 완성 지점 다음부터 자연스럽게 이어쓰기\n"
+        "- 원문에 있는 정의, 구성 요소, 예시, 비교, 시험 포인트를 빠뜨리지 않기\n"
+        "- 본문에 없는 내용 추가 금지\n"
+        "- 기존 문단을 반복하지 않기\n"
+        "- \"원문 내용이 여기서 끝남\", \"이하 생략\", \"추가 내용 없음\" 같은 메타 문구 금지\n"
+        "- 마지막에는 필요한 경우 ## 핵심 정리로 완결하기\n\n"
+        "이어지는 내용:"
+    )
+
+
+async def _complete_summary_if_needed(title: str, tags: str, source: str, current: str) -> str:
+    force_continue = any(marker in current for marker in _SUMMARY_FORBIDDEN_MARKERS)
+    completed = _clean_summary_output(current)
+    for _ in range(2):
+        if not force_continue and not _summary_needs_continuation(completed):
+            break
+        force_continue = False
+        extra = await _llm(
+            _build_continue_prompt(title, tags, source, completed),
+            temp=0.15,
+            tokens=_SUMMARY_CONTINUE_TOKENS,
+        )
+        extra = _clean_summary_output(extra)
+        if _meaningful(extra) < 20:
+            break
+        completed = f"{completed.rstrip()}\n\n{extra.strip()}".strip()
+    return _clean_summary_output(completed)
 
 
 # ══════════════════════════════════════════════════════════
@@ -679,6 +759,7 @@ async def summarize(req: SumReq):
             merge_prompt = _build_merge_prompt(req.title, req.tags, valid, user_instruction)
             result = await _llm(merge_prompt, temp=0.2, tokens=_SUMMARY_TOKENS)
 
+        result = await _complete_summary_if_needed(req.title, req.tags, raw, result)
         return {"summary": result if _meaningful(result) > 10 else ""}
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -747,7 +828,15 @@ async def summarize_stream(req: SumReq):
                 full_text += token
                 yield _sse({"type": "token", "text": token})
 
-            yield _sse({"type": "done", "text": full_text.strip()})
+            cleaned_text = _clean_summary_output(full_text)
+            completed_text = await _complete_summary_if_needed(req.title, req.tags, raw, cleaned_text)
+            if completed_text != cleaned_text:
+                continuation = completed_text[len(cleaned_text):].strip()
+                if continuation:
+                    yield _sse({"type": "progress", "message": "끊긴 부분을 이어서 마감 중..."})
+                    yield _sse({"type": "token", "text": f"\n\n{continuation}"})
+
+            yield _sse({"type": "done", "text": completed_text.strip()})
             yield "data: [DONE]\n\n"
 
         except Exception as e:
