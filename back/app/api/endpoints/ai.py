@@ -167,10 +167,7 @@ def _infer_node_description(text: str, label: str, group: str = "") -> str:
     return f"{label}와 관련된 핵심 개념이다."
 
 
-def _normalize_quiz_items(raw_items, fallback_text: str, count: int = 3):
-    if not isinstance(raw_items, list):
-        return []
-
+def _normalize_quiz_items(raw_items, fallback_text: str, count: int = 8):
     sentence_pool = [
         s.strip()
         for s in re.split(r'(?<=[.!?])\s+|\n+', fallback_text)
@@ -178,7 +175,8 @@ def _normalize_quiz_items(raw_items, fallback_text: str, count: int = 3):
     ]
     cleaned = []
 
-    for index, item in enumerate(raw_items[:count]):
+    items = raw_items if isinstance(raw_items, list) else []
+    for index, item in enumerate(items[:count]):
         if not isinstance(item, dict):
             continue
         question = str(item.get("question") or "").strip()
@@ -217,6 +215,25 @@ def _normalize_quiz_items(raw_items, fallback_text: str, count: int = 3):
             "options": normalized_options,
             "answer": answer,
             "explanation": explanation[:220],
+        })
+
+    terms = _extract_study_terms(fallback_text, limit=max(count + 4, 12))
+    while len(cleaned) < count:
+        index = len(cleaned)
+        term = terms[index % len(terms)] if terms else f"핵심 개념 {index + 1}"
+        desc = _infer_node_description(fallback_text, term)[:120]
+        if not desc:
+            desc = sentence_pool[index % len(sentence_pool)] if sentence_pool else "본문의 핵심 개념을 설명한다."
+        cleaned.append({
+            "question": f"Q{index + 1}. 본문에서 **{term}**에 대한 설명으로 가장 알맞은 것은?",
+            "options": [
+                desc,
+                f"{term}은 본문과 직접 관련이 없는 개념이다.",
+                f"{term}은 항상 생략해도 되는 부가 요소이다.",
+                f"{term}은 다른 개념과 연결되지 않는 독립 항목이다.",
+            ],
+            "answer": 0,
+            "explanation": desc[:220],
         })
 
     return cleaned
@@ -260,14 +277,23 @@ def _extract_study_terms(text: str, limit: int = 10):
 
 def _fallback_analysis(text: str, title: str = "") -> str:
     clean = re.sub(r"\s+", " ", text).strip()
-    terms = _extract_study_terms(clean, limit=3)
+    terms = _extract_study_terms(clean, limit=6)
     primary = terms[0] if terms else clean[:40] or title or "이 문단"
     meaning = clean[:180] if clean else f"{primary}에 대한 핵심 설명입니다."
     related = ", ".join(terms[:3]) if terms else primary
     return (
-        f"- **핵심 의미**: {meaning}\n"
-        f"- **관련 개념**: **{related}**를 중심으로 앞뒤 문맥과 연결해 이해해야 합니다.\n"
-        f"- **시험 포인트**: 정의, 역할, 원인과 결과를 구분해 설명할 수 있어야 합니다."
+        f"## 핵심 의미\n"
+        f"- {meaning}\n\n"
+        f"## 문맥 해석\n"
+        f"- 이 문단은 **{primary}**를 중심으로 앞뒤 개념의 관계를 설명합니다.\n"
+        f"- 관련 개념: **{related}**\n\n"
+        f"## 왜 중요한가\n"
+        f"- 정의만 외우기보다 역할, 작동 이유, 다른 구성 요소와의 연결을 함께 이해해야 합니다.\n\n"
+        f"## 시험 포인트\n"
+        f"- 정의, 역할, 원인과 결과를 구분해 설명할 수 있어야 합니다.\n"
+        f"- 비슷한 용어와 비교해 오답 선택지를 걸러낼 수 있어야 합니다.\n\n"
+        f"## 한 줄 정리\n"
+        f"- **{primary}**는 본문 흐름에서 반드시 연결해 이해해야 할 핵심 항목입니다."
     )
 
 
@@ -668,19 +694,24 @@ def _clean_summary_output(text: str) -> str:
     return cleaned
 
 
+def _looks_incomplete(text: str) -> bool:
+    if _meaningful(text) < 20:
+        return True
+    stripped = text.rstrip()
+    tail = stripped[-120:]
+    if re.search(r"(^|\n)\s*(?:[-*]|\d+[.)])\s*$", tail):
+        return True
+    if re.search(r"(?:[:(（,，·/]|및|와|과|또는|그리고|으로|로|를|을|버스를)\s*$", tail):
+        return True
+    return not re.search(r"(다\.|요\.|[.!?)]|```)$", stripped)
+
+
 def _summary_needs_continuation(text: str) -> bool:
     if _meaningful(text) < 80:
         return False
     if any(marker in text for marker in _SUMMARY_FORBIDDEN_MARKERS):
         return True
-    tail = text.rstrip()[-120:]
-    if re.search(r"(^|\n)\s*(?:[-*]|\d+[.)])\s*$", tail):
-        return True
-    if re.search(r"(?:[:(（,，·/]|및|와|과|또는|그리고|으로|로|를|을)\s*$", tail):
-        return True
-    if not re.search(r"(다\.|요\.|[.!?)]|```)$", text.rstrip()):
-        return True
-    return False
+    return _looks_incomplete(text)
 
 
 def _build_continue_prompt(title: str, tags: str, source: str, current: str) -> str:
@@ -867,20 +898,30 @@ async def analyze_block(req: BlockReq):
         return {"analysis": ""}
     title_hint = f"제목: {req.context_title}\n" if req.context_title else ""
     p = (
-        f"당신은 대학원 수준의 학습 노트 분석 전문가입니다.\n"
+        f"당신은 시험 대비 학습 노트를 깊게 분석하는 튜터입니다.\n"
         f"{title_hint}"
-        f"분석할 문단:\n{req.text[:1200]}\n\n"
+        f"분석할 문단:\n{req.text[:1800]}\n\n"
         "위 문단 하나에 대해서만 분석합니다. 본문에 없는 내용 추가 금지.\n\n"
         "아래 형식으로 정확히 출력하세요:\n\n"
-        "- **핵심 의미**: 이 문단의 핵심을 2~3문장으로 설명\n"
-        "- **관련 개념**: 연결되는 개념, 배경, 헷갈리기 쉬운 지점\n"
-        "- **시험 포인트**: 시험에서 어떤 식으로 물을 수 있는지\n"
-        "- **한 줄 정리**: 기억해야 할 결론\n\n"
-        "규칙: 본문 기반 · 개념명 **굵게** · 이모티콘 금지 · 빈 항목 금지"
+        "## 핵심 의미\n"
+        "- 이 문단이 말하는 핵심을 3~5문장으로 설명\n\n"
+        "## 문맥 해석\n"
+        "- 앞뒤 개념과 어떻게 이어지는지 설명\n"
+        "- 비유나 예시가 있으면 무엇을 설명하기 위한 비유인지 해석\n\n"
+        "## 관련 개념\n"
+        "- 연결되는 개념 3~6개를 **굵게** 표시하고 관계 설명\n\n"
+        "## 시험 포인트\n"
+        "- 출제 가능한 질문 3개 이상\n"
+        "- 헷갈릴 수 있는 오답 포인트 포함\n\n"
+        "## 한 줄 정리\n"
+        "- 기억해야 할 결론 1문장\n\n"
+        "규칙: 본문 기반 · 최소 450자 이상 · 개념명 **굵게** · 이모티콘 금지 · 빈 항목 금지 · 마지막 문장 완결"
     )
     try:
-        result = await _llm(p, temp=0.15, tokens=900)
-        return {"analysis": result if _meaningful(result) > 35 else _fallback_analysis(req.text, req.context_title)}
+        result = await _llm(p, temp=0.15, tokens=1800)
+        if _meaningful(result) < 180 or _looks_incomplete(result):
+            result = _fallback_analysis(req.text, req.context_title)
+        return {"analysis": result}
     except Exception:
         return {"analysis": _fallback_analysis(req.text, req.context_title)}
 
@@ -900,17 +941,17 @@ async def memo(req: MemoReq):
         return {"memo": ""}
     p = (
         f"제목: {req.title}\n"
-        f"본문:\n{text[:5000]}\n\n"
+        f"본문:\n{text[:8000]}\n\n"
         "시험 직전에 볼 수 있는 핵심 암기 노트를 작성하세요. 본문에 있는 내용만 사용하고 창작은 금지합니다.\n\n"
         "## 핵심 개념\n"
-        "아래 표를 완성하세요 (반드시 헤더와 구분선 포함, 최소 5행 이상):\n\n"
+        "아래 표를 완성하세요 (반드시 헤더와 구분선 포함, 최소 8행 이상):\n\n"
         "| 개념 | 설명 | 중요도 |\n"
         "|------|------|--------|\n"
         "| 개념명 | 한 줄 정의 | ★★★ |\n\n"
         "## 암기 포인트\n"
-        "- **개념명**: 헷갈리기 쉬운 점과 기억할 내용을 함께 정리\n\n"
+        "- **개념명**: 헷갈리기 쉬운 점과 기억할 내용을 함께 정리 (최소 8개)\n\n"
         "## 빠른 복습\n"
-        "- 시험 전에 마지막으로 확인할 문장 5~8개\n\n"
+        "- 시험 전에 마지막으로 확인할 문장 8~10개\n\n"
         "작성 규칙:\n"
         "- 표는 반드시 완결된 형태로 출력 (잘리지 않게)\n"
         "- 개념명은 **굵게**\n"
@@ -919,8 +960,11 @@ async def memo(req: MemoReq):
         "- 본문에 없는 내용 추가 금지"
     )
     try:
-        r = await _llm(p, temp=0.15, tokens=2000)
-        return {"memo": r if _meaningful(r) > 80 else _fallback_memo(text, req.title)}
+        r = await _llm(p, temp=0.15, tokens=3600)
+        table_rows = len(re.findall(r"^\|\s*\*\*?.+?\|.+?\|.+?\|", r, re.MULTILINE))
+        if _meaningful(r) < 240 or table_rows < 6 or _looks_incomplete(r):
+            r = _fallback_memo(text, req.title)
+        return {"memo": r}
     except Exception as e:
         fallback = _fallback_memo(text, req.title)
         if _meaningful(fallback) > 20:
@@ -933,7 +977,7 @@ async def memo(req: MemoReq):
 # ══════════════════════════════════════════════════════════
 class QuizReq(BaseModel):
     content: str
-    count: int = 3
+    count: int = 8
 
 
 @router.post("/quiz")
@@ -941,22 +985,24 @@ async def quiz(req: QuizReq):
     text = _extract_text_structured(req.content.strip())
     if _meaningful(text) < 30:
         return {"quiz": []}
+    count = max(6, min(req.count, 12))
     p = (
-        f"본문:\n{text[:5000]}\n\n"
-        f"위 본문으로 객관식 {req.count}문제를 만드세요.\n\n"
+        f"본문:\n{text[:8000]}\n\n"
+        f"위 본문으로 객관식 {count}문제를 만드세요.\n\n"
         "중요: JSON 배열만 출력하세요. 그 외 텍스트 절대 금지.\n"
         "형식: [{\"question\":\"질문\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"answer\":0,\"explanation\":\"해설\"}]\n\n"
         "규칙:\n"
+        f"- 정확히 {count}개 문제를 출력\n"
         "- question: 구체적인 질문 (본문 기반, Q번호 포함 가능)\n"
         "- options: 정확히 4개 문자열 배열\n"
         "- answer: 정답 인덱스 정수 (0, 1, 2, 3 중 하나)\n"
-        "- explanation: 정답 근거 (본문 기반, 2~3문장)\n"
-        "- 쉬운 문제만 만들지 말고 개념 비교, 원인/결과, 역할을 섞기\n"
+        "- explanation: 정답 근거 (본문 기반, 2~4문장)\n"
+        "- 쉬운 문제만 만들지 말고 정의, 역할, 개념 비교, 원인/결과, 예시 해석을 섞기\n"
         "- 본문에 없는 내용으로 문제 생성 금지\n"
         "- JSON이 끊기지 않도록 완결된 배열로 끝내기"
     )
     try:
-        raw = await _llm(p, temp=0.1, tokens=2200)
+        raw = await _llm(p, temp=0.1, tokens=5200)
         # 코드블록 제거
         raw = raw.replace("```json", "").replace("```", "").strip()
         # JSON 배열 추출 — 가장 바깥 [ ] 쌍 찾기
@@ -973,22 +1019,22 @@ async def quiz(req: QuizReq):
                         repaired = chunk[:last_obj_end + 1] + "]"
                         parsed = json.loads(repaired)
                     except Exception:
-                        return {"quiz": _fallback_quiz(text, req.count)}
+                        return {"quiz": _fallback_quiz(text, count)}
                 else:
-                    return {"quiz": _fallback_quiz(text, req.count)}
-            normalized = _normalize_quiz_items(parsed, text, req.count)
-            return {"quiz": normalized if normalized else _fallback_quiz(text, req.count)}
+                    return {"quiz": _fallback_quiz(text, count)}
+            normalized = _normalize_quiz_items(parsed, text, count)
+            return {"quiz": normalized if normalized else _fallback_quiz(text, count)}
 
         obj_start, obj_end = raw.find("{"), raw.rfind("}")
         if obj_start != -1 and obj_end != -1 and obj_end > obj_start:
             parsed_obj = json.loads(raw[obj_start:obj_end + 1])
             raw_quiz = parsed_obj.get("quiz") or parsed_obj.get("questions") or []
-            normalized = _normalize_quiz_items(raw_quiz, text, req.count)
-            return {"quiz": normalized if normalized else _fallback_quiz(text, req.count)}
+            normalized = _normalize_quiz_items(raw_quiz, text, count)
+            return {"quiz": normalized if normalized else _fallback_quiz(text, count)}
 
-        return {"quiz": _fallback_quiz(text, req.count)}
+        return {"quiz": _fallback_quiz(text, count)}
     except Exception:
-        return {"quiz": _fallback_quiz(text, req.count)}
+        return {"quiz": _fallback_quiz(text, max(6, min(req.count, 12)))}
 
 
 # ══════════════════════════════════════════════════════════

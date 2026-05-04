@@ -966,7 +966,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           .post(
             Uri.parse('$_api/api/ai/quiz'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'content': state.fullContentForAI, 'count': 3}),
+            body: jsonEncode({'content': state.fullContentForAI, 'count': 8}),
           )
           .timeout(const Duration(seconds: 60));
       if (!mounted) return;
