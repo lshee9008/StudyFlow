@@ -6439,7 +6439,7 @@ class _GraphCanvas extends StatefulWidget {
 }
 
 class _GCS extends State<_GraphCanvas> {
-  static const Size _boardSize = Size(2200, 1400);
+  Size _boardSize = const Size(2200, 1400);
   late final TransformationController _controller;
   List<_GraphNodeLayout> ns = [];
   List<_GE> es = [];
@@ -6451,18 +6451,7 @@ class _GCS extends State<_GraphCanvas> {
     _controller = TransformationController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _build();
-      if (mounted) {
-        final box = context.findRenderObject() as RenderBox?;
-        final viewSize = box?.size ?? const Size(800, 600);
-        _controller.value = Matrix4.identity()
-          ..translateByDouble(
-            -(940 - viewSize.width / 2) * 0.65,
-            -(640 - viewSize.height / 2) * 0.65,
-            0,
-            1,
-          )
-          ..scaleByDouble(0.65, 0.65, 1, 1);
-      }
+      if (mounted) _fitBoard();
     });
   }
 
@@ -6476,6 +6465,136 @@ class _GCS extends State<_GraphCanvas> {
     }
   }
 
+  // ── 분할 레벨-정다각형법 ─────────────────────────────────────
+  // 노드 물리 크기(반변) — 경계 충돌 판정에 사용
+  static double _nodeHalfSide(_GraphCardStyle style) => switch (style) {
+    _GraphCardStyle.core      => 96.0,
+    _GraphCardStyle.branch    => 80.0,
+    _GraphCardStyle.subcluster => 68.0,
+    _GraphCardStyle.noteWide  => 68.0,
+    _GraphCardStyle.note      => 60.0,
+  };
+
+  static _GraphCardStyle _styleForDepth(int depth) {
+    if (depth == 0) return _GraphCardStyle.core;
+    if (depth == 1) return _GraphCardStyle.branch;
+    if (depth == 2) return _GraphCardStyle.subcluster;
+    return _GraphCardStyle.note;
+  }
+
+  static Size _sizeForStyle(_GraphCardStyle style) => switch (style) {
+    _GraphCardStyle.core       => const Size(192, 148),
+    _GraphCardStyle.branch     => const Size(168, 132),
+    _GraphCardStyle.subcluster => const Size(144, 112),
+    _GraphCardStyle.noteWide   => const Size(160, 116),
+    _GraphCardStyle.note       => const Size(136, 104),
+  };
+
+  /// 바텀업: 각 노드의 서브트리 경계 반지름을 계산한다.
+  /// 경계 = 해당 노드를 루트로 하는 서브트리 전체를 포함하는
+  ///         원의 반지름 (노드 중심 기준).
+  static Map<String, double> _computeBoundaries(
+    String rootId,
+    Map<String, List<String>> childrenMap,
+    Map<String, double> halfSide,
+  ) {
+    final boundary = <String, double>{};
+    final visited = <String>{};
+
+    void compute(String id) {
+      if (visited.contains(id)) return;
+      visited.add(id);
+
+      final a = halfSide[id] ?? 72.0; // 이 노드의 반변
+      final children = childrenMap[id] ?? [];
+
+      if (children.isEmpty) {
+        // 말단 노드: 경계 = 노드 반대각선 (√2 · a)
+        boundary[id] = a * math.sqrt2;
+        return;
+      }
+
+      for (final cid in children) {
+        compute(cid);
+      }
+
+      final n = children.length;
+      final maxCB = children.fold(0.0, (prev, c) => math.max(prev, boundary[c] ?? a));
+
+      double r;
+      if (n == 1) {
+        // 자식 1개: 충분한 간격만 확보
+        r = math.max(2 * math.sqrt2 * a, a + maxCB * 1.3 + 20);
+      } else {
+        // n-gon 조건 (분할 다각형법)
+        // θ = 2π/n (인접 자식 사이의 각도)
+        final theta = 2 * math.pi / n;
+        final sinHalf = math.sin(theta / 2); // 반각 사인 — 현의 절반
+        // 조건 1: 부모-자식 비겹침 → r > 2√2·a_parent
+        final r1 = 2 * math.sqrt2 * a;
+        // 조건 2: 인접 자식 서브트리 비겹침 → 2r·sin(θ/2) > 2·maxCB
+        //          → r > maxCB / sin(θ/2)
+        final r2 = sinHalf > 1e-6 ? maxCB / sinHalf : double.infinity;
+        r = math.max(r1, r2) * 1.15; // 15% 여유
+        r = r.clamp(80.0, 3000.0);
+      }
+
+      boundary[id] = r + maxCB;
+    }
+
+    compute(rootId);
+    return boundary;
+  }
+
+  /// 탑다운: 루트를 (0,0)으로 놓고 재귀적으로 자식 위치를 배정한다.
+  static Map<String, Offset> _placeNodes(
+    String rootId,
+    Map<String, List<String>> childrenMap,
+    Map<String, double> halfSide,
+    Map<String, double> boundary,
+  ) {
+    final positions = <String, Offset>{};
+    final visited = <String>{};
+
+    void place(String id, Offset pos) {
+      if (visited.contains(id)) return;
+      visited.add(id);
+      positions[id] = pos;
+
+      final children = childrenMap[id] ?? [];
+      if (children.isEmpty) return;
+
+      final n = children.length;
+      final a = halfSide[id] ?? 72.0;
+      final maxCB = children.fold(0.0, (prev, c) => math.max(prev, boundary[c] ?? a));
+
+      double r;
+      if (n == 1) {
+        r = math.max(2 * math.sqrt2 * a, a + maxCB * 1.3 + 20);
+      } else {
+        final theta = 2 * math.pi / n;
+        final sinHalf = math.sin(theta / 2);
+        final r1 = 2 * math.sqrt2 * a;
+        final r2 = sinHalf > 1e-6 ? maxCB / sinHalf : double.infinity;
+        r = math.max(r1, r2) * 1.15;
+        r = r.clamp(80.0, 3000.0);
+      }
+
+      for (int k = 0; k < n; k++) {
+        // 12시(위쪽)에서 시작해 시계 방향으로 배치
+        final angle = k * 2 * math.pi / n - math.pi / 2;
+        final childPos = Offset(
+          pos.dx + r * math.cos(angle),
+          pos.dy + r * math.sin(angle),
+        );
+        place(children[k], childPos);
+      }
+    }
+
+    place(rootId, Offset.zero);
+    return positions;
+  }
+
   void _build() {
     ns.clear();
     es.clear();
@@ -6487,144 +6606,117 @@ class _GCS extends State<_GraphCanvas> {
       return;
     }
 
-    final rootRaw = rn.cast<Map>().firstWhere(
-      (raw) => raw['type']?.toString() == 'core',
-      orElse: () => rn.first as Map,
-    );
-    final rootId = rootRaw['id'].toString();
-    final childrenBySource = <String, List<String>>{};
-    final indegree = <String, int>{};
-
-    for (final raw in re) {
-      final edge = raw as Map<String, dynamic>;
-      final source = edge['source'].toString();
-      final target = edge['target'].toString();
-      childrenBySource.putIfAbsent(source, () => []).add(target);
-      indegree[target] = (indegree[target] ?? 0) + 1;
-      es.add(_GE(source, target));
-    }
-
+    // ── 1. 노드/엣지 맵 구성 ─────────────────────────────────
     final nodesById = <String, Map<String, dynamic>>{
       for (final raw in rn) raw['id'].toString(): raw as Map<String, dynamic>,
     };
 
-    final firstLevel = childrenBySource[rootId] ?? [];
-    final center = const Offset(940, 640);
-    final branchRadius = 400.0;
+    final childrenMap = <String, List<String>>{};
+    final parentOf = <String, String>{};
 
-    ns.add(
-      _GraphNodeLayout(
-        id: rootId,
-        label: nodesById[rootId]?['label']?.toString() ?? '',
-        description: nodesById[rootId]?['description']?.toString() ?? '',
-        type: nodesById[rootId]?['type']?.toString() ?? 'core',
-        group: nodesById[rootId]?['group']?.toString() ?? '',
-          rect: Rect.fromCenter(
-            center: _savedOffset(nodesById[rootId], center),
-            width: 244,
-            height: 184,
-          ),
-          style: _GraphCardStyle.core,
-        ),
+    for (final raw in re) {
+      final edge = raw as Map<String, dynamic>;
+      final src = edge['source'].toString();
+      final tgt = edge['target'].toString();
+      childrenMap.putIfAbsent(src, () => []).add(tgt);
+      parentOf[tgt] = src;
+      es.add(_GE(src, tgt));
+    }
+
+    // ── 2. 루트 탐색 (core 타입 우선, 없으면 in-degree 0) ────
+    final rootRaw = rn.cast<Map>().firstWhere(
+      (raw) => raw['type']?.toString() == 'core',
+      orElse: () => rn.cast<Map>().firstWhere(
+        (raw) => !parentOf.containsKey(raw['id'].toString()),
+        orElse: () => rn.first as Map,
+      ),
     );
+    final rootId = rootRaw['id'].toString();
 
-    for (int i = 0; i < firstLevel.length; i++) {
-      final nodeId = firstLevel[i];
-      final angle = (i * 2 * math.pi / firstLevel.length) - math.pi / 2;
-      final branchCenter = Offset(
-        center.dx + math.cos(angle) * branchRadius,
-        center.dy + math.sin(angle) * branchRadius,
-      );
-      final childIds = childrenBySource[nodeId] ?? [];
-
-      ns.add(
-        _GraphNodeLayout(
-          id: nodeId,
-          label: nodesById[nodeId]?['label']?.toString() ?? '',
-          description: nodesById[nodeId]?['description']?.toString() ?? '',
-          type: nodesById[nodeId]?['type']?.toString() ?? 'branch',
-          group: nodesById[nodeId]?['group']?.toString() ?? '',
-          rect: Rect.fromCenter(
-            center: _savedOffset(nodesById[nodeId], branchCenter),
-            width: 204,
-            height: 164,
-          ),
-          style: _GraphCardStyle.branch,
-        ),
-      );
-
-      final clusterBase =
-          branchCenter + Offset(math.cos(angle) * 180, math.sin(angle) * 130);
-
-      for (int j = 0; j < childIds.length; j++) {
-        final childId = childIds[j];
-        final lane = j % 4;
-        final column = j ~/ 4;
-        final dx =
-            (lane - 1.5) * 96 +
-            column *
-                14 *
-                (math.cos(angle).sign == 0 ? 1 : math.cos(angle).sign);
-        final dy = column * 118 + (lane.isEven ? -18 : 18);
-        final position = Offset(clusterBase.dx + dx, clusterBase.dy + dy);
-        final grandChildren = childrenBySource[childId] ?? [];
-        final style = grandChildren.isEmpty
-            ? (j % 3 == 0 ? _GraphCardStyle.noteWide : _GraphCardStyle.note)
-            : _GraphCardStyle.subcluster;
-        final size = switch (style) {
-          _GraphCardStyle.noteWide => const Size(208, 132),
-          _GraphCardStyle.subcluster => const Size(148, 108),
-          _ => const Size(160, 118),
-        };
-
-        ns.add(
-          _GraphNodeLayout(
-            id: childId,
-            label: nodesById[childId]?['label']?.toString() ?? '',
-            description: nodesById[childId]?['description']?.toString() ?? '',
-            type: nodesById[childId]?['type']?.toString() ?? 'detail',
-            group: nodesById[childId]?['group']?.toString() ?? '',
-            rect: Rect.fromCenter(
-              center: _savedOffset(nodesById[childId], position),
-              width: size.width,
-              height: size.height,
-            ),
-            style: style,
-          ),
-        );
-
-        for (int k = 0; k < grandChildren.length; k++) {
-          final leafId = grandChildren[k];
-          final leafPosition = Offset(
-            position.dx + (k.isEven ? -72 : 72),
-            position.dy + 108 + (k ~/ 2) * 92,
-          );
-          ns.add(
-            _GraphNodeLayout(
-              id: leafId,
-              label: nodesById[leafId]?['label']?.toString() ?? '',
-              description: nodesById[leafId]?['description']?.toString() ?? '',
-              type: nodesById[leafId]?['type']?.toString() ?? 'detail',
-              group: nodesById[leafId]?['group']?.toString() ?? '',
-              rect: Rect.fromCenter(
-                center: _savedOffset(nodesById[leafId], leafPosition),
-                width: 166,
-                height: 124,
-              ),
-              style: k % 2 == 0
-                  ? _GraphCardStyle.note
-                  : _GraphCardStyle.subcluster,
-            ),
-          );
+    // ── 3. 깊이 맵 (BFS) ─────────────────────────────────────
+    final depthMap = <String, int>{rootId: 0};
+    final bfsQueue = [rootId];
+    while (bfsQueue.isNotEmpty) {
+      final id = bfsQueue.removeAt(0);
+      final d = depthMap[id]!;
+      for (final cid in (childrenMap[id] ?? [])) {
+        if (!depthMap.containsKey(cid)) {
+          depthMap[cid] = d + 1;
+          bfsQueue.add(cid);
         }
       }
     }
 
+    // ── 4. 노드 스타일 & 반변 계산 ───────────────────────────
+    final styleMap = <String, _GraphCardStyle>{
+      for (final id in nodesById.keys)
+        id: _styleForDepth(depthMap[id] ?? 2),
+    };
+    final halfSide = <String, double>{
+      for (final id in nodesById.keys)
+        id: _nodeHalfSide(styleMap[id]!),
+    };
+
+    // ── 5. 바텀업: 서브트리 경계 계산 ───────────────────────
+    final boundary = _computeBoundaries(rootId, childrenMap, halfSide);
+
+    // ── 6. 탑다운: 노드 위치 배정 (root = 0,0) ───────────────
+    final relativePositions = _placeNodes(rootId, childrenMap, halfSide, boundary);
+
+    // ── 7. 보드 크기 계산 & 루트를 보드 중앙으로 이동 ────────
+    const margin = 200.0;
+    double minX = 0, minY = 0, maxX = 0, maxY = 0;
+    for (final pos in relativePositions.values) {
+      minX = math.min(minX, pos.dx);
+      minY = math.min(minY, pos.dy);
+      maxX = math.max(maxX, pos.dx);
+      maxY = math.max(maxY, pos.dy);
+    }
+
+    final treeW = maxX - minX + margin * 2;
+    final treeH = maxY - minY + margin * 2;
+    final boardW = math.max(2200.0, treeW);
+    final boardH = math.max(1400.0, treeH);
+    _boardSize = Size(boardW, boardH);
+
+    final centerX = boardW / 2;
+    final centerY = boardH / 2;
+
+    // ── 8. GraphNodeLayout 생성 ───────────────────────────────
+    for (final entry in relativePositions.entries) {
+      final id = entry.key;
+      final rawNode = nodesById[id];
+      if (rawNode == null) continue;
+
+      final computedPos = Offset(centerX + entry.value.dx, centerY + entry.value.dy);
+      final finalPos = _savedOffset(rawNode, computedPos);
+
+      final style = styleMap[id] ?? _GraphCardStyle.note;
+      final size = _sizeForStyle(style);
+
+      ns.add(
+        _GraphNodeLayout(
+          id: id,
+          label: rawNode['label']?.toString() ?? '',
+          description: rawNode['description']?.toString() ?? '',
+          type: rawNode['type']?.toString() ?? 'detail',
+          group: rawNode['group']?.toString() ?? '',
+          rect: Rect.fromCenter(
+            center: finalPos,
+            width: size.width,
+            height: size.height,
+          ),
+          style: style,
+        ),
+      );
+    }
+
+    // ── 9. 그래프에 연결되지 않은 고아 노드 처리 ─────────────
     for (final raw in rn) {
       final node = raw as Map<String, dynamic>;
       final id = node['id'].toString();
-      if (ns.any((element) => element.id == id)) continue;
-      final column = ns.length % 5;
+      if (ns.any((n) => n.id == id)) continue;
+      final col = ns.length % 5;
       final row = ns.length ~/ 5;
       ns.add(
         _GraphNodeLayout(
@@ -6633,15 +6725,12 @@ class _GCS extends State<_GraphCanvas> {
           description: node['description']?.toString() ?? '',
           type: node['type']?.toString() ?? 'detail',
           group: node['group']?.toString() ?? '',
-          rect: Rect.fromLTWH(
-            (node['x'] as num?)?.toDouble() ?? 1600 + column * 150,
-            (node['y'] as num?)?.toDouble() ?? 160 + row * 120,
-            164,
-            122,
+          rect: Rect.fromCenter(
+            center: _savedOffset(node, Offset(boardW - 400 + col * 170.0, 180 + row * 130.0)),
+            width: 136,
+            height: 104,
           ),
-          style: indegree[id] == null
-              ? _GraphCardStyle.branch
-              : _GraphCardStyle.note,
+          style: _GraphCardStyle.note,
         ),
       );
     }
@@ -6698,10 +6787,10 @@ class _GCS extends State<_GraphCanvas> {
     final viewSize = box?.size ?? const Size(800, 600);
     final scale = math
         .min(
-          (viewSize.width / _boardSize.width) * 0.92,
-          (viewSize.height / _boardSize.height) * 0.92,
+          (viewSize.width / _boardSize.width) * 0.90,
+          (viewSize.height / _boardSize.height) * 0.90,
         )
-        .clamp(0.42, 0.82);
+        .clamp(0.18, 0.90);
     _controller.value = Matrix4.identity()
       ..translateByDouble(
         (viewSize.width - _boardSize.width * scale) / 2,
