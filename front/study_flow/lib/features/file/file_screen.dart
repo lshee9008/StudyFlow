@@ -6439,11 +6439,12 @@ class _GraphCanvas extends StatefulWidget {
 }
 
 class _GCS extends State<_GraphCanvas> {
-  Size _boardSize = const Size(2200, 1400);
+  Size _boardSize = const Size(3000, 2000);
   late final TransformationController _controller;
   List<_GraphNodeLayout> ns = [];
   List<_GE> es = [];
   String? _connectSourceId;
+  bool _isTreeLayout = false;
 
   @override
   void initState() {
@@ -6468,11 +6469,11 @@ class _GCS extends State<_GraphCanvas> {
   // ── 분할 레벨-정다각형법 ─────────────────────────────────────
   // 노드 물리 크기(반변) — 경계 충돌 판정에 사용
   static double _nodeHalfSide(_GraphCardStyle style) => switch (style) {
-    _GraphCardStyle.core      => 96.0,
-    _GraphCardStyle.branch    => 80.0,
-    _GraphCardStyle.subcluster => 68.0,
-    _GraphCardStyle.noteWide  => 68.0,
-    _GraphCardStyle.note      => 60.0,
+    _GraphCardStyle.core      => 140.0,
+    _GraphCardStyle.branch    => 112.0,
+    _GraphCardStyle.subcluster => 94.0,
+    _GraphCardStyle.noteWide  => 94.0,
+    _GraphCardStyle.note      => 84.0,
   };
 
   static _GraphCardStyle _styleForDepth(int depth) {
@@ -6483,11 +6484,11 @@ class _GCS extends State<_GraphCanvas> {
   }
 
   static Size _sizeForStyle(_GraphCardStyle style) => switch (style) {
-    _GraphCardStyle.core       => const Size(192, 148),
-    _GraphCardStyle.branch     => const Size(168, 132),
-    _GraphCardStyle.subcluster => const Size(144, 112),
-    _GraphCardStyle.noteWide   => const Size(160, 116),
-    _GraphCardStyle.note       => const Size(136, 104),
+    _GraphCardStyle.core       => const Size(280, 210),
+    _GraphCardStyle.branch     => const Size(224, 174),
+    _GraphCardStyle.subcluster => const Size(188, 148),
+    _GraphCardStyle.noteWide   => const Size(200, 156),
+    _GraphCardStyle.note       => const Size(170, 134),
   };
 
   /// 바텀업: 각 노드의 서브트리 경계 반지름을 계산한다.
@@ -6595,6 +6596,49 @@ class _GCS extends State<_GraphCanvas> {
     return positions;
   }
 
+  /// 수평 계층 트리 배치 (루트 좌측, 리프 우측)
+  /// 서브트리 높이를 리프 수로 결정해 부모를 자식들 중앙에 놓는다.
+  static Map<String, Offset> _placeTreeNodes(
+    String rootId,
+    Map<String, List<String>> childrenMap,
+  ) {
+    const xStep = 330.0; // 레벨 간 수평 간격
+    const yUnit = 170.0; // 리프 1개당 세로 높이
+
+    // Step 1: 서브트리 내 리프 수 카운트 (바텀업)
+    final leafCount = <String, int>{};
+    final visited0 = <String>{};
+    void countLeaves(String id) {
+      if (visited0.contains(id)) return;
+      visited0.add(id);
+      final ch = childrenMap[id] ?? [];
+      if (ch.isEmpty) { leafCount[id] = 1; return; }
+      for (final c in ch) countLeaves(c);
+      leafCount[id] = ch.fold(0, (s, c) => s + (leafCount[c] ?? 1));
+    }
+    countLeaves(rootId);
+
+    // Step 2: 탑다운으로 위치 배정
+    final positions = <String, Offset>{};
+    final visited1 = <String>{};
+    void place(String id, int depth, double yTop) {
+      if (visited1.contains(id)) return;
+      visited1.add(id);
+      final lc = leafCount[id] ?? 1;
+      final yCenter = yTop + lc * yUnit / 2;
+      positions[id] = Offset(depth * xStep, yCenter);
+      final children = childrenMap[id] ?? [];
+      double y = yTop;
+      for (final cid in children) {
+        place(cid, depth + 1, y);
+        y += (leafCount[cid] ?? 1) * yUnit;
+      }
+    }
+    final totalLeaves = leafCount[rootId] ?? 1;
+    place(rootId, 0, -totalLeaves * yUnit / 2);
+    return positions;
+  }
+
   void _build() {
     ns.clear();
     es.clear();
@@ -6657,11 +6701,14 @@ class _GCS extends State<_GraphCanvas> {
         id: _nodeHalfSide(styleMap[id]!),
     };
 
-    // ── 5. 바텀업: 서브트리 경계 계산 ───────────────────────
-    final boundary = _computeBoundaries(rootId, childrenMap, halfSide);
-
-    // ── 6. 탑다운: 노드 위치 배정 (root = 0,0) ───────────────
-    final relativePositions = _placeNodes(rootId, childrenMap, halfSide, boundary);
+    // ── 5&6. 레이아웃 모드에 따라 위치 배정 ─────────────────
+    final Map<String, Offset> relativePositions;
+    if (_isTreeLayout) {
+      relativePositions = _placeTreeNodes(rootId, childrenMap);
+    } else {
+      final boundary = _computeBoundaries(rootId, childrenMap, halfSide);
+      relativePositions = _placeNodes(rootId, childrenMap, halfSide, boundary);
+    }
 
     // ── 7. 보드 크기 계산 & 루트를 보드 중앙으로 이동 ────────
     const margin = 200.0;
@@ -6675,8 +6722,8 @@ class _GCS extends State<_GraphCanvas> {
 
     final treeW = maxX - minX + margin * 2;
     final treeH = maxY - minY + margin * 2;
-    final boardW = math.max(2200.0, treeW);
-    final boardH = math.max(1400.0, treeH);
+    final boardW = math.max(3200.0, treeW);
+    final boardH = math.max(2200.0, treeH);
     _boardSize = Size(boardW, boardH);
 
     final centerX = boardW / 2;
@@ -6846,9 +6893,9 @@ class _GCS extends State<_GraphCanvas> {
       children: [
         InteractiveViewer(
           constrained: false,
-          boundaryMargin: const EdgeInsets.all(280),
-          minScale: 0.36,
-          maxScale: 1.8,
+          boundaryMargin: const EdgeInsets.all(400),
+          minScale: 0.14,
+          maxScale: 4.0,
           transformationController: _controller,
           child: SizedBox(
             width: _boardSize.width,
@@ -6858,7 +6905,7 @@ class _GCS extends State<_GraphCanvas> {
                 const Positioned.fill(child: _GraphBoardBackground()),
                 Positioned.fill(
                   child: CustomPaint(
-                    painter: _GraphBoardPainter(nodes: ns, es: es),
+                    painter: _GraphBoardPainter(nodes: ns, es: es, isTree: _isTreeLayout),
                   ),
                 ),
                 ...ns.map(
@@ -6980,6 +7027,18 @@ class _GCS extends State<_GraphCanvas> {
               ),
               const SizedBox(height: 8),
               _GraphToolbarButton(
+                icon: _isTreeLayout ? LucideIcons.share2 : LucideIcons.gitBranch,
+                label: _isTreeLayout ? '방사형' : '트리형',
+                onTap: () => setState(() {
+                  _isTreeLayout = !_isTreeLayout;
+                  _build();
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _fitBoard();
+                  });
+                }),
+              ),
+              const SizedBox(height: 8),
+              _GraphToolbarButton(
                 icon: LucideIcons.rotateCcw,
                 label: '정렬',
                 onTap: _resetLayout,
@@ -7065,15 +7124,20 @@ class _GE {
 class _GraphBoardPainter extends CustomPainter {
   final List<_GraphNodeLayout> nodes;
   final List<_GE> es;
-  const _GraphBoardPainter({required this.nodes, required this.es});
+  final bool isTree;
+  const _GraphBoardPainter({required this.nodes, required this.es, this.isTree = false});
 
   @override
   void paint(Canvas c, Size s) {
     final nodeMap = {for (final node in nodes) node.id: node};
-    final basePaint = Paint()
-      ..strokeWidth = 1.4
+
+    final linePaint = Paint()
+      ..strokeWidth = 1.6
       ..style = PaintingStyle.stroke
-      ..color = _bdr.withValues(alpha: 0.8);
+      ..strokeCap = StrokeCap.round
+      ..color = Colors.white.withValues(alpha: 0.14);
+
+    final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.55);
 
     for (final e in es) {
       final a = nodeMap[e.s];
@@ -7082,31 +7146,41 @@ class _GraphBoardPainter extends CustomPainter {
 
       final start = a.rect.center;
       final end = b.rect.center;
-      final dx = (end.dx - start.dx).abs();
-      final path = Path()
-        ..moveTo(start.dx, start.dy)
-        ..cubicTo(
-          start.dx + math.max(50, dx * 0.25),
-          start.dy,
-          end.dx - math.max(50, dx * 0.25),
-          end.dy,
-          end.dx,
-          end.dy,
-        );
 
-      c.drawPath(path, basePaint);
-      final dashPaint = Paint()
-        ..strokeWidth = 1.0
-        ..style = PaintingStyle.stroke
-        ..color = _acc.withValues(alpha: 0.35);
-      c.drawCircle(end, 2.4, Paint()..color = _acc.withValues(alpha: 0.7));
-      c.drawPath(path, dashPaint);
+      if (isTree) {
+        // 트리 모드: 직각 엘보우 라인 (부모 오른쪽 → 자식 왼쪽)
+        final midX = (start.dx + end.dx) / 2;
+        final path = Path()
+          ..moveTo(start.dx, start.dy)
+          ..lineTo(midX, start.dy)
+          ..lineTo(midX, end.dy)
+          ..lineTo(end.dx, end.dy);
+        c.drawPath(path, linePaint);
+      } else {
+        // 방사형: 부드러운 곡선
+        final dx = (end.dx - start.dx).abs();
+        final ctrl = math.max(60.0, dx * 0.28);
+        final path = Path()
+          ..moveTo(start.dx, start.dy)
+          ..cubicTo(
+            start.dx + (end.dx > start.dx ? ctrl : -ctrl) * 0.5,
+            start.dy,
+            end.dx - (end.dx > start.dx ? ctrl : -ctrl) * 0.5,
+            end.dy,
+            end.dx,
+            end.dy,
+          );
+        c.drawPath(path, linePaint);
+      }
+
+      // 끝점 점
+      c.drawCircle(end, 3.0, dotPaint);
     }
   }
 
   @override
   bool shouldRepaint(covariant _GraphBoardPainter oldDelegate) =>
-      oldDelegate.nodes != nodes || oldDelegate.es != es;
+      oldDelegate.nodes != nodes || oldDelegate.es != es || oldDelegate.isTree != isTree;
 }
 
 class _GraphBoardBackground extends StatelessWidget {
@@ -7313,70 +7387,30 @@ class _GraphCard extends StatelessWidget {
     );
   }
 
+  // ── 스티키노트 팔레트 ───────────────────────────────────────
+  static const _coreGrad = LinearGradient(
+    colors: [Color(0xFF3D6AFF), Color(0xFF5E8BFF)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const _branchBg  = Color(0xFF6E3DD9); // 보라
+  static const _groupBg   = Color(0xFF0D9488); // 청록
+  static const _noteBg    = Color(0xFFF5C518); // 노란 스티키
+  static const _noteTxt   = Color(0xFF1C1000); // 노트 텍스트
+
   @override
   Widget build(BuildContext context) {
-    final config = switch (node.style) {
-      _GraphCardStyle.core => (
-        bg: _acc,
-        border: _acc,
-        text: Colors.white,
-        desc: Colors.white.withValues(alpha: 0.82),
-        radius: 22.0,
-        font: 16.0,
-        weight: FontWeight.w800,
-        pad: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        chip: 'CORE',
-        align: TextAlign.center,
-      ),
-      _GraphCardStyle.branch => (
-        bg: const Color(0xFF1A2740),
-        border: _acc.withValues(alpha: 0.38),
-        text: Colors.white,
-        desc: Colors.white.withValues(alpha: 0.78),
-        radius: 20.0,
-        font: 14.0,
-        weight: FontWeight.w700,
-        pad: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        chip: 'TOPIC',
-        align: TextAlign.center,
-      ),
-      _GraphCardStyle.subcluster => (
-        bg: const Color(0xFF171D2B),
-        border: _pur.withValues(alpha: 0.30),
-        text: _txt0,
-        desc: _txt1.withValues(alpha: 0.82),
-        radius: 12.0,
-        font: 11.0,
-        weight: FontWeight.w700,
-        pad: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        chip: 'GROUP',
-        align: TextAlign.center,
-      ),
-      _GraphCardStyle.noteWide => (
-        bg: const Color(0xFF141B29),
-        border: _acc.withValues(alpha: 0.20),
-        text: _txt0,
-        desc: _txt1.withValues(alpha: 0.86),
-        radius: 12.0,
-        font: 11.0,
-        weight: FontWeight.w600,
-        pad: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        chip: 'NOTE',
-        align: TextAlign.left,
-      ),
-      _GraphCardStyle.note => (
-        bg: const Color(0xFF121826),
-        border: _bdr.withValues(alpha: 0.95),
-        text: _txt0,
-        desc: _txt1.withValues(alpha: 0.84),
-        radius: 12.0,
-        font: 10.5,
-        weight: FontWeight.w600,
-        pad: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        chip: 'NOTE',
-        align: TextAlign.left,
-      ),
-    };
+    final isNote = node.style == _GraphCardStyle.note ||
+        node.style == _GraphCardStyle.noteWide;
+    final isCore = node.style == _GraphCardStyle.core;
+    final isBranch = node.style == _GraphCardStyle.branch;
+
+    // 연결 모드 강조 테두리
+    final connectBorder = isConnectSource
+        ? Border.all(color: Colors.white, width: 2.2)
+        : isConnectTarget
+            ? Border.all(color: Colors.white.withValues(alpha: 0.42), width: 1.4)
+            : null;
 
     return GestureDetector(
       onTap: onTapNode,
@@ -7384,120 +7418,249 @@ class _GraphCard extends StatelessWidget {
       onPanEnd: (_) => onMoveEnd(),
       onDoubleTap: () => _openEditor(context),
       onLongPress: () => _openEditor(context),
-      child: Container(
-        clipBehavior: Clip.hardEdge,
-        padding: config.pad,
-        decoration: BoxDecoration(
-          color: config.bg,
-          borderRadius: BorderRadius.circular(config.radius),
-          border: Border.all(
-            color: isConnectSource
-                ? _acc
-                : isConnectTarget
-                ? _acc.withValues(alpha: 0.4)
-                : config.border,
-            width: isConnectSource ? 1.6 : 1.0,
+      child: isNote
+          ? _buildNoteCard(context, connectBorder)
+          : _buildColorCard(context, isCore, isBranch, connectBorder),
+    );
+  }
+
+  /// ── 색상 카드 (Core / Branch / Subcluster) ───────────────
+  Widget _buildColorCard(
+    BuildContext context,
+    bool isCore,
+    bool isBranch,
+    Border? connectBorder,
+  ) {
+    final bg = isCore ? null : (isBranch ? _branchBg : _groupBg);
+    final textColor = Colors.white;
+    final descColor = Colors.white.withValues(alpha: 0.80);
+    final radius = isCore ? 24.0 : isBranch ? 20.0 : 16.0;
+    final labelSize = isCore ? 19.0 : isBranch ? 14.5 : 12.5;
+    final descSize  = isCore ? 12.5 : 11.0;
+    final pad = isCore
+        ? const EdgeInsets.fromLTRB(20, 16, 20, 16)
+        : const EdgeInsets.fromLTRB(16, 13, 16, 13);
+
+    return Container(
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: bg,
+        gradient: isCore ? _coreGrad : null,
+        borderRadius: BorderRadius.circular(radius),
+        border: connectBorder,
+        boxShadow: [
+          BoxShadow(
+            color: (isCore
+                    ? const Color(0xFF3D6AFF)
+                    : isBranch
+                        ? _branchBg
+                        : _groupBg)
+                .withValues(alpha: 0.35),
+            blurRadius: isCore ? 28 : 18,
+            offset: const Offset(0, 8),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.16),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // 편집 버튼
+          Positioned(
+            top: 8,
+            right: 8,
+            child: GestureDetector(
+              onTap: () => _openEditor(context),
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.pencil, size: 12, color: Colors.white70),
+              ),
             ),
-          ],
-        ),
-        child: SingleChildScrollView(
-          physics: const NeverScrollableScrollPhysics(),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment:
-                node.style == _GraphCardStyle.note ||
-                    node.style == _GraphCardStyle.noteWide
-                ? CrossAxisAlignment.start
-                : CrossAxisAlignment.center,
-            children: [
-              Row(
-                mainAxisAlignment:
-                    node.style == _GraphCardStyle.note ||
-                        node.style == _GraphCardStyle.noteWide
-                    ? MainAxisAlignment.spaceBetween
-                    : MainAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      alignment:
-                          node.style == _GraphCardStyle.note ||
-                              node.style == _GraphCardStyle.noteWide
-                          ? WrapAlignment.start
-                          : WrapAlignment.center,
-                      children: [
-                        _GraphMetaChip(label: config.chip, color: config.text),
-                        if (node.group.trim().isNotEmpty)
-                          _GraphMetaChip(
-                            label: node.group,
-                            color: config.text.withValues(alpha: 0.84),
-                          ),
-                      ],
+          ),
+          // 내용
+          Padding(
+            padding: pad,
+            child: Column(
+              crossAxisAlignment: isCore
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
+              children: [
+                // 타입 태그
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    isCore ? 'CORE' : isBranch ? 'TOPIC' : 'GROUP',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () => _openEditor(context),
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                      ),
-                      child: Icon(
-                        LucideIcons.pencil,
-                        size: 12,
-                        color: config.text.withValues(alpha: 0.7),
-                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  node.label,
+                  maxLines: isCore ? 4 : 3,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: isCore ? TextAlign.center : TextAlign.left,
+                  style: GoogleFonts.inter(
+                    color: textColor,
+                    fontSize: labelSize,
+                    fontWeight: isCore ? FontWeight.w800 : FontWeight.w700,
+                    height: 1.3,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                if (node.description.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    node.description,
+                    maxLines: isCore ? 5 : 3,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: isCore ? TextAlign.center : TextAlign.left,
+                    style: GoogleFonts.inter(
+                      color: descColor,
+                      fontSize: descSize,
+                      fontWeight: FontWeight.w500,
+                      height: 1.45,
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                node.label,
-                maxLines: node.style == _GraphCardStyle.core ? 5 : 4,
-                overflow: TextOverflow.ellipsis,
-                textAlign: config.align,
-                style: GoogleFonts.inter(
-                  color: config.text,
-                  fontSize: config.font,
-                  fontWeight: config.weight,
-                  height: 1.35,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              if (node.description.trim().isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  node.description,
-                  maxLines: node.style == _GraphCardStyle.core ? 6 : 4,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: config.align,
-                  style: GoogleFonts.inter(
-                    color: config.desc,
-                    fontSize: node.style == _GraphCardStyle.note ? 9.5 : 10.5,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                ),
               ],
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
+
+  /// ── 스티키노트 카드 (Note / Detail) ──────────────────────
+  Widget _buildNoteCard(BuildContext context, Border? connectBorder) {
+    const foldSize = 28.0;
+    return Container(
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: _noteBg,
+        borderRadius: BorderRadius.circular(10),
+        border: connectBorder,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 4,
+            offset: const Offset(2, 2),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // 접힌 모서리 효과
+          Positioned(
+            top: 0,
+            right: 0,
+            child: CustomPaint(
+              size: const Size(foldSize, foldSize),
+              painter: _StickyFoldPainter(),
+            ),
+          ),
+          // 편집 버튼
+          Positioned(
+            bottom: 6,
+            right: 6,
+            child: GestureDetector(
+              onTap: () => _openEditor(context),
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: _noteTxt.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(LucideIcons.pencil, size: 11,
+                    color: _noteTxt.withValues(alpha: 0.5)),
+              ),
+            ),
+          ),
+          // 내용
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, foldSize + 4, 30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  node.label,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    color: _noteTxt,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                if (node.description.trim().isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    node.description,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      color: _noteTxt.withValues(alpha: 0.70),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w500,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 스티키노트 접힌 모서리 페인터
+class _StickyFoldPainter extends CustomPainter {
+  const _StickyFoldPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 어두운 삼각형 (접힌 부분 그림자)
+    final shadow = Paint()..color = const Color(0xFFCCA010);
+    final shadowPath = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(shadowPath, shadow);
+
+    // 밝은 삼각형 (들린 종이 느낌)
+    final lift = Paint()..color = Colors.white.withValues(alpha: 0.22);
+    final liftPath = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(liftPath, lift);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
 class _GraphToolbarButton extends StatelessWidget {

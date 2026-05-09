@@ -1148,29 +1148,33 @@ async def graph(req: GraphReq):
 
     p = (
         f"{context_hint}"
-        f"텍스트:\n{text[:5000]}\n\n"
-        "아래 학습 내용을 마인드맵 지식 그래프로 변환하세요.\n"
+        f"텍스트:\n{text[:12000]}\n\n"
+        "아래 학습 내용을 상세한 마인드맵 지식 그래프로 변환하세요.\n"
         "반드시 순수 JSON 객체만 출력하고 설명, 마크다운, 코드블록은 출력하지 마세요.\n\n"
         '{"nodes":['
         '{"id":"root","label":"주제","description":"한 줄 설명","type":"core"},'
-        '{"id":"n1","label":"핵심개념1","description":"한 줄 설명","type":"branch"},'
-        '{"id":"n2","label":"세부개념1","description":"한 줄 설명","type":"detail"}'
+        '{"id":"b1","label":"핵심개념1","description":"한 줄 설명","type":"branch"},'
+        '{"id":"b2","label":"핵심개념2","description":"한 줄 설명","type":"branch"},'
+        '{"id":"d1","label":"세부개념1","description":"한 줄 설명","type":"detail"},'
+        '{"id":"d2","label":"세부개념2","description":"한 줄 설명","type":"detail"}'
         '],"edges":['
-        '{"source":"root","target":"n1","label":"포함"},'
-        '{"source":"n1","target":"n2","label":"구성"}'
+        '{"source":"root","target":"b1","label":"포함"},'
+        '{"source":"root","target":"b2","label":"포함"},'
+        '{"source":"b1","target":"d1","label":"구성"},'
+        '{"source":"b1","target":"d2","label":"구성"}'
         "]}\n\n"
         "규칙:\n"
-        "- type: core(루트 1개) / branch(핵심 3~5개) / detail(세부)\n"
-        "- 노트의 큰 제목/단원을 branch로 만들고, 하위 개념을 detail로 만들기\n"
+        "- type: core(루트 1개) / branch(핵심 5~10개) / detail(세부)\n"
+        "- 노트의 큰 제목·단원·챕터를 branch로, 세부 개념·용어·정의를 detail로 만들기\n"
         "- 반드시 root → branch → detail 계층 연결\n"
-        "- 노드 8~16개, 엣지 7개 이상 생성\n"
-        "- description은 35자 이내 한 줄\n"
-        "- id는 영문+숫자 조합 (root, n1, n2 ...)\n"
+        "- 노드 25~50개, 엣지 24개 이상 풍부하게 생성 (문서 내용을 최대한 반영)\n"
+        "- description은 40자 이내 한 줄\n"
+        "- id는 영문+숫자 조합 (root, b1, b2, d1, d2 ...)\n"
         "- 중복 id 금지"
     )
 
     try:
-        raw = await _llm(p, temp=0.12, tokens=2400)
+        raw = await _llm(p, temp=0.12, tokens=6000)
         raw = raw.replace("```json", "").replace("```", "").strip()
         s, e = raw.find("{"), raw.rfind("}")
         if s == -1 or e == -1 or e <= s:
