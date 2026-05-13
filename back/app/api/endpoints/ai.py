@@ -378,10 +378,16 @@ def _normalize_graph_payload(nodes, edges, text: str):
             node_id = f"{node_id}_{i}"
         seen_ids.add(node_id)
         group = str(node.get("group") or "").strip()
+        import re as _re
+        def _strip_md(s: str) -> str:
+            s = _re.sub(r'\*{1,3}', '', s)
+            s = _re.sub(r'_{1,3}', '', s)
+            s = _re.sub(r'^#+\s*', '', s, flags=_re.MULTILINE)
+            return s.strip(' `')
         clean_nodes.append({
             "id": node_id,
-            "label": label[:80],
-            "description": str(node.get("description") or "").strip()
+            "label": _strip_md(label)[:80],
+            "description": _strip_md(str(node.get("description") or "").strip())
             or _infer_node_description(text, label, group),
             "type": _normalize_node_type(str(node.get("type") or "detail")),
             "group": group[:40],

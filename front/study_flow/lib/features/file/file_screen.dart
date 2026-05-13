@@ -6596,6 +6596,14 @@ class _GCS extends State<_GraphCanvas> {
     return positions;
   }
 
+  /// 마크다운 심볼 제거 (**bold**, *italic*, #heading 등)
+  static String _stripMd(String s) => s
+      .replaceAll(RegExp(r'\*{1,3}'), '')
+      .replaceAll(RegExp(r'_{1,3}'), '')
+      .replaceAll(RegExp(r'^#+\s*', multiLine: true), '')
+      .replaceAll(RegExp(r'`'), '')
+      .trim();
+
   /// 수평 계층 트리 배치 (루트 좌측, 리프 우측)
   /// 서브트리 높이를 리프 수로 결정해 부모를 자식들 중앙에 놓는다.
   static Map<String, Offset> _placeTreeNodes(
@@ -6744,8 +6752,8 @@ class _GCS extends State<_GraphCanvas> {
       ns.add(
         _GraphNodeLayout(
           id: id,
-          label: rawNode['label']?.toString() ?? '',
-          description: rawNode['description']?.toString() ?? '',
+          label: _stripMd(rawNode['label']?.toString() ?? ''),
+          description: _stripMd(rawNode['description']?.toString() ?? ''),
           type: rawNode['type']?.toString() ?? 'detail',
           group: rawNode['group']?.toString() ?? '',
           rect: Rect.fromCenter(
@@ -6768,8 +6776,8 @@ class _GCS extends State<_GraphCanvas> {
       ns.add(
         _GraphNodeLayout(
           id: id,
-          label: node['label']?.toString() ?? '',
-          description: node['description']?.toString() ?? '',
+          label: _stripMd(node['label']?.toString() ?? ''),
+          description: _stripMd(node['description']?.toString() ?? ''),
           type: node['type']?.toString() ?? 'detail',
           group: node['group']?.toString() ?? '',
           rect: Rect.fromCenter(
