@@ -1137,27 +1137,32 @@ class GraphReq(BaseModel):
     summary: str = ""
 
 
-def _extract_mandatory_nodes(text: str) -> tuple[list[str], list[str]]:
-    """텍스트에서 헤딩과 굵은 텍스트를 추출해 반드시 포함할 노드 목록 반환."""
+def _extract_mandatory_nodes(text: str) -> tuple[list[str], list[str], list[str]]:
+    """텍스트에서 h1/h2 헤딩(branch), h3 소제목(subbranch), 굵은 텍스트(detail) 추출."""
     lines = text.splitlines()
-    headings = []
+    branches: list[str] = []   # ## → branch (root 직속, 최대 8개)
+    subbranches: list[str] = []  # ### → subbranch (branch 하위)
     for line in lines:
         line = line.strip()
-        m = re.match(r'^(#{1,3})\s+(.+)', line)
-        if m:
-            label = m.group(2).strip()
+        m2 = re.match(r'^#{1,2}\s+(.+)', line)
+        m3 = re.match(r'^###\s+(.+)', line)
+        if m3:
+            label = m3.group(1).strip()
             if label and len(label) <= 60:
-                headings.append(label)
+                subbranches.append(label)
+        elif m2:
+            label = m2.group(1).strip()
+            if label and len(label) <= 60:
+                branches.append(label)
     bold_terms = re.findall(r'\*\*([^*\n]{2,40})\*\*', text)
-    # 중복 제거
-    seen: set[str] = set()
+    seen: set[str] = set(branches + subbranches)
     unique_bold: list[str] = []
     for t in bold_terms:
         t = t.strip()
-        if t and t not in seen and t not in headings:
+        if t and t not in seen:
             seen.add(t)
             unique_bold.append(t)
-    return headings[:30], unique_bold[:40]
+    return branches[:8], subbranches[:20], unique_bold[:30]
 
 
 @router.post("/graph")
@@ -1175,50 +1180,56 @@ async def graph(req: GraphReq):
     if req.summary:
         context_hint += f"요약 참고:\n{req.summary[:800]}\n"
 
-    # 문서에서 헤딩·굵은텍스트 사전 추출 → 반드시 포함할 노드 목록
-    mandatory_headings, mandatory_bold = _extract_mandatory_nodes(text)
+    # 문서에서 계층별 노드 사전 추출
+    branches, subbranches, bold_terms = _extract_mandatory_nodes(text)
+
     mandatory_hint = ""
-    if mandatory_headings:
-        mandatory_hint += "【반드시 branch 노드로 만들 섹션 제목】\n"
-        for h in mandatory_headings:
+    if branches:
+        mandatory_hint += "【root 직속 branch 노드 (최대 8개, 반드시 포함)】\n"
+        for h in branches:
             mandatory_hint += f"  - {h}\n"
         mandatory_hint += "\n"
-    if mandatory_bold:
-        mandatory_hint += "【반드시 detail 노드로 만들 핵심 개념】\n"
-        for b in mandatory_bold[:25]:
+    if subbranches:
+        mandatory_hint += "【branch 하위 subbranch 노드 (반드시 포함, 가장 가까운 branch에 연결)】\n"
+        for h in subbranches:
+            mandatory_hint += f"  - {h}\n"
+        mandatory_hint += "\n"
+    if bold_terms:
+        mandatory_hint += "【detail 노드로 만들 핵심 개념 (subbranch 또는 branch 하위에 연결)】\n"
+        for b in bold_terms[:20]:
             mandatory_hint += f"  - {b}\n"
         mandatory_hint += "\n"
 
-    target_count = max(40, len(mandatory_headings) + len(mandatory_bold) + 5)
+    target_count = max(30, len(branches) + len(subbranches) + len(bold_terms) + 3)
 
     p = (
         f"{context_hint}"
         f"텍스트:\n{text[:20000]}\n\n"
         f"{mandatory_hint}"
-        f"위 학습 내용을 마인드맵 지식 그래프 JSON으로 변환하세요.\n"
+        "위 학습 내용을 마인드맵 지식 그래프 JSON으로 변환하세요.\n"
         "반드시 순수 JSON 객체만 출력하고 설명, 마크다운, 코드블록은 출력하지 마세요.\n\n"
         '{"nodes":['
         '{"id":"root","label":"주제","description":"한 줄 설명","type":"core"},'
-        '{"id":"b1","label":"핵심개념1","description":"한 줄 설명","type":"branch"},'
-        '{"id":"b2","label":"핵심개념2","description":"한 줄 설명","type":"branch"},'
+        '{"id":"b1","label":"대섹션1","description":"한 줄 설명","type":"branch"},'
+        '{"id":"b2","label":"대섹션2","description":"한 줄 설명","type":"branch"},'
+        '{"id":"s1","label":"소섹션1","description":"한 줄 설명","type":"branch"},'
         '{"id":"d1","label":"세부개념1","description":"한 줄 설명","type":"detail"},'
         '{"id":"d2","label":"세부개념2","description":"한 줄 설명","type":"detail"}'
         '],"edges":['
         '{"source":"root","target":"b1","label":"포함"},'
         '{"source":"root","target":"b2","label":"포함"},'
-        '{"source":"b1","target":"d1","label":"구성"},'
-        '{"source":"b1","target":"d2","label":"구성"}'
+        '{"source":"b1","target":"s1","label":"구성"},'
+        '{"source":"s1","target":"d1","label":"구성"},'
+        '{"source":"b2","target":"d2","label":"구성"}'
         "]}\n\n"
-        "규칙:\n"
-        "- type: core(루트 1개) / branch(섹션 제목) / detail(세부 개념·용어)\n"
-        "- 위 【반드시 포함할 노드】를 하나도 빠짐없이 포함할 것 (절대 생략 금지)\n"
-        "- 추가로 본문에서 중요 개념·용어를 detail 노드로 더 추출할 것\n"
-        "- 반드시 root → branch → detail 계층 연결\n"
-        f"- 노드 반드시 {target_count}개 이상 생성\n"
-        "- 엣지는 모든 노드가 연결되도록 생성\n"
-        "- description은 40자 이내 한 줄\n"
-        "- id는 영문+숫자 조합 (root, b1, b2, d1, d2 ...)\n"
-        "- 중복 id 금지"
+        "【핵심 규칙】\n"
+        "1. root 직속 자식(branch)은 반드시 8개 이하 — 위 대섹션 목록만 root에 직접 연결\n"
+        "2. subbranch·detail은 반드시 해당 branch 하위에 연결 (root에 직접 연결 금지)\n"
+        "3. 위 【반드시 포함할 노드】를 하나도 빠짐없이 포함할 것\n"
+        "4. 추가로 본문에서 중요 개념을 detail 노드로 더 추출할 것\n"
+        f"5. 노드 총 {target_count}개 이상 생성\n"
+        "6. type은 core / branch / detail 세 가지만 사용\n"
+        "7. description은 40자 이내 한 줄, id 중복 금지"
     )
 
     try:

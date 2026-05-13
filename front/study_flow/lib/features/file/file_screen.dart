@@ -6374,7 +6374,7 @@ class _GCS extends State<_GraphCanvas> {
   List<_GE> es = [];
   String? _connectSourceId;
   String? _selectedNodeId;
-  bool _isTreeLayout = false;
+  bool _isTreeLayout = true;  // 기본값: 트리 레이아웃 (노드 많아도 보기 좋음)
 
   @override
   void initState() {
@@ -6540,8 +6540,10 @@ class _GCS extends State<_GraphCanvas> {
     String rootId,
     Map<String, List<String>> childrenMap,
   ) {
-    const xStep = 330.0; // 레벨 간 수평 간격
-    const yUnit = 170.0; // 리프 1개당 세로 높이
+    // 노드 수에 따라 간격 자동 조정
+    final totalNodes = childrenMap.values.fold(1, (s, l) => s + l.length);
+    final xStep = totalNodes > 40 ? 280.0 : 330.0;
+    final yUnit = totalNodes > 40 ? 130.0 : 170.0;
 
     // Step 1: 서브트리 내 리프 수 카운트 (바텀업)
     final leafCount = <String, int>{};
@@ -6796,7 +6798,11 @@ class _GCS extends State<_GraphCanvas> {
     );
     final box = context.findRenderObject() as RenderBox?;
     final viewSize = box?.size ?? const Size(800, 600);
-    const scale = 0.55;
+    // 노드 수에 따라 초기 zoom 자동 조정
+    final double scale = ns.length > 40 ? 0.28
+        : ns.length > 25 ? 0.38
+        : ns.length > 15 ? 0.48
+        : 0.55;
     _controller.value = Matrix4.identity()
       ..translateByDouble(
         viewSize.width / 2 - core.rect.center.dx * scale,
