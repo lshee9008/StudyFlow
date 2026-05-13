@@ -1137,6 +1137,29 @@ class GraphReq(BaseModel):
     summary: str = ""
 
 
+def _extract_mandatory_nodes(text: str) -> tuple[list[str], list[str]]:
+    """텍스트에서 헤딩과 굵은 텍스트를 추출해 반드시 포함할 노드 목록 반환."""
+    lines = text.splitlines()
+    headings = []
+    for line in lines:
+        line = line.strip()
+        m = re.match(r'^(#{1,3})\s+(.+)', line)
+        if m:
+            label = m.group(2).strip()
+            if label and len(label) <= 60:
+                headings.append(label)
+    bold_terms = re.findall(r'\*\*([^*\n]{2,40})\*\*', text)
+    # 중복 제거
+    seen: set[str] = set()
+    unique_bold: list[str] = []
+    for t in bold_terms:
+        t = t.strip()
+        if t and t not in seen and t not in headings:
+            seen.add(t)
+            unique_bold.append(t)
+    return headings[:30], unique_bold[:40]
+
+
 @router.post("/graph")
 async def graph(req: GraphReq):
     text = _extract_text_structured(req.content.strip())
@@ -1152,10 +1175,27 @@ async def graph(req: GraphReq):
     if req.summary:
         context_hint += f"요약 참고:\n{req.summary[:800]}\n"
 
+    # 문서에서 헤딩·굵은텍스트 사전 추출 → 반드시 포함할 노드 목록
+    mandatory_headings, mandatory_bold = _extract_mandatory_nodes(text)
+    mandatory_hint = ""
+    if mandatory_headings:
+        mandatory_hint += "【반드시 branch 노드로 만들 섹션 제목】\n"
+        for h in mandatory_headings:
+            mandatory_hint += f"  - {h}\n"
+        mandatory_hint += "\n"
+    if mandatory_bold:
+        mandatory_hint += "【반드시 detail 노드로 만들 핵심 개념】\n"
+        for b in mandatory_bold[:25]:
+            mandatory_hint += f"  - {b}\n"
+        mandatory_hint += "\n"
+
+    target_count = max(40, len(mandatory_headings) + len(mandatory_bold) + 5)
+
     p = (
         f"{context_hint}"
         f"텍스트:\n{text[:20000]}\n\n"
-        "아래 학습 내용을 매우 상세한 마인드맵 지식 그래프로 변환하세요.\n"
+        f"{mandatory_hint}"
+        f"위 학습 내용을 마인드맵 지식 그래프 JSON으로 변환하세요.\n"
         "반드시 순수 JSON 객체만 출력하고 설명, 마크다운, 코드블록은 출력하지 마세요.\n\n"
         '{"nodes":['
         '{"id":"root","label":"주제","description":"한 줄 설명","type":"core"},'
@@ -1170,20 +1210,19 @@ async def graph(req: GraphReq):
         '{"source":"b1","target":"d2","label":"구성"}'
         "]}\n\n"
         "규칙:\n"
-        "- type: core(루트 1개) / branch(핵심 섹션, 반드시 8개 이상) / detail(세부 개념)\n"
-        "- 문서의 모든 ## 섹션 제목과 ### 소제목을 빠짐없이 branch 노드로 만들 것\n"
-        "- **굵은 텍스트**, 용어 정의, 중요 개념을 detail 노드로 최대한 추출할 것\n"
+        "- type: core(루트 1개) / branch(섹션 제목) / detail(세부 개념·용어)\n"
+        "- 위 【반드시 포함할 노드】를 하나도 빠짐없이 포함할 것 (절대 생략 금지)\n"
+        "- 추가로 본문에서 중요 개념·용어를 detail 노드로 더 추출할 것\n"
         "- 반드시 root → branch → detail 계층 연결\n"
-        "- 노드 반드시 40개 이상 생성 (상한 없음, 문서 내용 최대 반영)\n"
-        "- 엣지는 노드 수 - 1 이상 반드시 생성\n"
+        f"- 노드 반드시 {target_count}개 이상 생성\n"
+        "- 엣지는 모든 노드가 연결되도록 생성\n"
         "- description은 40자 이내 한 줄\n"
         "- id는 영문+숫자 조합 (root, b1, b2, d1, d2 ...)\n"
-        "- 중복 id 금지\n"
-        "- 노드가 40개 미만이면 출력이 불완전한 것으로 간주함"
+        "- 중복 id 금지"
     )
 
     try:
-        raw = await _llm(p, temp=0.12, tokens=10000)
+        raw = await _llm(p, temp=0.12, tokens=12000)
         raw = raw.replace("```json", "").replace("```", "").strip()
         s, e = raw.find("{"), raw.rfind("}")
         if s == -1 or e == -1 or e <= s:
