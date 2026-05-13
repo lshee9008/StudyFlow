@@ -6316,7 +6316,7 @@ class _MindmapView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(28),
+    padding: const EdgeInsets.all(16),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6333,19 +6333,6 @@ class _MindmapView extends StatelessWidget {
             ),
             const Spacer(),
             if (_hasNodes) _TBtn(Icons.refresh_rounded, '재생성', _generate),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            _Stat('노트', '${st.blocks.length}개', Icons.article_outlined),
-            const SizedBox(width: 12),
-            _Stat(
-              '요약',
-              '${st.summaryBlocks.length}개',
-              Icons.bookmark_rounded,
-              accent: true,
-            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -6444,6 +6431,7 @@ class _GCS extends State<_GraphCanvas> {
   List<_GraphNodeLayout> ns = [];
   List<_GE> es = [];
   String? _connectSourceId;
+  String? _selectedNodeId;
   bool _isTreeLayout = false;
 
   @override
@@ -6452,7 +6440,7 @@ class _GCS extends State<_GraphCanvas> {
     _controller = TransformationController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _build();
-      if (mounted) _fitBoard();
+      if (mounted) _centerOnCore();
     });
   }
 
@@ -6812,29 +6800,31 @@ class _GCS extends State<_GraphCanvas> {
   }
 
   void _handleNodeTap(_GraphNodeLayout tappedNode) {
-    if (_connectSourceId == null) {
-      return;
-    }
+    if (_connectSourceId != null) {
+      if (_connectSourceId!.isEmpty) {
+        setState(() => _connectSourceId = tappedNode.id);
+        return;
+      }
 
-    if (_connectSourceId!.isEmpty) {
-      setState(() => _connectSourceId = tappedNode.id);
-      return;
-    }
+      final sourceId = _connectSourceId!;
+      if (sourceId == tappedNode.id || _edgeExists(sourceId, tappedNode.id)) {
+        setState(() => _connectSourceId = null);
+        return;
+      }
 
-    final sourceId = _connectSourceId!;
-    if (sourceId == tappedNode.id || _edgeExists(sourceId, tappedNode.id)) {
-      setState(() => _connectSourceId = null);
-      return;
+      widget.ref
+          .read(fileEditorProvider.notifier)
+          .connectGraphNodes(sourceId, tappedNode.id);
+      setState(() {
+        es.add(_GE(sourceId, tappedNode.id));
+        _connectSourceId = null;
+      });
+      widget.onChanged();
+    } else {
+      setState(() {
+        _selectedNodeId = _selectedNodeId == tappedNode.id ? null : tappedNode.id;
+      });
     }
-
-    widget.ref
-        .read(fileEditorProvider.notifier)
-        .connectGraphNodes(sourceId, tappedNode.id);
-    setState(() {
-      es.add(_GE(sourceId, tappedNode.id));
-      _connectSourceId = null;
-    });
-    widget.onChanged();
   }
 
   void _fitBoard() {
@@ -6854,6 +6844,67 @@ class _GCS extends State<_GraphCanvas> {
         1,
       )
       ..scaleByDouble(scale, scale, 1, 1);
+  }
+
+  void _centerOnCore() {
+    if (ns.isEmpty) { _fitBoard(); return; }
+    final core = ns.firstWhere(
+      (n) => n.style == _GraphCardStyle.core,
+      orElse: () => ns.first,
+    );
+    final box = context.findRenderObject() as RenderBox?;
+    final viewSize = box?.size ?? const Size(800, 600);
+    const scale = 0.55;
+    _controller.value = Matrix4.identity()
+      ..translateByDouble(
+        viewSize.width / 2 - core.rect.center.dx * scale,
+        viewSize.height / 2 - core.rect.center.dy * scale,
+        0, 1,
+      )
+      ..scaleByDouble(scale, scale, 1, 1);
+  }
+
+  void _zoomIn() {
+    final box = context.findRenderObject() as RenderBox?;
+    final viewSize = box?.size ?? const Size(800, 600);
+    final cx = viewSize.width / 2;
+    final cy = viewSize.height / 2;
+    final m = Matrix4.copy(_controller.value)
+      ..translate(cx, cy)
+      ..scale(1.25)
+      ..translate(-cx, -cy);
+    _controller.value = m;
+  }
+
+  void _zoomOut() {
+    final box = context.findRenderObject() as RenderBox?;
+    final viewSize = box?.size ?? const Size(800, 600);
+    final cx = viewSize.width / 2;
+    final cy = viewSize.height / 2;
+    final m = Matrix4.copy(_controller.value)
+      ..translate(cx, cy)
+      ..scale(0.8)
+      ..translate(-cx, -cy);
+    _controller.value = m;
+  }
+
+  void _addChildNode(String parentId) {
+    final parent = ns.firstWhere((n) => n.id == parentId, orElse: () => ns.first);
+    final angle = math.Random().nextDouble() * 2 * math.pi;
+    const r = 320.0;
+    final position = Offset(
+      parent.rect.center.dx + r * math.cos(angle),
+      parent.rect.center.dy + r * math.sin(angle),
+    );
+    widget.ref.read(fileEditorProvider.notifier).addGraphNode(
+      label: '새 노드',
+      description: '',
+      type: 'detail',
+      parentId: parentId,
+      x: position.dx,
+      y: position.dy,
+    );
+    widget.onChanged();
   }
 
   void _resetLayout() {
@@ -6899,159 +6950,165 @@ class _GCS extends State<_GraphCanvas> {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        InteractiveViewer(
-          constrained: false,
-          boundaryMargin: const EdgeInsets.all(400),
-          minScale: 0.14,
-          maxScale: 4.0,
-          transformationController: _controller,
-          child: SizedBox(
-            width: _boardSize.width,
-            height: _boardSize.height,
-            child: Stack(
-              children: [
-                const Positioned.fill(child: _GraphBoardBackground()),
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _GraphBoardPainter(nodes: ns, es: es, isTree: _isTreeLayout),
-                  ),
-                ),
-                ...ns.map(
-                  (node) => Positioned.fromRect(
-                    rect: node.rect,
-                    child: _GraphCard(
-                      node: node,
-                      parentId: _parentIdFor(node.id),
-                      nodes: ns,
-                      isConnectMode: _connectSourceId != null,
-                      isConnectSource: _connectSourceId == node.id,
-                      isConnectTarget:
-                          _connectSourceId != null &&
-                          _connectSourceId!.isNotEmpty &&
-                          _connectSourceId != node.id,
-                      onMove: (offset) {
-                        final center = node.rect.center + offset;
-                        widget.ref
-                            .read(fileEditorProvider.notifier)
-                            .updateGraphNode(
-                              node.id,
-                              x: center.dx,
-                              y: center.dy,
-                            );
-                        setState(() {
-                          final index = ns.indexWhere(
-                            (element) => element.id == node.id,
-                          );
-                          if (index != -1) {
-                            ns[index] = ns[index].copyWith(
-                              rect: Rect.fromCenter(
-                                center: center,
-                                width: node.rect.width,
-                                height: node.rect.height,
-                              ),
-                            );
-                          }
-                        });
-                      },
-                      onMoveEnd: widget.onChanged,
-                      onEdit: (label, description) {
-                        widget.ref
-                            .read(fileEditorProvider.notifier)
-                            .updateGraphNode(
-                              node.id,
-                              label: label,
-                              description: description,
-                            );
-                        setState(() {
-                          final index = ns.indexWhere(
-                            (element) => element.id == node.id,
-                          );
-                          if (index != -1) {
-                            ns[index] = ns[index].copyWith(
-                              label: label,
-                              description: description,
-                            );
-                          }
-                        });
-                        widget.onChanged();
-                      },
-                      onTapNode: () => _handleNodeTap(node),
-                      onEditMeta: ({type, group, parentId}) {
-                        widget.ref
-                            .read(fileEditorProvider.notifier)
-                            .updateGraphNodeMeta(
-                              node.id,
-                              type: type,
-                              group: group,
-                              parentId: parentId,
-                            );
-                        widget.onChanged();
-                      },
-                      onDelete: () {
-                        widget.ref
-                            .read(fileEditorProvider.notifier)
-                            .removeGraphNode(node.id);
-                        setState(() {
-                          ns.removeWhere((element) => element.id == node.id);
-                          es.removeWhere(
-                            (edge) => edge.s == node.id || edge.t == node.id,
-                          );
-                        });
-                        widget.onChanged();
-                      },
+        GestureDetector(
+          onTap: () => setState(() => _selectedNodeId = null),
+          child: InteractiveViewer(
+            constrained: false,
+            boundaryMargin: const EdgeInsets.all(400),
+            minScale: 0.14,
+            maxScale: 4.0,
+            transformationController: _controller,
+            child: SizedBox(
+              width: _boardSize.width,
+              height: _boardSize.height,
+              child: Stack(
+                children: [
+                  const Positioned.fill(child: _GraphBoardBackground()),
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _GraphBoardPainter(nodes: ns, es: es, isTree: _isTreeLayout),
                     ),
                   ),
-                ),
-              ],
+                  ...ns.map(
+                    (node) => Positioned.fromRect(
+                      rect: node.rect,
+                      child: _GraphCard(
+                        node: node,
+                        parentId: _parentIdFor(node.id),
+                        nodes: ns,
+                        isConnectMode: _connectSourceId != null,
+                        isConnectSource: _connectSourceId == node.id,
+                        isConnectTarget:
+                            _connectSourceId != null &&
+                            _connectSourceId!.isNotEmpty &&
+                            _connectSourceId != node.id,
+                        isSelected: _selectedNodeId == node.id,
+                        onSelect: () => _handleNodeTap(node),
+                        onAddChild: () => _addChildNode(node.id),
+                        onMove: (offset) {
+                          final center = node.rect.center + offset;
+                          widget.ref
+                              .read(fileEditorProvider.notifier)
+                              .updateGraphNode(
+                                node.id,
+                                x: center.dx,
+                                y: center.dy,
+                              );
+                          setState(() {
+                            final index = ns.indexWhere(
+                              (element) => element.id == node.id,
+                            );
+                            if (index != -1) {
+                              ns[index] = ns[index].copyWith(
+                                rect: Rect.fromCenter(
+                                  center: center,
+                                  width: node.rect.width,
+                                  height: node.rect.height,
+                                ),
+                              );
+                            }
+                          });
+                        },
+                        onMoveEnd: widget.onChanged,
+                        onEdit: (label, description) {
+                          widget.ref
+                              .read(fileEditorProvider.notifier)
+                              .updateGraphNode(
+                                node.id,
+                                label: label,
+                                description: description,
+                              );
+                          setState(() {
+                            final index = ns.indexWhere(
+                              (element) => element.id == node.id,
+                            );
+                            if (index != -1) {
+                              ns[index] = ns[index].copyWith(
+                                label: label,
+                                description: description,
+                              );
+                            }
+                          });
+                          widget.onChanged();
+                        },
+                        onTapNode: () => _handleNodeTap(node),
+                        onEditMeta: ({type, group, parentId}) {
+                          widget.ref
+                              .read(fileEditorProvider.notifier)
+                              .updateGraphNodeMeta(
+                                node.id,
+                                type: type,
+                                group: group,
+                                parentId: parentId,
+                              );
+                          widget.onChanged();
+                        },
+                        onDelete: () {
+                          widget.ref
+                              .read(fileEditorProvider.notifier)
+                              .removeGraphNode(node.id);
+                          setState(() {
+                            ns.removeWhere((element) => element.id == node.id);
+                            es.removeWhere(
+                              (edge) => edge.s == node.id || edge.t == node.id,
+                            );
+                            if (_selectedNodeId == node.id) _selectedNodeId = null;
+                          });
+                          widget.onChanged();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
         Positioned(
-          top: 14,
-          right: 14,
-          child: Column(
-            children: [
-              _GraphToolbarButton(
-                icon: LucideIcons.plus,
-                label: '노드',
-                onTap: _addNode,
+          bottom: 16,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+              decoration: BoxDecoration(
+                color: _bg3.withValues(alpha: 0.96),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _bdr),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 20, offset: const Offset(0, 8))],
               ),
-              const SizedBox(height: 8),
-              _GraphToolbarButton(
-                icon: LucideIcons.gitBranchPlus,
-                label: _connectSourceId == null
-                    ? '연결'
-                    : _connectSourceId!.isEmpty
-                    ? '출발 선택'
-                    : '도착 선택',
-                isActive: _connectSourceId != null,
-                onTap: _toggleConnectMode,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _PillBtn(icon: LucideIcons.plus, tip: '노드 추가', onTap: _addNode),
+                  const _PillDivider(),
+                  _PillBtn(icon: LucideIcons.zoomIn, tip: '확대', onTap: _zoomIn),
+                  _PillBtn(icon: LucideIcons.maximize2, tip: '화면 맞춤', onTap: _fitBoard),
+                  _PillBtn(icon: LucideIcons.zoomOut, tip: '축소', onTap: _zoomOut),
+                  const _PillDivider(),
+                  _PillBtn(
+                    icon: _isTreeLayout ? LucideIcons.share2 : LucideIcons.gitBranch,
+                    tip: _isTreeLayout ? '방사형으로 전환' : '트리형으로 전환',
+                    onTap: () => setState(() {
+                      _isTreeLayout = !_isTreeLayout;
+                      _build();
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _fitBoard();
+                      });
+                    }),
+                    isActive: _isTreeLayout,
+                  ),
+                  const _PillDivider(),
+                  _PillBtn(icon: LucideIcons.rotateCcw, tip: '레이아웃 재정렬', onTap: _resetLayout),
+                  _PillBtn(
+                    icon: LucideIcons.gitBranchPlus,
+                    tip: _connectSourceId == null ? '엣지 연결' : '연결 취소',
+                    isActive: _connectSourceId != null,
+                    onTap: _toggleConnectMode,
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              _GraphToolbarButton(
-                icon: LucideIcons.moveDiagonal2,
-                label: '맞춤',
-                onTap: _fitBoard,
-              ),
-              const SizedBox(height: 8),
-              _GraphToolbarButton(
-                icon: _isTreeLayout ? LucideIcons.share2 : LucideIcons.gitBranch,
-                label: _isTreeLayout ? '방사형' : '트리형',
-                onTap: () => setState(() {
-                  _isTreeLayout = !_isTreeLayout;
-                  _build();
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) _fitBoard();
-                  });
-                }),
-              ),
-              const SizedBox(height: 8),
-              _GraphToolbarButton(
-                icon: LucideIcons.rotateCcw,
-                label: '정렬',
-                onTap: _resetLayout,
-              ),
-            ],
+            ),
           ),
         ),
         if (_connectSourceId != null)
@@ -7227,6 +7284,9 @@ class _GraphCard extends StatelessWidget {
   final bool isConnectMode;
   final bool isConnectSource;
   final bool isConnectTarget;
+  final bool isSelected;
+  final VoidCallback onSelect;
+  final VoidCallback onAddChild;
   final void Function(Offset offset) onMove;
   final VoidCallback onMoveEnd;
   final VoidCallback onTapNode;
@@ -7241,6 +7301,9 @@ class _GraphCard extends StatelessWidget {
     required this.isConnectMode,
     required this.isConnectSource,
     required this.isConnectTarget,
+    this.isSelected = false,
+    required this.onSelect,
+    required this.onAddChild,
     required this.onMove,
     required this.onMoveEnd,
     required this.onTapNode,
@@ -7414,14 +7477,16 @@ class _GraphCard extends StatelessWidget {
     final isBranch = node.style == _GraphCardStyle.branch;
 
     // 연결 모드 강조 테두리
-    final connectBorder = isConnectSource
-        ? Border.all(color: Colors.white, width: 2.2)
-        : isConnectTarget
-            ? Border.all(color: Colors.white.withValues(alpha: 0.42), width: 1.4)
-            : null;
+    final Border? connectBorder = isSelected
+        ? Border.all(color: Colors.white, width: 2.0)
+        : isConnectSource
+            ? Border.all(color: Colors.white, width: 2.2)
+            : isConnectTarget
+                ? Border.all(color: Colors.white.withValues(alpha: 0.42), width: 1.4)
+                : null;
 
     return GestureDetector(
-      onTap: onTapNode,
+      onTap: onSelect,
       onPanUpdate: (details) => onMove(details.delta),
       onPanEnd: (_) => onMoveEnd(),
       onDoubleTap: () => _openEditor(context),
@@ -7469,83 +7534,74 @@ class _GraphCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
-        children: [
-          // 편집 버튼
-          Positioned(
-            top: 8,
-            right: 8,
-            child: GestureDetector(
-              onTap: () => _openEditor(context),
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: pad,
+        child: Column(
+          crossAxisAlignment: isCore
+              ? CrossAxisAlignment.center
+              : CrossAxisAlignment.start,
+          children: [
+            // 타입 태그
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                isCore ? 'CORE' : isBranch ? 'TOPIC' : 'GROUP',
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
                 ),
-                child: const Icon(LucideIcons.pencil, size: 12, color: Colors.white70),
               ),
             ),
-          ),
-          // 내용
-          Padding(
-            padding: pad,
-            child: Column(
-              crossAxisAlignment: isCore
-                  ? CrossAxisAlignment.center
-                  : CrossAxisAlignment.start,
-              children: [
-                // 타입 태그
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    isCore ? 'CORE' : isBranch ? 'TOPIC' : 'GROUP',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  node.label,
-                  maxLines: isCore ? 4 : 3,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: isCore ? TextAlign.center : TextAlign.left,
-                  style: GoogleFonts.inter(
-                    color: textColor,
-                    fontSize: labelSize,
-                    fontWeight: isCore ? FontWeight.w800 : FontWeight.w700,
-                    height: 1.3,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                if (node.description.trim().isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    node.description,
-                    maxLines: isCore ? 5 : 3,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: isCore ? TextAlign.center : TextAlign.left,
-                    style: GoogleFonts.inter(
-                      color: descColor,
-                      fontSize: descSize,
-                      fontWeight: FontWeight.w500,
-                      height: 1.45,
-                    ),
-                  ),
-                ],
-              ],
+            const SizedBox(height: 8),
+            Text(
+              node.label,
+              maxLines: isCore ? 4 : 3,
+              overflow: TextOverflow.ellipsis,
+              textAlign: isCore ? TextAlign.center : TextAlign.left,
+              style: GoogleFonts.inter(
+                color: textColor,
+                fontSize: labelSize,
+                fontWeight: isCore ? FontWeight.w800 : FontWeight.w700,
+                height: 1.3,
+                letterSpacing: -0.3,
+              ),
             ),
-          ),
-        ],
+            if (node.description.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                node.description,
+                maxLines: isCore ? 5 : 3,
+                overflow: TextOverflow.ellipsis,
+                textAlign: isCore ? TextAlign.center : TextAlign.left,
+                style: GoogleFonts.inter(
+                  color: descColor,
+                  fontSize: descSize,
+                  fontWeight: FontWeight.w500,
+                  height: 1.45,
+                ),
+              ),
+            ],
+            if (isSelected) ...[
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _CardActionBtn(icon: LucideIcons.pencil, label: '편집', onTap: () => _openEditor(context), color: Colors.white70),
+                  const SizedBox(width: 6),
+                  _CardActionBtn(icon: LucideIcons.plusCircle, label: '자식', onTap: onAddChild, color: Colors.white70),
+                  const SizedBox(width: 6),
+                  _CardActionBtn(icon: LucideIcons.trash2, label: '삭제', onTap: onDelete, color: Colors.red.withValues(alpha: 0.85)),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -7583,27 +7639,9 @@ class _GraphCard extends StatelessWidget {
               painter: _StickyFoldPainter(),
             ),
           ),
-          // 편집 버튼
-          Positioned(
-            bottom: 6,
-            right: 6,
-            child: GestureDetector(
-              onTap: () => _openEditor(context),
-              child: Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: _noteTxt.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Icon(LucideIcons.pencil, size: 11,
-                    color: _noteTxt.withValues(alpha: 0.5)),
-              ),
-            ),
-          ),
           // 내용
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, foldSize + 4, 30),
+            padding: EdgeInsets.fromLTRB(12, 10, foldSize + 4, isSelected ? 8 : 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -7631,6 +7669,19 @@ class _GraphCard extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                       height: 1.45,
                     ),
+                  ),
+                ],
+                if (isSelected) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _CardActionBtn(icon: LucideIcons.pencil, label: '편집', onTap: () => _openEditor(context), color: _noteTxt.withValues(alpha: 0.75)),
+                      const SizedBox(width: 6),
+                      _CardActionBtn(icon: LucideIcons.plusCircle, label: '자식', onTap: onAddChild, color: _noteTxt.withValues(alpha: 0.75)),
+                      const SizedBox(width: 6),
+                      _CardActionBtn(icon: LucideIcons.trash2, label: '삭제', onTap: onDelete, color: Colors.red.shade700),
+                    ],
                   ),
                 ],
               ],
@@ -7669,6 +7720,69 @@ class _StickyFoldPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+/// 하단 pill 툴바 아이콘 버튼
+class _PillBtn extends StatelessWidget {
+  final IconData icon;
+  final String tip;
+  final VoidCallback onTap;
+  final bool isActive;
+  const _PillBtn({required this.icon, required this.tip, required this.onTap, this.isActive = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: isActive ? _acc.withValues(alpha: 0.18) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 16, color: isActive ? _acc : _txt1),
+        ),
+      ),
+    );
+  }
+}
+
+class _PillDivider extends StatelessWidget {
+  const _PillDivider();
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 2),
+    color: _bdr.withValues(alpha: 0.7),
+  );
+}
+
+/// 노드 카드 내 액션 버튼
+class _CardActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+  const _CardActionBtn({required this.icon, required this.label, required this.onTap, required this.color});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: GoogleFonts.inter(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
+      ]),
+    ),
+  );
 }
 
 class _GraphToolbarButton extends StatelessWidget {
