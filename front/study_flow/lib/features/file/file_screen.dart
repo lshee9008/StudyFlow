@@ -6314,102 +6314,44 @@ class _MindmapView extends StatelessWidget {
     });
   }
 
+  int get _nodeCount => (st.graphData?['nodes'] as List?)?.length ?? 0;
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) {
+    final canvas = st.isGraphLoading
+        ? const _GraphLoadingCanvas()
+        : _hasNodes
+            ? _GraphCanvas(data: st.graphData!, ref: ref, onChanged: onChanged)
+            : _GraphEmptyState(onGenerate: _generate, errorMessage: st.graphError);
+
+    return Stack(
       children: [
-        Row(
-          children: [
-            const Text(
-              '지식 그래프',
-              style: TextStyle(
-                color: _txt0,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const Spacer(),
-            if (_hasNodes) _TBtn(Icons.refresh_rounded, '재생성', _generate),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: _bg2,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: _bdr),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 30,
-                  offset: const Offset(0, 14),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: st.isGraphLoading
-                  ? Stack(
-                      children: [
-                        const Positioned.fill(child: _GraphBoardBackground()),
-                        Center(
-                          child: AppShimmer(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 84,
-                                  height: 84,
-                                  decoration: BoxDecoration(
-                                    color: _bg3,
-                                    borderRadius: BorderRadius.circular(24),
-                                    border: Border.all(color: _bdr),
-                                  ),
-                                ),
-                                const SizedBox(height: 18),
-                                Container(
-                                  width: 180,
-                                  height: 14,
-                                  decoration: BoxDecoration(
-                                    color: _bg3,
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Container(
-                                  width: 116,
-                                  height: 10,
-                                  decoration: BoxDecoration(
-                                    color: _bg3,
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : _hasNodes
-                  ? _GraphCanvas(
-                      data: st.graphData!,
-                      ref: ref,
-                      onChanged: onChanged,
-                    )
-                  : _GraphEmptyState(
-                      onGenerate: _generate,
-                      errorMessage: st.graphError,
-                    ),
-            ),
+        // ── 풀스크린 캔버스 ────────────────────────────────
+        Positioned.fill(child: canvas),
+
+        // ── 좌상단 플로팅 정보 칩 ─────────────────────────
+        Positioned(
+          top: 14,
+          left: 14,
+          child: _GraphInfoChip(
+            nodeCount: _nodeCount,
+            blockCount: st.blocks.length,
           ),
         ),
+
+        // ── 우상단 재생성 버튼 ────────────────────────────
+        if (!st.isGraphLoading)
+          Positioned(
+            top: 14,
+            right: 14,
+            child: _GraphRegenBtn(
+              hasData: _hasNodes,
+              onTap: _generate,
+            ),
+          ),
       ],
-    ),
-  );
+    );
+  }
 }
 
 class _GraphCanvas extends StatefulWidget {
@@ -7263,12 +7205,29 @@ class _GraphBoardBackground extends StatelessWidget {
 class _GraphDotsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = _bg2);
-    final dotPaint = Paint()..color = _bdr.withValues(alpha: 0.3);
-    const spacing = 12.0;
+    // 진한 배경
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF080D18));
+
+    // 중앙 라디알 글로우
+    final center = Offset(size.width / 2, size.height / 2);
+    final glow = RadialGradient(
+      colors: [
+        const Color(0xFF1B2E58).withValues(alpha: 0.7),
+        const Color(0xFF080D18).withValues(alpha: 0.0),
+      ],
+      radius: 0.65,
+    );
+    final glowRect = Rect.fromCenter(
+      center: center, width: size.width * 1.4, height: size.height * 1.4);
+    canvas.drawRect(Offset.zero & size,
+        Paint()..shader = glow.createShader(glowRect));
+
+    // 미묘한 격자 도트
+    final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.045);
+    const spacing = 28.0;
     for (double x = 0; x < size.width; x += spacing) {
       for (double y = 0; y < size.height; y += spacing) {
-        canvas.drawCircle(Offset(x, y), 0.8, dotPaint);
+        canvas.drawCircle(Offset(x, y), 1.1, dotPaint);
       }
     }
   }
@@ -7919,99 +7878,292 @@ class _GraphEmptyState extends StatelessWidget {
   const _GraphEmptyState({required this.onGenerate, this.errorMessage});
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: errorMessage != null
-                  ? Colors.red.withValues(alpha: 0.08)
-                  : _acc.withValues(alpha: 0.08),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: errorMessage != null
-                    ? Colors.red.withValues(alpha: 0.2)
-                    : _acc.withValues(alpha: 0.2),
-              ),
-            ),
-            child: Icon(
-              errorMessage != null
-                  ? Icons.error_outline_rounded
-                  : Icons.account_tree_outlined,
-              size: 32,
-              color: errorMessage != null
-                  ? Colors.red.withValues(alpha: 0.8)
-                  : _acc.withValues(alpha: 0.8),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            errorMessage != null ? '생성 실패' : '지식 그래프',
-            style: const TextStyle(
-              color: _txt0,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            errorMessage ?? '노트의 핵심 개념을 시각적 그래프로\n연결해 전체 구조를 파악합니다.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: errorMessage != null
-                  ? Colors.red.withValues(alpha: 0.7)
-                  : _txt2.withValues(alpha: 0.7),
-              fontSize: 12,
-              height: 1.7,
-            ),
-          ),
-          const SizedBox(height: 24),
-          GestureDetector(
-            onTap: onGenerate,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+  Widget build(BuildContext context) => Stack(
+    children: [
+      const Positioned.fill(child: _GraphBoardBackground()),
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 아이콘
+            Container(
+              width: 88,
+              height: 88,
               decoration: BoxDecoration(
-                color: _acc,
-                borderRadius: BorderRadius.circular(10),
+                gradient: errorMessage != null
+                    ? const LinearGradient(
+                        colors: [Color(0xFFE53935), Color(0xFFEF5350)],
+                        begin: Alignment.topLeft, end: Alignment.bottomRight)
+                    : const LinearGradient(
+                        colors: [Color(0xFF3D6AFF), Color(0xFF6B8AFF)],
+                        begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(28),
                 boxShadow: [
                   BoxShadow(
-                    color: _acc.withValues(alpha: 0.35),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
+                    color: (errorMessage != null
+                            ? Colors.red
+                            : const Color(0xFF3D6AFF))
+                        .withValues(alpha: 0.45),
+                    blurRadius: 36,
+                    offset: const Offset(0, 10),
                   ),
                 ],
+              ),
+              child: Icon(
+                errorMessage != null
+                    ? Icons.error_outline_rounded
+                    : Icons.auto_awesome_rounded,
+                size: 38,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              errorMessage != null ? '생성 실패' : '지식 그래프 생성',
+              style: GoogleFonts.inter(
+                color: _txt0,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              errorMessage ??
+                  '노트 내용을 AI가 분석해\n핵심 개념과 관계를 그래프로 시각화합니다',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                color: errorMessage != null
+                    ? Colors.red.withValues(alpha: 0.75)
+                    : _txt2,
+                fontSize: 13,
+                height: 1.75,
+              ),
+            ),
+            const SizedBox(height: 36),
+            GestureDetector(
+              onTap: onGenerate,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF3D6AFF), Color(0xFF6B8AFF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF3D6AFF).withValues(alpha: 0.50),
+                      blurRadius: 22,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 16,
+                    color: Colors.white,
+                  ),
+                    const SizedBox(width: 8),
+                    Text(
+                      errorMessage != null ? '다시 시도' : '그래프 생성하기',
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+// ── 플로팅 정보 칩 ─────────────────────────────────────
+class _GraphInfoChip extends StatelessWidget {
+  final int nodeCount;
+  final int blockCount;
+  const _GraphInfoChip({required this.nodeCount, required this.blockCount});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 22, height: 22,
+                decoration: BoxDecoration(
+                  gradient: AppGradients.accent,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: const Icon(LucideIcons.network, size: 12, color: Colors.white),
+              ),
+              const SizedBox(width: 9),
+              Text(
+                '지식 그래프',
+                style: GoogleFonts.inter(
+                  color: _txt0, fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+              if (nodeCount > 0) ...[
+                const SizedBox(width: 10),
+                _InfoBadge('$nodeCount 노드', const Color(0xFF3D6AFF)),
+              ],
+              const SizedBox(width: 6),
+              _InfoBadge('$blockCount 블록', _bdr.withValues(alpha: 2)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoBadge extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _InfoBadge(this.text, this.color);
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.15),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: color.withValues(alpha: 0.28)),
+    ),
+    child: Text(text,
+        style: GoogleFonts.inter(
+            color: color.withValues(alpha: 0.9),
+            fontSize: 10,
+            fontWeight: FontWeight.w600)),
+  );
+}
+
+// ── 재생성 버튼 ───────────────────────────────────────
+class _GraphRegenBtn extends StatelessWidget {
+  final VoidCallback onTap;
+  final bool hasData;
+  const _GraphRegenBtn({required this.onTap, required this.hasData});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: hasData ? '그래프 재생성' : '그래프 생성',
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(13),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
-                    Icons.auto_awesome_rounded,
-                    size: 15,
-                    color: Colors.white,
-                  ),
-                  const SizedBox(width: 7),
+                  Icon(
+                    hasData ? Icons.refresh_rounded : Icons.auto_awesome_rounded,
+                    size: 14, color: _txt1),
+                  const SizedBox(width: 6),
                   Text(
-                    errorMessage != null ? '다시 시도' : '그래프 생성하기',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.1,
-                    ),
+                    hasData ? '재생성' : '생성',
+                    style: GoogleFonts.inter(
+                        color: _txt1, fontSize: 11, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
             ),
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+// ── 풀스크린 로딩 캔버스 ──────────────────────────────
+class _GraphLoadingCanvas extends StatelessWidget {
+  const _GraphLoadingCanvas();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        const Positioned.fill(child: _GraphBoardBackground()),
+        Center(
+          child: AppShimmer(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 88, height: 88,
+                  decoration: BoxDecoration(
+                    color: _bg3,
+                    borderRadius: BorderRadius.circular(26),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Container(width: 220, height: 14, decoration: BoxDecoration(color: _bg3, borderRadius: BorderRadius.circular(999))),
+                const SizedBox(height: 10),
+                Container(width: 160, height: 10, decoration: BoxDecoration(color: _bg3, borderRadius: BorderRadius.circular(999))),
+                const SizedBox(height: 10),
+                Container(width: 190, height: 10, decoration: BoxDecoration(color: _bg3, borderRadius: BorderRadius.circular(999))),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 28, left: 0, right: 0,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                color: _bg3.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(99),
+                border: Border.all(color: _bdr),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                SizedBox(
+                  width: 13, height: 13,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: _acc),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'AI가 지식 그래프를 생성하고 있어요...',
+                  style: GoogleFonts.inter(
+                      color: _txt1, fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ══════════════════ 공통 위젯 ═══════════════════════
