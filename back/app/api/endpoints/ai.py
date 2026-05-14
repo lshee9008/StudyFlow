@@ -1245,10 +1245,66 @@ async def graph(req: GraphReq):
         try:
             parsed = json.loads(chunk)
         except json.JSONDecodeError:
-            return _fallback_graph_from_text(text, req.title)
+            # JSON이 잘린 경우 부분 파싱 시도
+            try:
+                fixed = chunk[:chunk.rfind('}', 0, len(chunk)-1)+1]
+                # nodes 배열만 추출
+                ni = fixed.find('"nodes"')
+                if ni != -1:
+                    arr_s = fixed.find('[', ni)
+                    arr_e = fixed.rfind(']')
+                    if arr_s != -1 and arr_e != -1:
+                        nodes_json = fixed[arr_s:arr_e+1]
+                        parsed = {"nodes": json.loads(nodes_json), "edges": []}
+                    else:
+                        return _fallback_graph_from_text(text, req.title)
+                else:
+                    return _fallback_graph_from_text(text, req.title)
+            except Exception:
+                return _fallback_graph_from_text(text, req.title)
 
         nodes = parsed.get("nodes", [])
         edges = parsed.get("edges", [])
+
+        # ── LLM 결과 부족 시 헤딩·굵은텍스트로 노드 보강 ──────────────
+        existing_labels = {n.get("label", "").strip().lower() for n in nodes}
+        existing_ids = {n.get("id", "") for n in nodes}
+
+        # root 노드 찾기 (branch 연결용)
+        root_id = next((n["id"] for n in nodes if n.get("type") == "core"), "root")
+
+        # branch 노드 찾기 (detail 연결용)
+        branch_ids = [n["id"] for n in nodes if n.get("type") == "branch"]
+
+        def _next_id(prefix: str) -> str:
+            i = len(existing_ids)
+            while f"{prefix}{i}" in existing_ids:
+                i += 1
+            existing_ids.add(f"{prefix}{i}")
+            return f"{prefix}{i}"
+
+        # branch 보강: ## 헤딩이 누락된 경우 추가
+        for i, h in enumerate(branches):
+            if h.strip().lower() not in existing_labels and len(nodes) < 80:
+                nid = _next_id("bx")
+                nodes.append({"id": nid, "label": h[:40], "description": "", "type": "branch"})
+                edges.append({"source": root_id, "target": nid, "label": "포함"})
+                existing_labels.add(h.strip().lower())
+                branch_ids.append(nid)
+
+        # detail 보강: ### 헤딩 + 굵은텍스트가 누락된 경우 추가
+        detail_items = [(h, "branch") for h in subbranches] + [(b, "detail") for b in bold_terms]
+        for label, _ in detail_items:
+            if len(nodes) >= 80:
+                break
+            if label.strip().lower() not in existing_labels:
+                nid = _next_id("dx")
+                # 가장 연관성 있는 branch에 연결 (순서상 가까운 branch)
+                parent = branch_ids[len(nodes) % len(branch_ids)] if branch_ids else root_id
+                nodes.append({"id": nid, "label": label[:40], "description": "", "type": "detail"})
+                edges.append({"source": parent, "target": nid, "label": "구성"})
+                existing_labels.add(label.strip().lower())
+
         normalized = _normalize_graph_payload(nodes, edges, text)
         if not normalized["nodes"]:
             return _fallback_graph_from_text(text, req.title)
