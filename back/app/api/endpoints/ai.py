@@ -1200,7 +1200,8 @@ async def graph(req: GraphReq):
             mandatory_hint += f"  - {b}\n"
         mandatory_hint += "\n"
 
-    target_count = max(30, len(branches) + len(subbranches) + len(bold_terms) + 3)
+    # branch 5~8개, 각 branch 하위 detail 5~8개 → 최소 30~60개
+    target_count = max(40, len(branches) * 6 + len(subbranches) + len(bold_terms) + 5)
 
     p = (
         f"{context_hint}"
@@ -1212,28 +1213,30 @@ async def graph(req: GraphReq):
         '{"id":"root","label":"주제","description":"한 줄 설명","type":"core"},'
         '{"id":"b1","label":"대섹션1","description":"한 줄 설명","type":"branch"},'
         '{"id":"b2","label":"대섹션2","description":"한 줄 설명","type":"branch"},'
-        '{"id":"s1","label":"소섹션1","description":"한 줄 설명","type":"branch"},'
-        '{"id":"d1","label":"세부개념1","description":"한 줄 설명","type":"detail"},'
-        '{"id":"d2","label":"세부개념2","description":"한 줄 설명","type":"detail"}'
+        '{"id":"d1","label":"소섹션1-1","description":"한 줄 설명","type":"detail"},'
+        '{"id":"d2","label":"소섹션1-2","description":"한 줄 설명","type":"detail"},'
+        '{"id":"d3","label":"개념2-1","description":"한 줄 설명","type":"detail"},'
+        '{"id":"d4","label":"개념2-2","description":"한 줄 설명","type":"detail"}'
         '],"edges":['
         '{"source":"root","target":"b1","label":"포함"},'
         '{"source":"root","target":"b2","label":"포함"},'
-        '{"source":"b1","target":"s1","label":"구성"},'
-        '{"source":"s1","target":"d1","label":"구성"},'
-        '{"source":"b2","target":"d2","label":"구성"}'
+        '{"source":"b1","target":"d1","label":"구성"},'
+        '{"source":"b1","target":"d2","label":"구성"},'
+        '{"source":"b2","target":"d3","label":"구성"},'
+        '{"source":"b2","target":"d4","label":"구성"}'
         "]}\n\n"
         "【핵심 규칙】\n"
-        "1. root 직속 자식(branch)은 반드시 8개 이하 — 위 대섹션 목록만 root에 직접 연결\n"
-        "2. subbranch·detail은 반드시 해당 branch 하위에 연결 (root에 직접 연결 금지)\n"
-        "3. 위 【반드시 포함할 노드】를 하나도 빠짐없이 포함할 것\n"
-        "4. 추가로 본문에서 중요 개념을 detail 노드로 더 추출할 것\n"
-        f"5. 노드 총 {target_count}개 이상 생성\n"
-        "6. type은 core / branch / detail 세 가지만 사용\n"
+        f"1. 노드 총 {target_count}개 이상 반드시 생성 (이보다 적으면 출력 실패로 간주)\n"
+        "2. root 직속 branch는 5~8개 — 위 대섹션 목록만 root에 직접 연결\n"
+        "3. 각 branch 하위에 detail 노드를 최소 5개 이상 배치 (소섹션·용어·개념·원리 모두 추출)\n"
+        "4. 위 【반드시 포함할 노드】를 하나도 빠짐없이 포함할 것\n"
+        "5. 본문 텍스트에서 중요 개념·용어·원리·예시를 detail로 최대한 추출할 것\n"
+        "6. type: core(1개) / branch(5~8개) / detail(나머지 전부)\n"
         "7. description은 40자 이내 한 줄, id 중복 금지"
     )
 
     try:
-        raw = await _llm(p, temp=0.12, tokens=12000)
+        raw = await _llm(p, temp=0.15, tokens=12000)
         raw = raw.replace("```json", "").replace("```", "").strip()
         s, e = raw.find("{"), raw.rfind("}")
         if s == -1 or e == -1 or e <= s:
