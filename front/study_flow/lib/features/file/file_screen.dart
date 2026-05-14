@@ -6772,44 +6772,46 @@ class _GCS extends State<_GraphCanvas> {
   }
 
   void _fitBoard() {
+    if (ns.isEmpty) return;
     final box = context.findRenderObject() as RenderBox?;
     final viewSize = box?.size ?? const Size(800, 600);
-    final scale = math
-        .min(
-          (viewSize.width / _boardSize.width) * 0.90,
-          (viewSize.height / _boardSize.height) * 0.90,
-        )
-        .clamp(0.18, 0.90);
+
+    // 모든 노드의 실제 bounding box 계산
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    for (final n in ns) {
+      minX = math.min(minX, n.rect.left);
+      minY = math.min(minY, n.rect.top);
+      maxX = math.max(maxX, n.rect.right);
+      maxY = math.max(maxY, n.rect.bottom);
+    }
+
+    final padding = 60.0;
+    final contentW = (maxX - minX) + padding * 2;
+    final contentH = (maxY - minY) + padding * 2;
+
+    final scale = math.min(
+      viewSize.width / contentW,
+      viewSize.height / contentH,
+    ).clamp(0.12, 1.0);
+
+    // 콘텐츠 중심을 뷰포트 중심에 맞춤
+    final cx = (minX - padding) + contentW / 2;
+    final cy = (minY - padding) + contentH / 2;
+
     _controller.value = Matrix4.identity()
       ..translateByDouble(
-        (viewSize.width - _boardSize.width * scale) / 2,
-        (viewSize.height - _boardSize.height * scale) / 2,
-        0,
-        1,
+        viewSize.width / 2 - cx * scale,
+        viewSize.height / 2 - cy * scale,
+        0, 1,
       )
       ..scaleByDouble(scale, scale, 1, 1);
   }
 
   void _centerOnCore() {
     if (ns.isEmpty) { _fitBoard(); return; }
-    final core = ns.firstWhere(
-      (n) => n.style == _GraphCardStyle.core,
-      orElse: () => ns.first,
-    );
-    final box = context.findRenderObject() as RenderBox?;
-    final viewSize = box?.size ?? const Size(800, 600);
-    // 노드 수에 따라 초기 zoom 자동 조정
-    final double scale = ns.length > 40 ? 0.28
-        : ns.length > 25 ? 0.38
-        : ns.length > 15 ? 0.48
-        : 0.55;
-    _controller.value = Matrix4.identity()
-      ..translateByDouble(
-        viewSize.width / 2 - core.rect.center.dx * scale,
-        viewSize.height / 2 - core.rect.center.dy * scale,
-        0, 1,
-      )
-      ..scaleByDouble(scale, scale, 1, 1);
+    // 초기화 시 항상 전체 노드가 화면에 맞게 표시
+    _fitBoard();
   }
 
   void _zoomIn() {
