@@ -1200,8 +1200,8 @@ async def graph(req: GraphReq):
             mandatory_hint += f"  - {b}\n"
         mandatory_hint += "\n"
 
-    # branch 5~8개, 각 branch 하위 detail 5~8개 → 최소 30~60개
-    target_count = max(40, len(branches) * 6 + len(subbranches) + len(bold_terms) + 5)
+    # branch 5~7개, 각 branch 하위 detail 4~6개 → 30~45개 (가독성 최적)
+    target_count = max(30, min(45, len(branches) * 5 + len(subbranches[:10]) + 3))
 
     p = (
         f"{context_hint}"
@@ -1283,27 +1283,29 @@ async def graph(req: GraphReq):
             existing_ids.add(f"{prefix}{i}")
             return f"{prefix}{i}"
 
-        # branch 보강: ## 헤딩이 누락된 경우 추가
-        for i, h in enumerate(branches):
-            if h.strip().lower() not in existing_labels and len(nodes) < 80:
+        MAX_NODES = 45  # 가독성 최적 상한
+
+        # branch 보강: ## 헤딩이 누락된 경우 추가 (최대 7개)
+        for i, h in enumerate(branches[:7]):
+            if len(nodes) >= MAX_NODES:
+                break
+            if h.strip().lower() not in existing_labels:
                 nid = _next_id("bx")
                 nodes.append({"id": nid, "label": h[:40], "description": "", "type": "branch"})
                 edges.append({"source": root_id, "target": nid, "label": "포함"})
                 existing_labels.add(h.strip().lower())
                 branch_ids.append(nid)
 
-        # detail 보강: ### 헤딩 + 굵은텍스트가 누락된 경우 추가
-        detail_items = [(h, "branch") for h in subbranches] + [(b, "detail") for b in bold_terms]
-        for label, _ in detail_items:
-            if len(nodes) >= 80:
+        # detail 보강: ### 헤딩만 사용 (굵은텍스트는 너무 많아서 제외)
+        for h in subbranches[:20]:
+            if len(nodes) >= MAX_NODES:
                 break
-            if label.strip().lower() not in existing_labels:
+            if h.strip().lower() not in existing_labels:
                 nid = _next_id("dx")
-                # 가장 연관성 있는 branch에 연결 (순서상 가까운 branch)
                 parent = branch_ids[len(nodes) % len(branch_ids)] if branch_ids else root_id
-                nodes.append({"id": nid, "label": label[:40], "description": "", "type": "detail"})
+                nodes.append({"id": nid, "label": h[:40], "description": "", "type": "detail"})
                 edges.append({"source": parent, "target": nid, "label": "구성"})
-                existing_labels.add(label.strip().lower())
+                existing_labels.add(h.strip().lower())
 
         normalized = _normalize_graph_payload(nodes, edges, text)
         if not normalized["nodes"]:

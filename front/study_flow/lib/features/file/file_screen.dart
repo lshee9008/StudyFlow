@@ -6540,10 +6540,10 @@ class _GCS extends State<_GraphCanvas> {
     String rootId,
     Map<String, List<String>> childrenMap,
   ) {
-    // 노드 수에 따라 간격 자동 조정
+    // 노드 수에 따라 간격 자동 조정 (35~45개 최적)
     final totalNodes = childrenMap.values.fold(1, (s, l) => s + l.length);
-    final xStep = totalNodes > 40 ? 280.0 : 330.0;
-    final yUnit = totalNodes > 40 ? 130.0 : 170.0;
+    final xStep = totalNodes > 35 ? 260.0 : 300.0;
+    final yUnit = totalNodes > 35 ? 110.0 : 150.0;
 
     // Step 1: 서브트리 내 리프 수 카운트 (바텀업)
     final leafCount = <String, int>{};
@@ -6904,19 +6904,21 @@ class _GCS extends State<_GraphCanvas> {
           onTap: () => setState(() => _selectedNodeId = null),
           child: InteractiveViewer(
             constrained: false,
-            boundaryMargin: const EdgeInsets.all(400),
-            minScale: 0.14,
-            maxScale: 4.0,
+            boundaryMargin: const EdgeInsets.all(600),
+            minScale: 0.08,
+            maxScale: 3.0,
             transformationController: _controller,
             child: SizedBox(
               width: _boardSize.width,
               height: _boardSize.height,
               child: Stack(
                 children: [
-                  const Positioned.fill(child: _GraphBoardBackground()),
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _GraphBoardPainter(nodes: ns, es: es, isTree: _isTreeLayout),
+                  const Positioned.fill(child: RepaintBoundary(child: _GraphBoardBackground())),
+                  RepaintBoundary(
+                    child: Positioned.fill(
+                      child: CustomPaint(
+                        painter: _GraphBoardPainter(nodes: ns, es: es, isTree: _isTreeLayout),
+                      ),
                     ),
                   ),
                   ...ns.map(
@@ -7195,7 +7197,9 @@ class _GraphBoardPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GraphBoardPainter oldDelegate) =>
-      oldDelegate.nodes != nodes || oldDelegate.es != es || oldDelegate.isTree != isTree;
+      oldDelegate.nodes.length != nodes.length ||
+      oldDelegate.es.length != es.length ||
+      oldDelegate.isTree != isTree;
 }
 
 class _GraphBoardBackground extends StatelessWidget {
