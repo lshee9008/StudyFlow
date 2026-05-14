@@ -6913,12 +6913,10 @@ class _GCS extends State<_GraphCanvas> {
               height: _boardSize.height,
               child: Stack(
                 children: [
-                  const Positioned.fill(child: RepaintBoundary(child: _GraphBoardBackground())),
-                  RepaintBoundary(
-                    child: Positioned.fill(
-                      child: CustomPaint(
-                        painter: _GraphBoardPainter(nodes: ns, es: es, isTree: _isTreeLayout),
-                      ),
+                  const Positioned.fill(child: _GraphBoardBackground()),
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _GraphBoardPainter(nodes: ns, es: es, isTree: _isTreeLayout),
                     ),
                   ),
                   ...ns.map(
