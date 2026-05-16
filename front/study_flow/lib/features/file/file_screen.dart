@@ -74,6 +74,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   // 멀티 블록 선택
   final Set<int> _selectedBlocks = {};
+  int _focusedIdx = -1; // 현재 포커스된 블록 인덱스
   // Pomodoro
   Timer? _pomT;
   int _pomSecs = 25 * 60; // 25분
@@ -383,6 +384,64 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         _chg(ft: bc2.text);
       }
       return KeyEventResult.handled;
+    }
+
+    // Ctrl+Shift+S: 취소선 토글
+    if ((meta || ctrl) && shift && e.logicalKey == LogicalKeyboardKey.keyS) {
+      final bc2 = ref.read(fileEditorProvider).blocks[i].controller;
+      final sel = bc2.selection;
+      if (!sel.isCollapsed && sel.isValid) {
+        final text = bc2.text;
+        final s = sel.start.clamp(0, text.length);
+        final end = sel.end.clamp(0, text.length);
+        final selected = text.substring(s, end);
+        final isStrike = selected.startsWith('~~') && selected.endsWith('~~') && selected.length > 4;
+        final newText = isStrike ? selected.substring(2, selected.length - 2) : '~~$selected~~';
+        bc2.text = text.substring(0, s) + newText + text.substring(end);
+        bc2.selection = TextSelection(baseOffset: s, extentOffset: s + newText.length);
+        _chg(ft: bc2.text);
+      }
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl+`: 인라인 코드 토글
+    if ((meta || ctrl) && e.logicalKey == LogicalKeyboardKey.backquote) {
+      final bc2 = ref.read(fileEditorProvider).blocks[i].controller;
+      final sel = bc2.selection;
+      if (!sel.isCollapsed && sel.isValid) {
+        final text = bc2.text;
+        final s = sel.start.clamp(0, text.length);
+        final end = sel.end.clamp(0, text.length);
+        final selected = text.substring(s, end);
+        final isCode = selected.startsWith('`') && selected.endsWith('`') &&
+            !selected.startsWith('``') && selected.length > 2;
+        final newText = isCode ? selected.substring(1, selected.length - 1) : '`$selected`';
+        bc2.text = text.substring(0, s) + newText + text.substring(end);
+        bc2.selection = TextSelection(baseOffset: s, extentOffset: s + newText.length);
+        _chg(ft: bc2.text);
+      }
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl+Alt+1/2/3: 블록 타입 변경
+    final alt = HardwareKeyboard.instance.isAltPressed;
+    if ((meta || ctrl) && alt) {
+      if (e.logicalKey == LogicalKeyboardKey.digit1) {
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.h1);
+        _chg(); return KeyEventResult.handled;
+      }
+      if (e.logicalKey == LogicalKeyboardKey.digit2) {
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.h2);
+        _chg(); return KeyEventResult.handled;
+      }
+      if (e.logicalKey == LogicalKeyboardKey.digit3) {
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.h3);
+        _chg(); return KeyEventResult.handled;
+      }
+      if (e.logicalKey == LogicalKeyboardKey.digit0) {
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
+        _chg(); return KeyEventResult.handled;
+      }
     }
 
     // Ctrl/Cmd+D: 블록 복제
@@ -1087,6 +1146,40 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     ),
   );
 
+  void _applyFmt(String fmt) {
+    final blocks = ref.read(fileEditorProvider).blocks;
+    if (_focusedIdx < 0 || _focusedIdx >= blocks.length) return;
+    final bc = blocks[_focusedIdx].controller;
+    final sel = bc.selection;
+    if (sel.isCollapsed || !sel.isValid) return;
+    final txt = bc.text;
+    final s = sel.start.clamp(0, txt.length);
+    final end = sel.end.clamp(0, txt.length);
+    final selected = txt.substring(s, end);
+    String newText;
+    switch (fmt) {
+      case 'bold':
+        final isBold = selected.startsWith('**') && selected.endsWith('**') && selected.length > 4;
+        newText = isBold ? selected.substring(2, selected.length - 2) : '**$selected**';
+      case 'italic':
+        final isItalic = selected.startsWith('*') && selected.endsWith('*') &&
+            !selected.startsWith('**') && selected.length > 2;
+        newText = isItalic ? selected.substring(1, selected.length - 1) : '*$selected*';
+      case 'strike':
+        final isStrike = selected.startsWith('~~') && selected.endsWith('~~') && selected.length > 4;
+        newText = isStrike ? selected.substring(2, selected.length - 2) : '~~$selected~~';
+      case 'code':
+        final isCode = selected.startsWith('`') && selected.endsWith('`') &&
+            !selected.startsWith('``') && selected.length > 2;
+        newText = isCode ? selected.substring(1, selected.length - 1) : '`$selected`';
+      default:
+        return;
+    }
+    bc.text = txt.substring(0, s) + newText + txt.substring(end);
+    bc.selection = TextSelection(baseOffset: s, extentOffset: s + newText.length);
+    _chg(ft: bc.text);
+  }
+
   void _showMobilePanel(BuildContext context, FileEditorState st) {
     showModalBottomSheet(
       context: context,
@@ -1334,6 +1427,19 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                     onProofread: () => _showProofreadMenu(),
                   ),
                 ),
+                // 포맷 툴바
+                if (!isMobile)
+                  _EditorFormatBar(
+                    focusedIdx: _focusedIdx,
+                    blocks: ref.watch(fileEditorProvider.select((s) => s.blocks)),
+                    onFormat: _applyFmt,
+                    onTypeChange: (t) {
+                      if (_focusedIdx >= 0) {
+                        ref.read(fileEditorProvider.notifier).setType(_focusedIdx, t);
+                        _chg();
+                      }
+                    },
+                  ),
                 // 블록 선택 시 플로팅 선택 바 (노션 스타일)
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
@@ -1699,8 +1805,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                   },
                   onFocus: () {
                     // 텍스트 편집 모드 진입 → 블록 다중 선택 해제
-                    if (_selectedBlocks.isNotEmpty) {
-                      setState(() => _selectedBlocks.clear());
+                    if (_selectedBlocks.isNotEmpty || _focusedIdx != i) {
+                      setState(() { _selectedBlocks.clear(); _focusedIdx = i; });
                     }
                     _chg(ft: blocks[i].controller.text);
                     _onFocus(blocks[i].controller.text, blockIndex: i);
@@ -2406,7 +2512,7 @@ class _ProofreadBanner extends StatelessWidget {
   );
 }
 
-class _DocumentHero extends StatelessWidget {
+class _DocumentHero extends StatefulWidget {
   final String icon;
   final TextEditingController titleController;
   final TextEditingController tagsController;
@@ -2440,6 +2546,13 @@ class _DocumentHero extends StatelessWidget {
   });
 
   @override
+  State<_DocumentHero> createState() => _DocumentHeroState();
+}
+
+class _DocumentHeroState extends State<_DocumentHero> {
+  bool _propCollapsed = false;
+
+  @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 700;
     return Container(
@@ -2459,63 +2572,94 @@ class _DocumentHero extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _IconRow(current: icon, onChange: onIconChange),
+          _IconRow(current: widget.icon, onChange: widget.onIconChange),
           const SizedBox(height: 18),
-          _GlowTitle(ctrl: titleController, onChange: onTitleChange),
+          _GlowTitle(ctrl: widget.titleController, onChange: widget.onTitleChange),
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _MiniMetaChip(icon: LucideIcons.files, label: '$blockCount 블록'),
-              _MiniMetaChip(icon: LucideIcons.text, label: '$charCount자'),
+              _MiniMetaChip(icon: LucideIcons.files, label: '${widget.blockCount} 블록'),
+              _MiniMetaChip(icon: LucideIcons.text, label: '${widget.charCount}자'),
               _MiniMetaChip(
                 icon: LucideIcons.alignLeft,
-                label: '$wordCount 단어',
+                label: '${widget.wordCount} 단어',
               ),
+              _MiniMetaChip(icon: LucideIcons.clock, label: '${(widget.charCount / 300).ceil()}분 읽기'),
             ],
           ),
           const SizedBox(height: 22),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _bg0.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: _bdr.withValues(alpha: 0.8)),
-            ),
-            child: Column(
-              children: [
-                _PropRow(
-                  icon: Icons.tag_rounded,
-                  label: '태그',
-                  ctrl: tagsController,
-                  hint: '태그',
-                  onChange: onTagsChange,
+          Row(
+            children: [
+              Text('속성', style: GoogleFonts.inter(color: _txt2.withValues(alpha: 0.45), fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => _propCollapsed = !_propCollapsed),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_propCollapsed ? '펼치기' : '접기', style: GoogleFonts.inter(color: _txt2.withValues(alpha: 0.45), fontSize: 10)),
+                    const SizedBox(width: 3),
+                    AnimatedRotation(
+                      turns: _propCollapsed ? -0.25 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(Icons.expand_more_rounded, size: 13, color: _txt2),
+                    ),
+                  ],
                 ),
-                _PropRow(
-                  icon: Icons.auto_awesome_rounded,
-                  label: '프롬프트',
-                  ctrl: promptController,
-                  hint: 'AI 지시사항',
-                  onChange: onPromptChange,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: _propCollapsed ? const SizedBox.shrink() : Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _bg0.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: _bdr.withValues(alpha: 0.8)),
+                  ),
+                  child: Column(
+                    children: [
+                      _PropRow(
+                        icon: Icons.tag_rounded,
+                        label: '태그',
+                        ctrl: widget.tagsController,
+                        hint: '태그',
+                        onChange: widget.onTagsChange,
+                      ),
+                      _PropRow(
+                        icon: Icons.auto_awesome_rounded,
+                        label: '프롬프트',
+                        ctrl: widget.promptController,
+                        hint: 'AI 지시사항',
+                        onChange: widget.onPromptChange,
+                      ),
+                    ],
+                  ),
+                ),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: widget.promptController,
+                  builder: (context, value, child) {
+                    if (value.text.isNotEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: _PromptSugs(
+                        onTap: (suggestion) {
+                          widget.promptController.text = suggestion;
+                          widget.onPromptChange(suggestion);
+                        },
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
-          ),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: promptController,
-            builder: (context, value, child) {
-              if (value.text.isNotEmpty) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: _PromptSugs(
-                  onTap: (suggestion) {
-                    promptController.text = suggestion;
-                    onPromptChange(suggestion);
-                  },
-                ),
-              );
-            },
           ),
 
           const _Div(),
@@ -4061,31 +4205,37 @@ class _NBState extends State<_NBlock> {
                     ),
                   ),
 
-                // 코드 태그
+                // 코드 태그 + 복사 버튼
                 if (widget.block.type == BlockType.code && !_isTable)
                   Padding(
                     padding: const EdgeInsets.only(top: 3, right: 7),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A30),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: const Color(0xFFD4BBFF).withValues(alpha: 0.2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1A30),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(
+                              color: const Color(0xFFD4BBFF).withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Text(
+                            'code',
+                            style: GoogleFonts.jetBrainsMono(
+                              color: const Color(0xFFD4BBFF),
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        'code',
-                        style: GoogleFonts.jetBrainsMono(
-                          color: const Color(0xFFD4BBFF),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
+                        if (showControls) ...[
+                          const SizedBox(width: 4),
+                          _CodeCopyBtn(text: widget.block.controller.text),
+                        ],
+                      ],
                     ),
                   ),
 
@@ -4308,6 +4458,263 @@ class _BlockTypeBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+// ══════════════════ CODE COPY BTN ══════════════════
+class _CodeCopyBtn extends StatefulWidget {
+  final String text;
+  const _CodeCopyBtn({required this.text});
+  @override
+  State<_CodeCopyBtn> createState() => _CodeCopyBtnState();
+}
+
+class _CodeCopyBtnState extends State<_CodeCopyBtn> {
+  bool _copied = false;
+  Timer? _t;
+
+  @override
+  void dispose() { _t?.cancel(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () async {
+        await Clipboard.setData(ClipboardData(text: widget.text));
+        setState(() => _copied = true);
+        _t?.cancel();
+        _t = Timer(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _copied = false);
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: _copied ? _grn.withValues(alpha: 0.15) : const Color(0xFF1A1A30),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(
+            color: _copied
+                ? _grn.withValues(alpha: 0.4)
+                : const Color(0xFFD4BBFF).withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _copied ? Icons.check_rounded : Icons.copy_rounded,
+              size: 9,
+              color: _copied ? _grn : const Color(0xFFD4BBFF),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              _copied ? '복사됨' : '복사',
+              style: GoogleFonts.jetBrainsMono(
+                color: _copied ? _grn : const Color(0xFFD4BBFF),
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════ EDITOR FORMAT BAR ══════════════
+class _EditorFormatBar extends StatelessWidget {
+  final int focusedIdx;
+  final List<Block> blocks;
+  final void Function(String fmt) onFormat;
+  final void Function(BlockType) onTypeChange;
+
+  const _EditorFormatBar({
+    required this.focusedIdx,
+    required this.blocks,
+    required this.onFormat,
+    required this.onTypeChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (focusedIdx < 0 || focusedIdx >= blocks.length) {
+      return const SizedBox.shrink();
+    }
+    final currentType = blocks[focusedIdx].type;
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      child: focusedIdx < 0
+          ? const SizedBox.shrink()
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              child: Container(
+                height: 38,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: _bg2.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _bdr.withValues(alpha: 0.7)),
+                ),
+                child: Row(
+                  children: [
+                    // 블록 타입 칩들
+                    _FmtTypeChip(label: '텍스트', active: currentType == BlockType.text,
+                        onTap: () => onTypeChange(BlockType.text)),
+                    const SizedBox(width: 2),
+                    _FmtTypeChip(label: 'H1', active: currentType == BlockType.h1,
+                        onTap: () => onTypeChange(BlockType.h1)),
+                    const SizedBox(width: 2),
+                    _FmtTypeChip(label: 'H2', active: currentType == BlockType.h2,
+                        onTap: () => onTypeChange(BlockType.h2)),
+                    const SizedBox(width: 2),
+                    _FmtTypeChip(label: 'H3', active: currentType == BlockType.h3,
+                        onTap: () => onTypeChange(BlockType.h3)),
+                    const SizedBox(width: 2),
+                    _FmtTypeChip(label: '•', active: currentType == BlockType.bullet,
+                        onTap: () => onTypeChange(BlockType.bullet)),
+                    const SizedBox(width: 2),
+                    _FmtTypeChip(label: '1.', active: currentType == BlockType.number,
+                        onTap: () => onTypeChange(BlockType.number)),
+                    const SizedBox(width: 2),
+                    _FmtTypeChip(label: '✓', active: currentType == BlockType.checkbox,
+                        onTap: () => onTypeChange(BlockType.checkbox)),
+                    const SizedBox(width: 2),
+                    _FmtTypeChip(label: '"', active: currentType == BlockType.quote,
+                        onTap: () => onTypeChange(BlockType.quote)),
+                    const SizedBox(width: 2),
+                    _FmtTypeChip(label: '<>', active: currentType == BlockType.code,
+                        onTap: () => onTypeChange(BlockType.code)),
+
+                    // 구분선
+                    Container(width: 1, height: 18, color: _bdr.withValues(alpha: 0.6),
+                        margin: const EdgeInsets.symmetric(horizontal: 8)),
+
+                    // 인라인 포맷 버튼
+                    _FmtBtn(label: 'B', bold: true, tooltip: '굵게 (⌘B)',
+                        onTap: () => onFormat('bold')),
+                    const SizedBox(width: 2),
+                    _FmtBtn(label: 'I', italic: true, tooltip: '기울임 (⌘I)',
+                        onTap: () => onFormat('italic')),
+                    const SizedBox(width: 2),
+                    _FmtBtn(label: 'S', strike: true, tooltip: '취소선 (⌘⇧S)',
+                        onTap: () => onFormat('strike')),
+                    const SizedBox(width: 2),
+                    _FmtBtn(label: '`', mono: true, tooltip: '인라인 코드 (⌘`)',
+                        onTap: () => onFormat('code')),
+
+                    const Spacer(),
+                    // 단축키 힌트
+                    Text('/ 블록추가  ·  ⌘B/I/⇧S/`',
+                        style: GoogleFonts.inter(color: _txt2.withValues(alpha: 0.35), fontSize: 10)),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+class _FmtTypeChip extends StatefulWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _FmtTypeChip({required this.label, required this.active, required this.onTap});
+  @override
+  State<_FmtTypeChip> createState() => _FmtTypeChipState();
+}
+
+class _FmtTypeChipState extends State<_FmtTypeChip> {
+  bool _h = false;
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _h = true),
+    onExit: (_) => setState(() => _h = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: widget.active
+              ? _acc.withValues(alpha: 0.18)
+              : _h ? _bg4 : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: widget.active
+                ? _acc.withValues(alpha: 0.4)
+                : _h ? _bdr2 : Colors.transparent,
+          ),
+        ),
+        child: Text(
+          widget.label,
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: widget.active ? _acc : (_h ? _txt1 : _txt2),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _FmtBtn extends StatefulWidget {
+  final String label;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool bold, italic, strike, mono;
+  const _FmtBtn({
+    required this.label,
+    required this.tooltip,
+    required this.onTap,
+    this.bold = false,
+    this.italic = false,
+    this.strike = false,
+    this.mono = false,
+  });
+  @override
+  State<_FmtBtn> createState() => _FmtBtnState();
+}
+
+class _FmtBtnState extends State<_FmtBtn> {
+  bool _h = false;
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: widget.tooltip,
+    child: MouseRegion(
+      onEnter: (_) => setState(() => _h = true),
+      onExit: (_) => setState(() => _h = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: _h ? _bg4 : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: _h ? _bdr2 : Colors.transparent),
+          ),
+          child: Center(
+            child: Text(
+              widget.label,
+              style: (widget.mono ? GoogleFonts.jetBrainsMono : GoogleFonts.inter)(
+                fontSize: 12,
+                fontWeight: widget.bold ? FontWeight.w900 : FontWeight.w500,
+                fontStyle: widget.italic ? FontStyle.italic : FontStyle.normal,
+                decoration: widget.strike ? TextDecoration.lineThrough : null,
+                decorationColor: _txt2,
+                color: _h ? _txt0 : _txt2,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 // ══════════════════ SLASH MENU ══════════════════════
