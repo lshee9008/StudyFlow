@@ -31,6 +31,8 @@ class _RecentFile {
   final String projectId;
   final String title;
   final String tags;
+  final String icon;
+  final String content;
   final DateTime? updateAt;
 
   const _RecentFile({
@@ -38,14 +40,20 @@ class _RecentFile {
     required this.projectId,
     required this.title,
     required this.tags,
+    required this.icon,
+    required this.content,
     this.updateAt,
   });
+
+  int get charCount => content.length;
 
   factory _RecentFile.fromJson(Map<String, dynamic> j) => _RecentFile(
     id: j['id'] ?? '',
     projectId: j['project_id'] ?? '',
     title: j['title'] ?? '제목 없음',
     tags: j['tags'] ?? '',
+    icon: j['icon'] ?? '',
+    content: j['content'] ?? '',
     updateAt: j['update_at'] != null ? DateTime.tryParse(j['update_at']) : null,
   );
 }
@@ -129,6 +137,20 @@ class _HomeContentState extends State<HomeContent> {
           child: _HeroGreetingCard(user: widget.user, projectCount: widget.projects.length),
         ),
         const SizedBox(height: 28),
+
+        // ── 전체 통계 스트립 ──────────────────────────────────────
+        if (widget.projects.isNotEmpty || _recentFiles.isNotEmpty)
+          AppFadeSlide(
+            delay: const Duration(milliseconds: 80),
+            beginOffset: const Offset(0, 8),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: _GlobalStatsRow(
+                projects: widget.projects,
+                recentFiles: _recentFiles,
+              ),
+            ),
+          ),
 
         // ── 최근 이용 파일 섹션 ─────────────────────────────────
         if (_loadingRecent || _recentFiles.isNotEmpty) ...[
@@ -248,7 +270,7 @@ class _RecentFileCardState extends State<_RecentFileCard> {
         onTap: widget.onOpen,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          width: 180,
+          width: 190,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: colors.surface,
@@ -264,7 +286,9 @@ class _RecentFileCardState extends State<_RecentFileCard> {
             children: [
               Row(
                 children: [
-                  Icon(LucideIcons.fileText, size: 13, color: colors.accent),
+                  widget.file.icon.isNotEmpty
+                      ? Text(widget.file.icon, style: const TextStyle(fontSize: 14))
+                      : Icon(LucideIcons.fileText, size: 13, color: colors.accent),
                   const Spacer(),
                   if (timeStr.isNotEmpty)
                     Text(
@@ -282,8 +306,36 @@ class _RecentFileCardState extends State<_RecentFileCard> {
                   color: colors.textPrimary,
                   letterSpacing: -0.1,
                 ),
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  if (widget.file.tags.isNotEmpty) ...[
+                    Expanded(
+                      child: Text(
+                        widget.file.tags.split(',').first.trim(),
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: colors.accent.withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ] else
+                    const Spacer(),
+                  if (widget.file.charCount > 0)
+                    Text(
+                      '${(widget.file.charCount / 300).ceil()}분',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: colors.textSecondary.withValues(alpha: 0.5),
+                      ),
+                    ),
+                ],
               ),
             ],
           ),
@@ -299,6 +351,140 @@ class _RecentFileCardState extends State<_RecentFileCard> {
     if (diff.inDays == 1) return '어제';
     if (diff.inDays < 7) return '${diff.inDays}일 전';
     return DateFormat('M/d').format(dt);
+  }
+}
+
+// ─── Global stats row ─────────────────────────────────────────────────────────
+
+class _GlobalStatsRow extends StatelessWidget {
+  final List<ProjectModel> projects;
+  final List<_RecentFile> recentFiles;
+
+  const _GlobalStatsRow({required this.projects, required this.recentFiles});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    final totalChars = recentFiles.fold<int>(0, (s, f) => s + f.charCount);
+    final latestUpdate = recentFiles.isEmpty ? null : recentFiles.first.updateAt;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        children: [
+          _MiniStat(
+            icon: LucideIcons.folder,
+            label: '프로젝트',
+            value: '${projects.length}개',
+            color: AppTheme.accent,
+            colors: colors,
+          ),
+          _MiniStatDivider(colors: colors),
+          _MiniStat(
+            icon: LucideIcons.fileText,
+            label: '최근 노트',
+            value: '${recentFiles.length}개',
+            color: AppTheme.green,
+            colors: colors,
+          ),
+          _MiniStatDivider(colors: colors),
+          _MiniStat(
+            icon: LucideIcons.type,
+            label: '분량',
+            value: totalChars > 0 ? '${(totalChars / 300).ceil()}분' : '-',
+            color: AppTheme.purple,
+            colors: colors,
+          ),
+          _MiniStatDivider(colors: colors),
+          _MiniStat(
+            icon: LucideIcons.clock,
+            label: '마지막 활동',
+            value: latestUpdate != null ? _shortDate(latestUpdate) : '-',
+            color: AppTheme.yellow,
+            colors: colors,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _shortDate(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+    if (diff.inHours < 24) return '${diff.inHours}시간 전';
+    if (diff.inDays == 1) return '어제';
+    return '${diff.inDays}일 전';
+  }
+}
+
+class _MiniStatDivider extends StatelessWidget {
+  final AppColors colors;
+  const _MiniStatDivider({required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 28,
+      color: colors.border.withValues(alpha: 0.5),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  final AppColors colors;
+
+  const _MiniStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.colors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 11, color: color.withValues(alpha: 0.7)),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  color: colors.textSecondary.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

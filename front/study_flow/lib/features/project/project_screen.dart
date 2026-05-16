@@ -27,10 +27,28 @@ class ProjectScreen extends ConsumerStatefulWidget {
   ConsumerState<ProjectScreen> createState() => _ProjectScreenState();
 }
 
+enum _SortMode { updatedDesc, updatedAsc, nameAsc, nameDesc, sizeDesc }
+
+extension _SortModeLabel on _SortMode {
+  String get label {
+    switch (this) {
+      case _SortMode.updatedDesc: return '최근 수정';
+      case _SortMode.updatedAsc: return '오래된 순';
+      case _SortMode.nameAsc: return '이름 오름차순';
+      case _SortMode.nameDesc: return '이름 내림차순';
+      case _SortMode.sizeDesc: return '내용 많은 순';
+    }
+  }
+}
+
 class _ProjectScreenState extends ConsumerState<ProjectScreen> {
   final _nameController = TextEditingController();
+  final _searchController = TextEditingController();
   late Future<List<FileModel>> _filesFuture;
   List<String> _tags = [];
+  bool _gridView = false;
+  _SortMode _sortMode = _SortMode.updatedDesc;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -42,12 +60,45 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
         .where((value) => value.isNotEmpty)
         .toList();
     _filesFuture = _fetchFiles();
+    _searchController.addListener(() {
+      setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
+    });
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  List<FileModel> _applyFilters(List<FileModel> files) {
+    var result = files.toList();
+    if (_searchQuery.isNotEmpty) {
+      result = result.where((f) {
+        return f.title.toLowerCase().contains(_searchQuery) ||
+            f.tags.toLowerCase().contains(_searchQuery) ||
+            f.content.toLowerCase().contains(_searchQuery);
+      }).toList();
+    }
+    switch (_sortMode) {
+      case _SortMode.updatedDesc:
+        result.sort((a, b) => (b.update_at ?? b.create_at).compareTo(a.update_at ?? a.create_at));
+        break;
+      case _SortMode.updatedAsc:
+        result.sort((a, b) => (a.update_at ?? a.create_at).compareTo(b.update_at ?? b.create_at));
+        break;
+      case _SortMode.nameAsc:
+        result.sort((a, b) => a.title.compareTo(b.title));
+        break;
+      case _SortMode.nameDesc:
+        result.sort((a, b) => b.title.compareTo(a.title));
+        break;
+      case _SortMode.sizeDesc:
+        result.sort((a, b) => b.content.length.compareTo(a.content.length));
+        break;
+    }
+    return result;
   }
 
   Future<List<FileModel>> _fetchFiles() async {
@@ -275,6 +326,10 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
             onBack: () => Navigator.pop(context),
             onAddTag: _openTagSheet,
             onCreateFile: _createFile,
+            gridView: _gridView,
+            onToggleView: () => setState(() => _gridView = !_gridView),
+            sortMode: _sortMode,
+            onSortChanged: (mode) => setState(() => _sortMode = mode),
           ),
           Expanded(
             child: Column(
@@ -306,94 +361,53 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
                     return const _ProjectFileSkeleton();
                   }
 
-                  final files = snapshot.data ?? [];
-                  if (files.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.all(AppSpace.lg),
-                      child: AppEmptyState(
-                        title: '노트를 추가하고 학습 흐름을 이어가보세요.',
-                        actionLabel: '새 노트',
-                        onAction: _createFile,
+                  final allFiles = snapshot.data ?? [];
+                  final files = _applyFilters(allFiles);
+
+                  return Column(
+                    children: [
+                      // Search bar
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+                        child: _SearchBar(controller: _searchController),
                       ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    key: PageStorageKey('project-${widget.project.id}'),
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpace.lg,
-                      0,
-                      AppSpace.lg,
-                      AppSpace.lg,
-                    ),
-                    itemCount: files.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == files.length) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: AppSpace.sm),
-                          child: AppButton(
-                            label: '새 노트',
-                            onPressed: _createFile,
-                            primary: false,
-                            icon: LucideIcons.plus,
-                            width: double.infinity,
-                          ),
-                        );
-                      }
-
-                      final file = files[index];
-                      return AppFadeSlide(
-                        delay: Duration(milliseconds: 40 + index * 35),
-                        beginOffset: const Offset(0, 12),
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            bottom: index == files.length - 1 ? 0 : AppSpace.sm,
-                          ),
-                          child: _FileTile(
-                            file: file,
-                            onOpen: () async {
-                              await Navigator.push(
-                                context,
-                                PageRouteBuilder(
-                                  pageBuilder:
-                                      (_, animation, secondaryAnimation) =>
-                                          FileScreen(
-                                            fileId: file.id,
-                                            projectId: widget.project.id,
-                                          ),
-                                  transitionsBuilder:
-                                      (
-                                        _,
-                                        animation,
-                                        secondaryAnimation,
-                                        child,
-                                      ) {
-                                        final curved = CurvedAnimation(
-                                          parent: animation,
-                                          curve: Curves.easeOutCubic,
-                                        );
-                                        return FadeTransition(
-                                          opacity: curved,
-                                          child: SlideTransition(
-                                            position: Tween<Offset>(
-                                              begin: const Offset(0, 0.02),
-                                              end: Offset.zero,
-                                            ).animate(curved),
-                                            child: child,
-                                          ),
-                                        );
-                                      },
-                                  transitionDuration: AppMotion.normal,
-                                ),
-                              );
-                              await _reloadFiles();
-                            },
-                            onRename: () => _renameFile(file),
-                            onDelete: () => _deleteFile(file),
-                          ),
+                      // Stats row
+                      if (allFiles.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.sm),
+                          child: _StatsRow(files: allFiles),
                         ),
-                      );
-                    },
+                      Expanded(
+                        child: files.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.all(AppSpace.lg),
+                                child: _searchQuery.isNotEmpty
+                                    ? _EmptySearch(query: _searchQuery)
+                                    : AppEmptyState(
+                                        title: '노트를 추가하고 학습 흐름을 이어가보세요.',
+                                        actionLabel: '새 노트',
+                                        onAction: _createFile,
+                                      ),
+                              )
+                            : _gridView
+                                ? _FileGridView(
+                                    files: files,
+                                    projectId: widget.project.id,
+                                    onReload: _reloadFiles,
+                                    onRename: _renameFile,
+                                    onDelete: _deleteFile,
+                                    onCreateFile: _createFile,
+                                  )
+                                : _FileListView(
+                                    files: files,
+                                    projectId: widget.project.id,
+                                    onReload: _reloadFiles,
+                                    onRename: _renameFile,
+                                    onDelete: _deleteFile,
+                                    onCreateFile: _createFile,
+                                  ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -414,12 +428,20 @@ class _ProjectTopBar extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onAddTag;
   final VoidCallback onCreateFile;
+  final bool gridView;
+  final VoidCallback onToggleView;
+  final _SortMode sortMode;
+  final ValueChanged<_SortMode> onSortChanged;
 
   const _ProjectTopBar({
     required this.projectName,
     required this.onBack,
     required this.onAddTag,
     required this.onCreateFile,
+    required this.gridView,
+    required this.onToggleView,
+    required this.sortMode,
+    required this.onSortChanged,
   });
 
   @override
@@ -471,6 +493,67 @@ class _ProjectTopBar extends StatelessWidget {
             ],
           ),
           const Spacer(),
+          // Sort button
+          PopupMenuButton<_SortMode>(
+            onSelected: onSortChanged,
+            initialValue: sortMode,
+            tooltip: '정렬',
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: colors.border),
+            ),
+            color: colors.surface,
+            itemBuilder: (_) => _SortMode.values
+                .map((m) => PopupMenuItem(
+                      value: m,
+                      child: Row(
+                        children: [
+                          Icon(
+                            m == sortMode ? LucideIcons.checkCircle2 : LucideIcons.circle,
+                            size: 13,
+                            color: m == sortMode ? colors.accent : colors.textSecondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            m.label,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: m == sortMode ? colors.accent : colors.textPrimary,
+                              fontWeight: m == sortMode ? FontWeight.w600 : FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ))
+                .toList(),
+            child: Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: colors.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(LucideIcons.arrowUpDown, size: 13, color: colors.textSecondary),
+                  const SizedBox(width: 5),
+                  Text(
+                    sortMode.label,
+                    style: GoogleFonts.inter(fontSize: 12, color: colors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpace.xs),
+          // Grid/List toggle
+          _HeaderButton(
+            icon: gridView ? LucideIcons.layoutList : LucideIcons.layoutGrid,
+            onTap: onToggleView,
+          ),
+          const SizedBox(width: AppSpace.xs),
           AppButton(
             label: '태그',
             onPressed: onAddTag,
@@ -843,6 +926,512 @@ class _IconPickerSheetState extends State<_IconPickerSheet>
   }
 }
 
+// ─── Search bar ──────────────────────────────────────────────────────────────
+
+class _SearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  const _SearchBar({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    return Container(
+      height: 36,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 10),
+          Icon(LucideIcons.search, size: 14, color: colors.textSecondary.withValues(alpha: 0.5)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              style: GoogleFonts.inter(fontSize: 13, color: colors.textPrimary),
+              decoration: InputDecoration(
+                hintText: '노트 검색...',
+                hintStyle: GoogleFonts.inter(fontSize: 13, color: colors.textSecondary.withValues(alpha: 0.5)),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          if (controller.text.isNotEmpty)
+            GestureDetector(
+              onTap: () => controller.clear(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(LucideIcons.x, size: 13, color: colors.textSecondary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Stats row ───────────────────────────────────────────────────────────────
+
+class _StatsRow extends StatelessWidget {
+  final List<FileModel> files;
+  const _StatsRow({required this.files});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    final totalChars = files.fold<int>(0, (sum, f) => sum + f.content.length);
+    final withContent = files.where((f) => f.content.trim().isNotEmpty).length;
+    final readMins = (totalChars / 300).ceil();
+
+    return Row(
+      children: [
+        _StatChip(label: '${files.length}개 노트', icon: LucideIcons.fileText, colors: colors),
+        const SizedBox(width: 6),
+        _StatChip(label: '내용 있음 $withContent개', icon: LucideIcons.bookOpen, colors: colors),
+        const SizedBox(width: 6),
+        _StatChip(label: '총 $readMins분 분량', icon: LucideIcons.clock, colors: colors),
+      ],
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final AppColors colors;
+  const _StatChip({required this.label, required this.icon, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: colors.textSecondary.withValues(alpha: 0.6)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: colors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Empty search state ───────────────────────────────────────────────────────
+
+class _EmptySearch extends StatelessWidget {
+  final String query;
+  const _EmptySearch({required this.query});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(LucideIcons.searchX, size: 32, color: colors.textSecondary.withValues(alpha: 0.35)),
+          const SizedBox(height: 10),
+          Text(
+            '"$query" 검색 결과가 없습니다',
+            style: GoogleFonts.inter(fontSize: 14, color: colors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── File list view ───────────────────────────────────────────────────────────
+
+class _FileListView extends StatelessWidget {
+  final List<FileModel> files;
+  final String projectId;
+  final Future<void> Function() onReload;
+  final Future<void> Function(FileModel) onRename;
+  final Future<void> Function(FileModel) onDelete;
+  final VoidCallback onCreateFile;
+
+  const _FileListView({
+    required this.files,
+    required this.projectId,
+    required this.onReload,
+    required this.onRename,
+    required this.onDelete,
+    required this.onCreateFile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      key: PageStorageKey('project-list-$projectId'),
+      padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.lg),
+      itemCount: files.length + 1,
+      itemBuilder: (context, index) {
+        if (index == files.length) {
+          return Padding(
+            padding: const EdgeInsets.only(top: AppSpace.sm),
+            child: AppButton(
+              label: '새 노트',
+              onPressed: onCreateFile,
+              primary: false,
+              icon: LucideIcons.plus,
+              width: double.infinity,
+            ),
+          );
+        }
+        final file = files[index];
+        return AppFadeSlide(
+          delay: Duration(milliseconds: 40 + index * 35),
+          beginOffset: const Offset(0, 12),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: index == files.length - 1 ? 0 : AppSpace.sm),
+            child: _FileTile(
+              file: file,
+              onOpen: () async {
+                await Navigator.push(context, _fileRoute(file, projectId));
+                await onReload();
+              },
+              onRename: () => onRename(file),
+              onDelete: () => onDelete(file),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─── File grid view ───────────────────────────────────────────────────────────
+
+class _FileGridView extends StatelessWidget {
+  final List<FileModel> files;
+  final String projectId;
+  final Future<void> Function() onReload;
+  final Future<void> Function(FileModel) onRename;
+  final Future<void> Function(FileModel) onDelete;
+  final VoidCallback onCreateFile;
+
+  const _FileGridView({
+    required this.files,
+    required this.projectId,
+    required this.onReload,
+    required this.onRename,
+    required this.onDelete,
+    required this.onCreateFile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      key: PageStorageKey('project-grid-$projectId'),
+      padding: const EdgeInsets.fromLTRB(AppSpace.lg, 0, AppSpace.lg, AppSpace.lg),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 280,
+        mainAxisExtent: 160,
+        crossAxisSpacing: AppSpace.sm,
+        mainAxisSpacing: AppSpace.sm,
+      ),
+      itemCount: files.length + 1,
+      itemBuilder: (context, index) {
+        if (index == files.length) {
+          return _NewNoteCard(onTap: onCreateFile);
+        }
+        final file = files[index];
+        return AppFadeSlide(
+          delay: Duration(milliseconds: 30 + index * 25),
+          beginOffset: const Offset(0, 8),
+          child: _FileCard(
+            file: file,
+            onOpen: () async {
+              await Navigator.push(context, _fileRoute(file, projectId));
+              await onReload();
+            },
+            onRename: () => onRename(file),
+            onDelete: () => onDelete(file),
+          ),
+        );
+      },
+    );
+  }
+}
+
+PageRouteBuilder _fileRoute(FileModel file, String projectId) {
+  return PageRouteBuilder(
+    pageBuilder: (_, animation, __) =>
+        FileScreen(fileId: file.id, projectId: projectId),
+    transitionsBuilder: (_, animation, __, child) {
+      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 0.02), end: Offset.zero).animate(curved),
+          child: child,
+        ),
+      );
+    },
+    transitionDuration: AppMotion.normal,
+  );
+}
+
+// ─── File card (grid) ─────────────────────────────────────────────────────────
+
+class _FileCard extends StatefulWidget {
+  final FileModel file;
+  final VoidCallback onOpen;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  const _FileCard({
+    required this.file,
+    required this.onOpen,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  @override
+  State<_FileCard> createState() => _FileCardState();
+}
+
+class _FileCardState extends State<_FileCard> {
+  bool _hovered = false;
+
+  String _contentPreview() {
+    final content = widget.file.content;
+    if (content.isEmpty) return '';
+    try {
+      final blocks = jsonDecode(content) as List;
+      for (final b in blocks) {
+        if (b is Map) {
+          final c = (b['content'] as String? ?? '').trim();
+          if (c.isNotEmpty && c.length > 2) return c;
+        }
+      }
+    } catch (_) {
+      return content.replaceAll('\n', ' ').trim();
+    }
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    final tags = widget.file.tags.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
+    final updatedAt = widget.file.update_at ?? widget.file.create_at;
+    final preview = _contentPreview();
+    final icon = (widget.file.icon?.isNotEmpty ?? false) ? widget.file.icon : null;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onOpen,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _hovered ? colors.accent.withValues(alpha: 0.4) : colors.border,
+              width: _hovered ? 1.5 : 1,
+            ),
+            boxShadow: _hovered ? AppShadows.cardHover(colors.accent) : AppShadows.elevation1,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (icon != null) ...[
+                      Text(icon, style: const TextStyle(fontSize: 18)),
+                      const SizedBox(width: 6),
+                    ] else
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: _hovered ? colors.accent.withValues(alpha: 0.12) : colors.background,
+                          borderRadius: BorderRadius.circular(7),
+                          border: Border.all(color: _hovered ? colors.accent.withValues(alpha: 0.3) : colors.border),
+                        ),
+                        child: Icon(
+                          preview.isNotEmpty ? LucideIcons.fileText : LucideIcons.file,
+                          size: 13,
+                          color: _hovered ? colors.accent : colors.textSecondary,
+                        ),
+                      ),
+                    const Spacer(),
+                    PopupMenuButton<String>(
+                      onSelected: (v) {
+                        if (v == 'rename') widget.onRename();
+                        if (v == 'delete') widget.onDelete();
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: 'rename', child: Row(children: [const Icon(LucideIcons.pencil, size: 14), const SizedBox(width: 8), const Text('이름 변경')])),
+                        const PopupMenuDivider(),
+                        PopupMenuItem(value: 'delete', child: Row(children: [Icon(LucideIcons.trash2, size: 14, color: AppTheme.red), const SizedBox(width: 8), Text('삭제', style: TextStyle(color: AppTheme.red))])),
+                      ],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: colors.border)),
+                      color: colors.surface,
+                      child: AnimatedOpacity(
+                        opacity: _hovered ? 1.0 : 0.3,
+                        duration: const Duration(milliseconds: 150),
+                        child: Icon(LucideIcons.moreHorizontal, size: 15, color: colors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.file.title,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textPrimary,
+                    letterSpacing: -0.2,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (preview.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    preview,
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      color: colors.textSecondary.withValues(alpha: 0.7),
+                      height: 1.4,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const Spacer(),
+                Row(
+                  children: [
+                    if (tags.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: colors.accent.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          tags.first,
+                          style: GoogleFonts.inter(fontSize: 10, color: colors.accent, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      if (tags.length > 1)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Text(
+                            '+${tags.length - 1}',
+                            style: GoogleFonts.inter(fontSize: 10, color: colors.textSecondary),
+                          ),
+                        ),
+                    ],
+                    const Spacer(),
+                    Text(
+                      _relativeDate(updatedAt),
+                      style: GoogleFonts.inter(fontSize: 10, color: colors.textSecondary.withValues(alpha: 0.55)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _relativeDate(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return '방금 전';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+    if (diff.inHours < 24) return '${diff.inHours}시간 전';
+    if (diff.inDays == 1) return '어제';
+    if (diff.inDays < 7) return '${diff.inDays}일 전';
+    return DateFormat('M/d', 'ko_KR').format(dt);
+  }
+}
+
+// ─── New note card (grid placeholder) ────────────────────────────────────────
+
+class _NewNoteCard extends StatefulWidget {
+  final VoidCallback onTap;
+  const _NewNoteCard({required this.onTap});
+
+  @override
+  State<_NewNoteCard> createState() => _NewNoteCardState();
+}
+
+class _NewNoteCardState extends State<_NewNoteCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          decoration: BoxDecoration(
+            color: _hovered ? colors.accent.withValues(alpha: 0.04) : colors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _hovered ? colors.accent.withValues(alpha: 0.4) : colors.border,
+              width: 1.5,
+              strokeAlign: BorderSide.strokeAlignInside,
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(LucideIcons.plus, size: 20, color: _hovered ? colors.accent : colors.textSecondary.withValues(alpha: 0.4)),
+                const SizedBox(height: 6),
+                Text(
+                  '새 노트',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: _hovered ? colors.accent : colors.textSecondary.withValues(alpha: 0.5),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FileTile extends StatefulWidget {
   final FileModel file;
   final VoidCallback onOpen;
@@ -880,6 +1469,23 @@ class _FileTileState extends State<_FileTile>
     super.dispose();
   }
 
+  String _contentPreview() {
+    final content = widget.file.content;
+    if (content.isEmpty) return '';
+    try {
+      final blocks = jsonDecode(content) as List;
+      for (final b in blocks) {
+        if (b is Map) {
+          final c = (b['content'] as String? ?? '').trim();
+          if (c.isNotEmpty && c.length > 2) return c;
+        }
+      }
+    } catch (_) {
+      return content.replaceAll('\n', ' ').trim();
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppTheme.colorsOf(context);
@@ -890,6 +1496,8 @@ class _FileTileState extends State<_FileTile>
         .toList();
     final updatedAt = widget.file.update_at ?? widget.file.create_at;
     final hasContent = widget.file.content.trim().isNotEmpty;
+    final preview = _contentPreview();
+    final charCount = widget.file.content.length;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -945,11 +1553,13 @@ class _FileTileState extends State<_FileTile>
                       ),
                     ),
                     child: Center(
-                      child: Icon(
-                        hasContent ? LucideIcons.fileText : LucideIcons.file,
-                        size: 16,
-                        color: _hovered ? colors.accent : colors.textSecondary,
-                      ),
+                      child: (widget.file.icon?.isNotEmpty ?? false)
+                          ? Text(widget.file.icon!, style: const TextStyle(fontSize: 18))
+                          : Icon(
+                              hasContent ? LucideIcons.fileText : LucideIcons.file,
+                              size: 16,
+                              color: _hovered ? colors.accent : colors.textSecondary,
+                            ),
                     ),
                   ),
                   const SizedBox(width: AppSpace.sm),
@@ -958,27 +1568,62 @@ class _FileTileState extends State<_FileTile>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.file.title,
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: colors.textPrimary,
-                            letterSpacing: -0.2,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.file.title,
+                                style: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.textPrimary,
+                                  letterSpacing: -0.2,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (charCount > 0)
+                              Container(
+                                margin: const EdgeInsets.only(left: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: colors.border.withValues(alpha: 0.4),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  '${(charCount / 300).ceil()}분',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 9.5,
+                                    color: colors.textSecondary.withValues(alpha: 0.7),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
+                        if (preview.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            preview,
+                            style: GoogleFonts.inter(
+                              fontSize: 11.5,
+                              color: colors.textSecondary.withValues(alpha: 0.65),
+                              height: 1.35,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        const SizedBox(height: 3),
                         Text(
                           _relativeDate(updatedAt),
                           style: GoogleFonts.inter(
                             fontSize: 11,
-                            color: colors.textSecondary.withValues(alpha: 0.6),
+                            color: colors.textSecondary.withValues(alpha: 0.5),
                           ),
                         ),
                         if (tags.isNotEmpty) ...[
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 5),
                           Wrap(
                             spacing: 4,
                             children: tags
@@ -990,16 +1635,14 @@ class _FileTileState extends State<_FileTile>
                                       vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: colors.border.withValues(
-                                        alpha: 0.5,
-                                      ),
+                                      color: colors.accent.withValues(alpha: 0.07),
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Text(
                                       t,
                                       style: GoogleFonts.inter(
                                         fontSize: 10,
-                                        color: colors.textSecondary,
+                                        color: colors.accent.withValues(alpha: 0.8),
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),

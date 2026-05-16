@@ -904,28 +904,41 @@ async def analyze_block(req: BlockReq):
         return {"analysis": ""}
     title_hint = f"제목: {req.context_title}\n" if req.context_title else ""
     p = (
-        f"당신은 시험 대비 학습 노트를 깊게 분석하는 튜터입니다.\n"
+        f"당신은 대학원 수준의 학습 튜터입니다. 학생이 작성한 문단을 깊이 분석해주세요.\n"
         f"{title_hint}"
-        f"분석할 문단:\n{req.text[:1800]}\n\n"
-        "위 문단 하나에 대해서만 분석합니다. 본문에 없는 내용 추가 금지.\n\n"
+        f"분석할 문단:\n{req.text[:2000]}\n\n"
+        "본문에 있는 내용만 사용하고 창작은 절대 금지합니다.\n\n"
         "아래 형식으로 정확히 출력하세요:\n\n"
         "## 핵심 의미\n"
-        "- 이 문단이 말하는 핵심을 3~5문장으로 설명\n\n"
+        "- 이 문단의 핵심 주장을 3~5문장으로 명확하게 설명\n"
+        "- 정의, 원리, 역할을 포함해 설명\n\n"
         "## 문맥 해석\n"
-        "- 앞뒤 개념과 어떻게 이어지는지 설명\n"
-        "- 비유나 예시가 있으면 무엇을 설명하기 위한 비유인지 해석\n\n"
-        "## 관련 개념\n"
-        "- 연결되는 개념 3~6개를 **굵게** 표시하고 관계 설명\n\n"
-        "## 시험 포인트\n"
-        "- 출제 가능한 질문 3개 이상\n"
-        "- 헷갈릴 수 있는 오답 포인트 포함\n\n"
+        "- 앞뒤 개념과 어떻게 연결되는지 설명\n"
+        "- 비유나 예시가 있으면 무엇을 위한 것인지 해석\n"
+        "- 왜 이 내용이 중요한지 학습 관점에서 설명\n\n"
+        "## 연결 개념 맵\n"
+        "- **개념 A** → 어떤 연관이 있는지\n"
+        "- **개념 B** → 어떤 연관이 있는지\n"
+        "(본문에 등장하는 연관 개념 3~5개 기술)\n\n"
+        "## 오개념 주의\n"
+        "- 학생들이 이 개념에서 자주 실수하는 점 2~3가지\n"
+        "- 헷갈리기 쉬운 유사 개념과의 차이\n\n"
+        "## 예상 시험 문제\n"
+        "**Q1.** (질문)\n**정답:** (답)\n**해설:** (짧은 해설)\n\n"
+        "**Q2.** (질문)\n**정답:** (답)\n**해설:** (짧은 해설)\n\n"
+        "**Q3.** (질문)\n**정답:** (답)\n**해설:** (짧은 해설)\n\n"
         "## 한 줄 정리\n"
-        "- 기억해야 할 결론 1문장\n\n"
-        "규칙: 본문 기반 · 최소 450자 이상 · 개념명 **굵게** · 이모티콘 금지 · 빈 항목 금지 · 마지막 문장 완결"
+        "- 이 문단에서 반드시 기억해야 할 결론 1문장\n\n"
+        "규칙:\n"
+        "- 본문 기반 · 최소 600자 이상\n"
+        "- 개념명 **굵게**\n"
+        "- 이모티콘 금지\n"
+        "- 빈 항목 금지\n"
+        "- 마지막 문장 완결"
     )
     try:
-        result = await _llm(p, temp=0.15, tokens=1800)
-        if _meaningful(result) < 180 or _looks_incomplete(result):
+        result = await _llm(p, temp=0.15, tokens=2400)
+        if _meaningful(result) < 280 or _looks_incomplete(result):
             result = _fallback_analysis(req.text, req.context_title)
         return {"analysis": result}
     except Exception:
@@ -956,17 +969,29 @@ async def memo(req: MemoReq):
         "| 개념명 | 한 줄 정의 | ★★★ |\n\n"
         "## 암기 포인트\n"
         "- **개념명**: 헷갈리기 쉬운 점과 기억할 내용을 함께 정리 (최소 8개)\n\n"
-        "## 빠른 복습\n"
-        "- 시험 전에 마지막으로 확인할 문장 8~10개\n\n"
+        "## 연상 기법\n"
+        "- 각 핵심 개념을 외우기 위한 기억 장치, 연상어, 약어 또는 이야기 구조로 정리\n"
+        "- 형식: **개념명** → 연상 방법\n"
+        "(본문에 등장하는 개념 중 암기가 필요한 것들 기준, 3~5개)\n\n"
+        "## 자주 나오는 오답\n"
+        "- 이 주제에서 학생들이 자주 틀리는 개념 또는 표현 2~4가지\n"
+        "- 형식: ❌ 틀린 이해 → ✅ 올바른 이해\n\n"
+        "## 스스로 점검\n"
+        "다음 질문에 답할 수 있는지 확인하세요 (정답은 본문에 있음):\n"
+        "1. (질문)\n"
+        "2. (질문)\n"
+        "3. (질문)\n"
+        "4. (질문)\n"
+        "5. (질문)\n\n"
         "작성 규칙:\n"
         "- 표는 반드시 완결된 형태로 출력 (잘리지 않게)\n"
         "- 개념명은 **굵게**\n"
         "- 중요도: ★★★(매우중요) / ★★(중요) / ★(보통)\n"
-        "- 이모티콘 금지\n"
+        "- 이모티콘 금지 (❌✅ 기호는 허용)\n"
         "- 본문에 없는 내용 추가 금지"
     )
     try:
-        r = await _llm(p, temp=0.15, tokens=3600)
+        r = await _llm(p, temp=0.15, tokens=4200)
         table_rows = len(re.findall(r"^\|\s*\*\*?.+?\|.+?\|.+?\|", r, re.MULTILINE))
         if _meaningful(r) < 240 or table_rows < 6 or _looks_incomplete(r):
             r = _fallback_memo(text, req.title)
@@ -992,14 +1017,36 @@ async def quiz(req: QuizReq):
     if _meaningful(text) < 30:
         return {"quiz": []}
     count = max(6, min(req.count, 12))
+    mc_count = max(4, count - 2)
     p = (
         f"본문:\n{text[:8000]}\n\n"
-        f"위 본문으로 객관식 {count}문제를 만드세요.\n\n"
-        "중요: JSON 배열만 출력하세요. 그 외 텍스트 절대 금지.\n"
-        "형식: [{\"question\":\"질문\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"answer\":0,\"explanation\":\"해설\"}]\n\n"
+        f"위 본문으로 총 {count}문제를 만드세요 (객관식 {mc_count}개 + OX문제 1개 + 빈칸채우기 1개).\n\n"
+        "중요: JSON 배열만 출력하세요. 그 외 텍스트 절대 금지.\n\n"
+        "형식:\n"
+        "[{\n"
+        "  \"type\": \"mc\",\n"
+        "  \"question\": \"질문\",\n"
+        "  \"options\": [\"A\", \"B\", \"C\", \"D\"],\n"
+        "  \"answer\": 0,\n"
+        "  \"explanation\": \"해설\"\n"
+        "},\n"
+        "{\n"
+        "  \"type\": \"ox\",\n"
+        "  \"question\": \"OX로 답할 수 있는 서술 문장\",\n"
+        "  \"options\": [\"O\", \"X\"],\n"
+        "  \"answer\": 0,\n"
+        "  \"explanation\": \"해설\"\n"
+        "},\n"
+        "{\n"
+        "  \"type\": \"fill\",\n"
+        "  \"question\": \"___에 들어갈 말로 올바른 것은?\",\n"
+        "  \"options\": [\"선택지A\", \"선택지B\", \"선택지C\", \"선택지D\"],\n"
+        "  \"answer\": 0,\n"
+        "  \"explanation\": \"해설\"\n"
+        "}]\n\n"
         "규칙:\n"
-        f"- 정확히 {count}개 문제를 출력\n"
-        "- question: 구체적인 질문 (본문 기반, Q번호 포함 가능)\n"
+        f"- 정확히 {count}개 문제 (mc {mc_count}개, ox 1개, fill 1개)\n"
+        "- type 필드는 반드시 \"mc\", \"ox\", \"fill\" 중 하나\n"
         "- options: 정확히 4개 문자열 배열\n"
         "- answer: 정답 인덱스 정수 (0, 1, 2, 3 중 하나)\n"
         "- explanation: 정답 근거 (본문 기반, 2~4문장)\n"
@@ -1008,7 +1055,7 @@ async def quiz(req: QuizReq):
         "- JSON이 끊기지 않도록 완결된 배열로 끝내기"
     )
     try:
-        raw = await _llm(p, temp=0.1, tokens=5200)
+        raw = await _llm(p, temp=0.1, tokens=6000)
         # 코드블록 제거
         raw = raw.replace("```json", "").replace("```", "").strip()
         # JSON 배열 추출 — 가장 바깥 [ ] 쌍 찾기
@@ -1076,20 +1123,23 @@ async def ask(req: AskReq):
             src = "웹 검색"
         except Exception:
             pass
-    ref_text = f"[참고 자료 — {src}]\n{ctx[:2500]}\n\n" if ctx else ""
+    ref_text = f"[참고 자료 — {src}]\n{ctx[:3000]}\n\n" if ctx else ""
     p = (
         f"{ref_text}"
         f"질문: {req.query}\n\n"
         "위 질문에 대해 한국어로 명확하고 구조적으로 답변하세요.\n\n"
-        "답변 형식:\n"
-        "- 핵심 답변을 첫 문장에 바로 제시\n"
-        "- 필요하면 불릿이나 번호 목록으로 구조화\n"
-        "- 근거나 예시가 있으면 간략히 포함\n"
-        "- 불확실한 내용은 '~일 수 있습니다' 형태로 표현\n"
-        "- 200자~500자 이내로 간결하게"
+        "## 답변\n"
+        "핵심 답변을 2~4문장으로 명확하게 제시하세요. 불확실한 내용은 '~일 수 있습니다' 형태로.\n\n"
+        "## 근거\n"
+        "- 답변의 근거 또는 관련 개념 2~4개 (참고 자료 기반, 없으면 일반 지식 활용)\n"
+        "- 각 항목에 출처 힌트 포함 가능 (예: '내 노트 참고', '교과서 원리')\n\n"
+        "## 추가로 알면 좋은 것\n"
+        "- 이 질문과 연관된 심화 개념 또는 응용 포인트 1~2개\n"
+        "- 연관 검색어나 키워드 제안\n\n"
+        "규칙: 본문 기반 우선, 없으면 일반 지식 · 이모티콘 금지 · 마지막 문장 완결"
     )
     try:
-        a = await _llm(p, temp=0.3, tokens=800)
+        a = await _llm(p, temp=0.3, tokens=1200)
         return {"answer": a, "source": src}
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -1123,6 +1173,81 @@ async def proofread(req: ProofreadReq):
     try:
         corrected = await _llm(p, temp=0.1, tokens=2000)
         return {"corrected": corrected.strip()}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ══════════════════════════════════════════════════════════
+# /smart-expand  — 짧은 메모/불릿을 풍부한 문단으로 확장
+# ══════════════════════════════════════════════════════════
+class ExpandReq(BaseModel):
+    text: str                    # 확장할 짧은 텍스트 (불릿, 메모 등)
+    context_title: str = ""      # 문서 제목 (선택)
+    style: str = "academic"      # academic / casual / concise
+
+
+@router.post("/smart-expand")
+async def smart_expand(req: ExpandReq):
+    if _meaningful(req.text) < 5:
+        return {"expanded": ""}
+    style_map = {
+        "academic": "학술적이고 정확한",
+        "casual":   "자연스럽고 읽기 쉬운",
+        "concise":  "간결하고 핵심 중심의",
+    }
+    style_desc = style_map.get(req.style, "자연스러운")
+    title_hint = f"문서 제목: {req.context_title}\n" if req.context_title else ""
+    p = (
+        f"당신은 학습 노트 작성 보조 AI입니다.\n"
+        f"{title_hint}"
+        f"다음 짧은 메모나 불릿을 {style_desc} 문체로 풍부하게 확장하세요.\n\n"
+        f"[원문]\n{req.text[:500]}\n\n"
+        "확장 규칙:\n"
+        "- 원문의 핵심 의미와 주제를 유지할 것\n"
+        "- 정의, 예시, 원인/결과, 또는 관련 맥락을 추가해 2~4문장으로 확장\n"
+        "- 새로운 정보 추가 가능하나 원문과 모순 금지\n"
+        "- 확장된 문단만 출력 (설명 없이)\n"
+        "- 마지막 문장 완결"
+    )
+    try:
+        result = await _llm(p, temp=0.4, tokens=600)
+        return {"expanded": result.strip()}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ══════════════════════════════════════════════════════════
+# /suggest-tags  — 문서 내용 기반 태그 자동 추천
+# ══════════════════════════════════════════════════════════
+class TagReq(BaseModel):
+    content: str
+    title: str = ""
+    existing_tags: str = ""     # 이미 있는 태그 (제외용)
+
+
+@router.post("/suggest-tags")
+async def suggest_tags(req: TagReq):
+    text = _extract_text_structured(req.content.strip())
+    if _meaningful(text) < 20:
+        return {"tags": []}
+    title_hint = f"제목: {req.title}\n" if req.title else ""
+    existing = f"이미 있는 태그 (이것과 겹치지 않도록): {req.existing_tags}\n" if req.existing_tags else ""
+    p = (
+        f"{title_hint}"
+        f"{existing}"
+        f"본문:\n{text[:3000]}\n\n"
+        "위 학습 노트에 어울리는 태그를 5~8개 추천하세요.\n\n"
+        "규칙:\n"
+        "- 쉼표로 구분된 한국어 태그 목록만 출력 (설명 없이)\n"
+        "- 각 태그는 1~3단어, 명사 형태\n"
+        "- 주제, 과목, 핵심 개념, 난이도 등을 반영\n"
+        "- 이모티콘 금지\n"
+        "예시: 운영체제, 프로세스, 메모리관리, 컴퓨터구조, 중급"
+    )
+    try:
+        result = await _llm(p, temp=0.3, tokens=200)
+        tags = [t.strip() for t in result.split(",") if t.strip()]
+        return {"tags": tags[:8]}
     except Exception as e:
         raise HTTPException(500, str(e))
 

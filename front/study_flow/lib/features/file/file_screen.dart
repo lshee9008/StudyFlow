@@ -273,6 +273,42 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _suggestTags() async {
+    final content = ref.read(fileEditorProvider).blocks
+        .map((b) => b.controller.text)
+        .join('\n');
+    if (content.trim().isEmpty) return;
+    final title = _tCtrl.text.trim();
+    final existing = _gCtrl.text.trim();
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/api/ai/suggest-tags'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'content': content, 'title': title, 'existing_tags': existing}),
+      ).timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final tags = (data['tags'] as List?)?.cast<String>() ?? [];
+        if (tags.isEmpty) return;
+        // 기존 태그와 합치기
+        final current = existing.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+        final merged = {...current, ...tags}.join(', ');
+        setState(() => _gCtrl.text = merged);
+        _chg();
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(
+              content: Text('태그 ${tags.length}개 추천됨'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ));
+        }
+      }
+    } catch (_) {}
+  }
+
   void _onFocus(String text, {int blockIndex = -1}) {
     _focT?.cancel();
     _focT = Timer(const Duration(milliseconds: 800), () {
@@ -1713,6 +1749,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                   },
                   onFocusMode: () => setState(() => _view = _view == 1 ? 0 : 1),
                   onGenerateSummary: _doSum,
+                  onSuggestTags: _suggestTags,
                 ),
               ),
             ),
@@ -2527,6 +2564,7 @@ class _DocumentHero extends StatefulWidget {
   final VoidCallback onInsertTemplate;
   final VoidCallback onFocusMode;
   final VoidCallback onGenerateSummary;
+  final VoidCallback? onSuggestTags;
 
   const _DocumentHero({
     required this.icon,
@@ -2543,6 +2581,7 @@ class _DocumentHero extends StatefulWidget {
     required this.onInsertTemplate,
     required this.onFocusMode,
     required this.onGenerateSummary,
+    this.onSuggestTags,
   });
 
   @override
@@ -2626,12 +2665,40 @@ class _DocumentHeroState extends State<_DocumentHero> {
                   ),
                   child: Column(
                     children: [
-                      _PropRow(
-                        icon: Icons.tag_rounded,
-                        label: '태그',
-                        ctrl: widget.tagsController,
-                        hint: '태그',
-                        onChange: widget.onTagsChange,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: _PropRow(
+                              icon: Icons.tag_rounded,
+                              label: '태그',
+                              ctrl: widget.tagsController,
+                              hint: '태그',
+                              onChange: widget.onTagsChange,
+                            ),
+                          ),
+                          if (widget.onSuggestTags != null)
+                            GestureDetector(
+                              onTap: widget.onSuggestTags,
+                              child: Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: _bg3.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: _bdr.withValues(alpha: 0.7)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.auto_awesome_rounded, size: 11, color: _txt2),
+                                    const SizedBox(width: 4),
+                                    Text('AI 추천', style: GoogleFonts.inter(fontSize: 10, color: _txt2, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       _PropRow(
                         icon: Icons.auto_awesome_rounded,

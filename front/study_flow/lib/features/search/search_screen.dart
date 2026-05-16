@@ -1026,6 +1026,7 @@ class _SearchResultTileState extends State<_SearchResultTile>
         : pct >= 60
         ? colors.accent
         : colors.textSecondary;
+    final scoreLabel = pct >= 80 ? '높은 관련성' : pct >= 60 ? '관련 있음' : '관련 낮음';
 
     return MouseRegion(
       onEnter: (_) => _enter(),
@@ -1143,14 +1144,28 @@ class _SearchResultTileState extends State<_SearchResultTile>
                         color: scoreColor.withValues(alpha: 0.24),
                       ),
                     ),
-                    child: Text(
-                      '$pct%',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: scoreColor,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          scoreLabel,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: scoreColor,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$pct%',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: scoreColor,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
