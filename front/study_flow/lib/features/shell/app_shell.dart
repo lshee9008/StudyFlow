@@ -60,6 +60,14 @@ class _AppShellState extends ConsumerState<AppShell>
     if (mounted) setState(() { _activeNav = 'search'; _activeProject = null; });
   }
 
+  void _goFocus() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      builder: (_) => const _FocusTimerDialog(),
+    );
+  }
+
   void _toggleSidebar() {
     setState(() => _sidebarCollapsed = !_sidebarCollapsed);
     HapticFeedback.selectionClick();
@@ -138,7 +146,18 @@ class _AppShellState extends ConsumerState<AppShell>
 
     final isCompact = MediaQuery.of(context).size.width < 800;
 
-    return Scaffold(
+    return KeyboardListener(
+      focusNode: FocusNode(),
+      autofocus: false,
+      onKeyEvent: (event) {
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.keyK &&
+            (HardwareKeyboard.instance.isMetaPressed ||
+                HardwareKeyboard.instance.isControlPressed)) {
+          _goSearch();
+        }
+      },
+      child: Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
         child: Row(
@@ -160,6 +179,7 @@ class _AppShellState extends ConsumerState<AppShell>
                   onToggleCollapse: _toggleSidebar,
                   onHome: _goHome,
                   onSearch: _goSearch,
+                  onFocus: _goFocus,
                   onOpenProject: _goProject,
                   onNewProject: () => _showNewProjectSheet(context, user),
                   onSettings: () => Navigator.of(
@@ -217,6 +237,7 @@ class _AppShellState extends ConsumerState<AppShell>
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -234,6 +255,7 @@ class _ShellSidebar extends StatefulWidget {
   final VoidCallback onToggleCollapse;
   final VoidCallback onHome;
   final VoidCallback onSearch;
+  final VoidCallback onFocus;
   final ValueChanged<ProjectModel> onOpenProject;
   final VoidCallback onNewProject;
   final VoidCallback onSettings;
@@ -248,6 +270,7 @@ class _ShellSidebar extends StatefulWidget {
     required this.onToggleCollapse,
     required this.onHome,
     required this.onSearch,
+    required this.onFocus,
     required this.onOpenProject,
     required this.onNewProject,
     required this.onSettings,
@@ -372,7 +395,7 @@ class _ShellSidebarState extends State<_ShellSidebar>
                   label: '포커스',
                   selected: false,
                   collapsed: widget.collapsed,
-                  onTap: () {},
+                  onTap: widget.onFocus,
                 ),
               ],
             ),
@@ -1232,6 +1255,393 @@ class _SidebarLogoutBtnState extends State<_SidebarLogoutBtn> {
                     ? Colors.red.withValues(alpha: 0.8)
                     : colors.textSecondary,
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Focus Timer Dialog (Pomodoro)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _FocusTimerDialog extends StatefulWidget {
+  const _FocusTimerDialog();
+
+  @override
+  State<_FocusTimerDialog> createState() => _FocusTimerDialogState();
+}
+
+class _FocusTimerDialogState extends State<_FocusTimerDialog>
+    with SingleTickerProviderStateMixin {
+  // ── 상태 ───────────────────────────────────────────────────
+  static const _presets = [25, 45, 60]; // minutes
+  int _selectedPreset = 25;
+  int _remaining = 25 * 60; // seconds
+  bool _running = false;
+  bool _done = false;
+
+  late AnimationController _pulseCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── 타이머 로직 ────────────────────────────────────────────
+  void _start() {
+    if (_done) {
+      _reset();
+      return;
+    }
+    setState(() => _running = true);
+    _pulseCtrl.repeat(reverse: true);
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted || !_running) return false;
+      setState(() {
+        _remaining--;
+        if (_remaining <= 0) {
+          _remaining = 0;
+          _running = false;
+          _done = true;
+        }
+      });
+      if (_done) {
+        _pulseCtrl.stop();
+        return false;
+      }
+      return _running;
+    });
+  }
+
+  void _pause() {
+    setState(() => _running = false);
+    _pulseCtrl.stop();
+  }
+
+  void _reset() {
+    setState(() {
+      _remaining = _selectedPreset * 60;
+      _running = false;
+      _done = false;
+    });
+    _pulseCtrl.stop();
+    _pulseCtrl.reset();
+  }
+
+  void _selectPreset(int minutes) {
+    if (_running) return;
+    setState(() {
+      _selectedPreset = minutes;
+      _remaining = minutes * 60;
+      _done = false;
+    });
+    _pulseCtrl.reset();
+  }
+
+  // ── 포맷 ───────────────────────────────────────────────────
+  String get _timeLabel {
+    final m = _remaining ~/ 60;
+    final s = _remaining % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  double get _progress =>
+      1.0 - (_remaining / (_selectedPreset * 60)).clamp(0.0, 1.0);
+
+  // ── Build ──────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Center(
+        child: Container(
+          width: 340,
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: colors.border.withValues(alpha: 0.6)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 40,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── 타이틀 ─────────────────────────────────────
+              Row(
+                children: [
+                  Icon(LucideIcons.timer, size: 16, color: colors.accent),
+                  const SizedBox(width: 8),
+                  Text(
+                    '포커스 타이머',
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Icon(
+                        LucideIcons.x,
+                        size: 16,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+
+              // ── 원형 프로그레스 ────────────────────────────
+              AnimatedBuilder(
+                animation: _pulseCtrl,
+                builder: (_, child) {
+                  final pulse = _running
+                      ? 0.5 + 0.5 * _pulseCtrl.value
+                      : 1.0;
+                  return Opacity(opacity: pulse, child: child);
+                },
+                child: SizedBox(
+                  width: 160,
+                  height: 160,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox.expand(
+                        child: CircularProgressIndicator(
+                          value: _progress,
+                          strokeWidth: 6,
+                          backgroundColor:
+                              colors.border.withValues(alpha: 0.4),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _done ? AppTheme.green : colors.accent,
+                          ),
+                          strokeCap: StrokeCap.round,
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _done ? '완료!' : _timeLabel,
+                            style: GoogleFonts.inter(
+                              fontSize: _done ? 22 : 30,
+                              fontWeight: FontWeight.w700,
+                              color: _done
+                                  ? AppTheme.green
+                                  : colors.textPrimary,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                          if (!_done)
+                            Text(
+                              _running ? '집중 중' : '일시정지',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ── 프리셋 선택 ────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: _presets.map((m) {
+                  final active = m == _selectedPreset;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: GestureDetector(
+                      onTap: () => _selectPreset(m),
+                      child: MouseRegion(
+                        cursor: _running
+                            ? SystemMouseCursors.forbidden
+                            : SystemMouseCursors.click,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: active
+                                ? colors.accent.withValues(alpha: 0.14)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: active
+                                  ? colors.accent.withValues(alpha: 0.4)
+                                  : colors.border.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: Text(
+                            '${m}분',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: active
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: active
+                                  ? colors.accent
+                                  : colors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+
+              // ── 컨트롤 버튼 ───────────────────────────────
+              Row(
+                children: [
+                  // 리셋
+                  _TimerBtn(
+                    icon: LucideIcons.rotateCcw,
+                    label: '초기화',
+                    onTap: _reset,
+                    colors: colors,
+                  ),
+                  const SizedBox(width: 10),
+                  // 시작/일시정지
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _running ? _pause : _start,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: _done
+                                ? LinearGradient(colors: [
+                                    AppTheme.green,
+                                    AppTheme.green.withValues(alpha: 0.8),
+                                  ])
+                                : AppGradients.accent,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: AppShadows.accentGlow(
+                              _done ? AppTheme.green : AppTheme.accent,
+                              intensity: 0.25,
+                            ),
+                          ),
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _done
+                                      ? LucideIcons.rotateCcw
+                                      : _running
+                                          ? LucideIcons.pause
+                                          : LucideIcons.play,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _done
+                                      ? '다시 시작'
+                                      : _running
+                                          ? '일시정지'
+                                          : '시작',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimerBtn extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final dynamic colors;
+  const _TimerBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.colors,
+  });
+
+  @override
+  State<_TimerBtn> createState() => _TimerBtnState();
+}
+
+class _TimerBtnState extends State<_TimerBtn> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _hovered
+                ? colors.border.withValues(alpha: 0.4)
+                : colors.border.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.border.withValues(alpha: 0.5)),
+          ),
+          child: Center(
+            child: Icon(
+              widget.icon,
+              size: 15,
+              color: _hovered ? colors.textPrimary : colors.textSecondary,
             ),
           ),
         ),

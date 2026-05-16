@@ -1,12 +1,13 @@
 from typing import Optional, List
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlmodel import Session
+from sqlmodel import Session, select
 from pydantic import BaseModel
 import google.generativeai as genai
 
 from app.core.config import settings
 from app.core.database import get_session
 from app.models.files import Files, FileCreate, FileRead
+from app.models.projects import Projects
 from app.crud import crud_files
 
 
@@ -78,6 +79,29 @@ def update_file(
         background_tasks.add_task(_update_vector, file)
 
     return file
+
+
+# ── 유저의 최근 수정 파일 목록 ────────────────────────────────
+@router.get("/user/{user_id}/recent", response_model=List[FileRead])
+def get_recent_files(
+    user_id: str,
+    limit: int = 8,
+    session: Session = Depends(get_session),
+):
+    """유저의 모든 프로젝트에서 최근 수정된 파일 목록 반환."""
+    projects = session.exec(
+        select(Projects).where(Projects.user_id == user_id)
+    ).all()
+    project_ids = [p.id for p in projects]
+    if not project_ids:
+        return []
+    files = session.exec(
+        select(Files)
+        .where(Files.project_id.in_(project_ids))
+        .order_by(Files.update_at.desc())
+        .limit(limit)
+    ).all()
+    return files
 
 
 # ── 파일 삭제 ──────────────────────────────────────────────

@@ -2,25 +2,55 @@
 // ║  HomeContent — Dashboard Widgets                           ║
 // ║  Self-contained, no circular dependencies with shell       ║
 // ╚════════════════════════════════════════════════════════════╝
+import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/provider_config.dart';
 import '../../core/theme.dart';
 import '../../core/ui/app_components.dart';
 import '../../models/user_model.dart';
+import '../file/file_screen.dart';
 import '../project/project_model.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HomeContent — top-level dashboard widget
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class HomeContent extends StatelessWidget {
+// ── 최근 파일 모델 ────────────────────────────────────────────
+class _RecentFile {
+  final String id;
+  final String projectId;
+  final String title;
+  final String tags;
+  final DateTime? updateAt;
+
+  const _RecentFile({
+    required this.id,
+    required this.projectId,
+    required this.title,
+    required this.tags,
+    this.updateAt,
+  });
+
+  factory _RecentFile.fromJson(Map<String, dynamic> j) => _RecentFile(
+    id: j['id'] ?? '',
+    projectId: j['project_id'] ?? '',
+    title: j['title'] ?? '제목 없음',
+    tags: j['tags'] ?? '',
+    updateAt: j['update_at'] != null ? DateTime.tryParse(j['update_at']) : null,
+  );
+}
+
+class HomeContent extends StatefulWidget {
   final UserModel user;
   final List<ProjectModel> projects;
   final ValueChanged<ProjectModel> onOpenProject;
@@ -37,6 +67,54 @@ class HomeContent extends StatelessWidget {
   });
 
   @override
+  State<HomeContent> createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<HomeContent> {
+  List<_RecentFile> _recentFiles = [];
+  bool _loadingRecent = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecentFiles();
+  }
+
+  Future<void> _loadRecentFiles() async {
+    if (widget.user.id == null || widget.user.id!.isEmpty) return;
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/api/files/user/${widget.user.id}/recent?limit=6'),
+      ).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(utf8.decode(res.bodyBytes));
+        setState(() {
+          _recentFiles = data.map((j) => _RecentFile.fromJson(j)).toList();
+          _loadingRecent = false;
+        });
+      } else {
+        setState(() => _loadingRecent = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingRecent = false);
+    }
+  }
+
+  void _openFile(String fileId) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => FileScreen(fileId: fileId),
+        transitionDuration: const Duration(milliseconds: 260),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
     final twoCol = w > 1100;
@@ -48,38 +126,202 @@ class HomeContent extends StatelessWidget {
         AppFadeSlide(
           delay: const Duration(milliseconds: 60),
           beginOffset: const Offset(0, 16),
-          child: _HeroGreetingCard(user: user, projectCount: projects.length),
+          child: _HeroGreetingCard(user: widget.user, projectCount: widget.projects.length),
         ),
         const SizedBox(height: 28),
+
+        // ── 최근 이용 파일 섹션 ─────────────────────────────────
+        if (_loadingRecent || _recentFiles.isNotEmpty) ...[
+          AppFadeSlide(
+            delay: const Duration(milliseconds: 100),
+            beginOffset: const Offset(0, 10),
+            child: _SectionLabel(label: '최근 파일'),
+          ),
+          const SizedBox(height: 10),
+          if (_loadingRecent)
+            _RecentFilesShimmer()
+          else
+            _RecentFilesList(files: _recentFiles, onOpen: _openFile),
+          const SizedBox(height: 28),
+        ],
+
         AppFadeSlide(
           delay: const Duration(milliseconds: 120),
           beginOffset: const Offset(0, 10),
           child: _SectionHeader(
             label: '이어서 작업',
-            count: projects.length,
-            onNewProject: onNewProject,
+            count: widget.projects.length,
+            onNewProject: widget.onNewProject,
           ),
         ),
         const SizedBox(height: 12),
-        if (projects.isEmpty)
+        if (widget.projects.isEmpty)
           AppFadeSlide(
             delay: const Duration(milliseconds: 160),
-            child: _EmptyProjectsState(onNewProject: onNewProject),
+            child: _EmptyProjectsState(onNewProject: widget.onNewProject),
           )
         else if (twoCol)
           _ProjectGrid(
-            projects: projects,
-            onOpen: onOpenProject,
-            onDelete: onDeleteProject,
+            projects: widget.projects,
+            onOpen: widget.onOpenProject,
+            onDelete: widget.onDeleteProject,
           )
         else
           _ProjectList(
-            projects: projects,
-            onOpen: onOpenProject,
-            onDelete: onDeleteProject,
+            projects: widget.projects,
+            onOpen: widget.onOpenProject,
+            onDelete: widget.onDeleteProject,
           ),
         const SizedBox(height: 32),
       ],
+    );
+  }
+}
+
+// ── 섹션 라벨 (단순) ──────────────────────────────────────────
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  const _SectionLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    return Text(
+      label,
+      style: GoogleFonts.inter(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: colors.textPrimary,
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+}
+
+// ── 최근 파일 카드 리스트 ─────────────────────────────────────
+class _RecentFilesList extends StatelessWidget {
+  final List<_RecentFile> files;
+  final ValueChanged<String> onOpen;
+  const _RecentFilesList({required this.files, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 88,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: files.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (ctx, i) => AppFadeSlide(
+          delay: Duration(milliseconds: 80 + i * 40),
+          beginOffset: const Offset(16, 0),
+          child: _RecentFileCard(file: files[i], onOpen: () => onOpen(files[i].id)),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentFileCard extends StatefulWidget {
+  final _RecentFile file;
+  final VoidCallback onOpen;
+  const _RecentFileCard({required this.file, required this.onOpen});
+
+  @override
+  State<_RecentFileCard> createState() => _RecentFileCardState();
+}
+
+class _RecentFileCardState extends State<_RecentFileCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    final dt = widget.file.updateAt;
+    final timeStr = dt == null ? '' : _relativeDate(dt);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onOpen,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          width: 180,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _hovered ? colors.accent.withValues(alpha: 0.35) : colors.border,
+              width: _hovered ? 1.5 : 1,
+            ),
+            boxShadow: _hovered ? AppShadows.cardHover(colors.accent) : AppShadows.elevation1,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(LucideIcons.fileText, size: 13, color: colors.accent),
+                  const Spacer(),
+                  if (timeStr.isNotEmpty)
+                    Text(
+                      timeStr,
+                      style: GoogleFonts.inter(fontSize: 10, color: colors.textSecondary.withValues(alpha: 0.6)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.file.title.isEmpty ? '제목 없음' : widget.file.title,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textPrimary,
+                  letterSpacing: -0.1,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _relativeDate(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+    if (diff.inHours < 24) return '${diff.inHours}시간 전';
+    if (diff.inDays == 1) return '어제';
+    if (diff.inDays < 7) return '${diff.inDays}일 전';
+    return DateFormat('M/d').format(dt);
+  }
+}
+
+class _RecentFilesShimmer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    return SizedBox(
+      height: 88,
+      child: Row(
+        children: List.generate(4, (i) => Padding(
+          padding: EdgeInsets.only(right: i < 3 ? 10 : 0),
+          child: AppShimmer(
+            child: Container(
+              width: 180,
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        )),
+      ),
     );
   }
 }

@@ -240,7 +240,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   Widget _buildBody() {
     if (_loading) return const _SearchSkeleton();
 
-    if (!_searched) return _SearchIdleState(onSearch: _search);
+    if (!_searched) return _SearchIdleState(onSearch: (label) {
+      _queryController.text = label;
+      _search();
+    });
 
     if (_results.isEmpty) {
       return _SearchEmptyState(
@@ -1231,7 +1234,7 @@ class _TagChip extends StatelessWidget {
 // ─── Idle state ───────────────────────────────────────────────────────────────
 
 class _SearchIdleState extends StatelessWidget {
-  final VoidCallback onSearch;
+  final ValueChanged<String> onSearch;
 
   const _SearchIdleState({required this.onSearch});
 
@@ -1273,7 +1276,11 @@ class _SearchIdleState extends StatelessWidget {
               beginOffset: const Offset(0, 12),
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _SuggestionRow(icon: icon, label: label),
+                child: _SuggestionRow(
+                  icon: icon,
+                  label: label,
+                  onTap: () => onSearch(label),
+                ),
               ),
             );
           }),
@@ -1334,7 +1341,8 @@ class _SearchIdleState extends StatelessWidget {
 class _SuggestionRow extends StatefulWidget {
   final IconData icon;
   final String label;
-  const _SuggestionRow({required this.icon, required this.label});
+  final VoidCallback? onTap;
+  const _SuggestionRow({required this.icon, required this.label, this.onTap});
 
   @override
   State<_SuggestionRow> createState() => _SuggestionRowState();
@@ -1351,7 +1359,9 @@ class _SuggestionRowState extends State<_SuggestionRow> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       cursor: SystemMouseCursors.click,
-      child: AnimatedContainer(
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
@@ -1393,6 +1403,7 @@ class _SuggestionRowState extends State<_SuggestionRow> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
