@@ -8,6 +8,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -20,6 +21,7 @@ import '../../core/ui/app_components.dart';
 import '../../models/user_model.dart';
 import '../file/file_screen.dart';
 import '../project/project_model.dart';
+import '../project/project_provider.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HomeContent — top-level dashboard widget
@@ -58,9 +60,8 @@ class _RecentFile {
   );
 }
 
-class HomeContent extends StatefulWidget {
+class HomeContent extends ConsumerStatefulWidget {
   final UserModel user;
-  final List<ProjectModel> projects;
   final ValueChanged<ProjectModel> onOpenProject;
   final ValueChanged<ProjectModel> onDeleteProject;
   final VoidCallback onNewProject;
@@ -68,17 +69,16 @@ class HomeContent extends StatefulWidget {
   const HomeContent({
     super.key,
     required this.user,
-    required this.projects,
     required this.onOpenProject,
     required this.onDeleteProject,
     required this.onNewProject,
   });
 
   @override
-  State<HomeContent> createState() => _HomeContentState();
+  ConsumerState<HomeContent> createState() => _HomeContentState();
 }
 
-class _HomeContentState extends State<HomeContent> {
+class _HomeContentState extends ConsumerState<HomeContent> {
   List<_RecentFile> _recentFiles = [];
   bool _loadingRecent = true;
   Map<String, dynamic>? _flowSummary;
@@ -149,6 +149,10 @@ class _HomeContentState extends State<HomeContent> {
 
   @override
   Widget build(BuildContext context) {
+    // projectProvider를 직접 watch → 로드 후에도 실시간 반영
+    final projects = [...ref.watch(projectProvider)]
+      ..sort((a, b) => b.update_at.compareTo(a.update_at));
+
     final w = MediaQuery.of(context).size.width;
     final twoCol = w > 1100;
 
@@ -159,19 +163,19 @@ class _HomeContentState extends State<HomeContent> {
         AppFadeSlide(
           delay: const Duration(milliseconds: 60),
           beginOffset: const Offset(0, 16),
-          child: _HeroGreetingCard(user: widget.user, projectCount: widget.projects.length),
+          child: _HeroGreetingCard(user: widget.user, projectCount: projects.length),
         ),
         const SizedBox(height: 28),
 
         // ── 전체 통계 스트립 ──────────────────────────────────────
-        if (widget.projects.isNotEmpty || _recentFiles.isNotEmpty)
+        if (projects.isNotEmpty || _recentFiles.isNotEmpty)
           AppFadeSlide(
             delay: const Duration(milliseconds: 80),
             beginOffset: const Offset(0, 8),
             child: Padding(
               padding: const EdgeInsets.only(bottom: 24),
               child: _GlobalStatsRow(
-                projects: widget.projects,
+                projects: projects,
                 recentFiles: _recentFiles,
               ),
             ),
@@ -213,25 +217,25 @@ class _HomeContentState extends State<HomeContent> {
           beginOffset: const Offset(0, 10),
           child: _SectionHeader(
             label: '이어서 작업',
-            count: widget.projects.length,
+            count: projects.length,
             onNewProject: widget.onNewProject,
           ),
         ),
         const SizedBox(height: 12),
-        if (widget.projects.isEmpty)
+        if (projects.isEmpty)
           AppFadeSlide(
             delay: const Duration(milliseconds: 160),
             child: _EmptyProjectsState(onNewProject: widget.onNewProject),
           )
         else if (twoCol)
           _ProjectGrid(
-            projects: widget.projects,
+            projects: projects,
             onOpen: widget.onOpenProject,
             onDelete: widget.onDeleteProject,
           )
         else
           _ProjectList(
-            projects: widget.projects,
+            projects: projects,
             onOpen: widget.onOpenProject,
             onDelete: widget.onDeleteProject,
           ),

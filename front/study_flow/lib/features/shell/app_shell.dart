@@ -219,7 +219,6 @@ class _AppShellState extends ConsumerState<AppShell>
                           Expanded(
                             child: HomeContent(
                               user: user,
-                              projects: projects,
                               onOpenProject: _goProject,
                               onDeleteProject: (p) => _deleteProject(ctx, p),
                               onNewProject: () => _showNewProjectSheet(ctx, user),
