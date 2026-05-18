@@ -360,6 +360,21 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const _ProjectFileSkeleton();
                   }
+                  if (snapshot.hasError) {
+                    final ec = AppTheme.colorsOf(context);
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.wifiOff, size: 28, color: ec.textSecondary.withValues(alpha: 0.4)),
+                          const SizedBox(height: 10),
+                          Text('노트를 불러올 수 없습니다', style: GoogleFonts.inter(color: ec.textSecondary, fontSize: 13)),
+                          const SizedBox(height: 8),
+                          AppButton(label: '다시 시도', onPressed: _reloadFiles, primary: false),
+                        ],
+                      ),
+                    );
+                  }
 
                   final allFiles = snapshot.data ?? [];
                   final files = _applyFilters(allFiles);
@@ -1219,7 +1234,11 @@ class _FileCardState extends State<_FileCard> {
       final blocks = jsonDecode(content) as List;
       for (final b in blocks) {
         if (b is Map) {
-          final c = (b['content'] as String? ?? '').trim();
+          final c = ((b['content'] as String?) ??
+                  (b['controller'] is Map
+                      ? (b['controller']['text'] as String?) ?? ''
+                      : ''))
+              .trim();
           if (c.isNotEmpty && c.length > 2) return c;
         }
       }
@@ -1476,7 +1495,11 @@ class _FileTileState extends State<_FileTile>
       final blocks = jsonDecode(content) as List;
       for (final b in blocks) {
         if (b is Map) {
-          final c = (b['content'] as String? ?? '').trim();
+          final c = ((b['content'] as String?) ??
+                  (b['controller'] is Map
+                      ? (b['controller']['text'] as String?) ?? ''
+                      : ''))
+              .trim();
           if (c.isNotEmpty && c.length > 2) return c;
         }
       }

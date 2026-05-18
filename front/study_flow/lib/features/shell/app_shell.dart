@@ -33,11 +33,18 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell>
     with SingleTickerProviderStateMixin {
   final _innerNavKey = GlobalKey<NavigatorState>();
+  final _kbFocusNode = FocusNode();
 
   bool _sidebarCollapsed = false;
   // 'home' | 'search' | 'workspace'
   String _activeNav = 'home';
   ProjectModel? _activeProject;
+
+  @override
+  void dispose() {
+    _kbFocusNode.dispose();
+    super.dispose();
+  }
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -147,8 +154,8 @@ class _AppShellState extends ConsumerState<AppShell>
     final isCompact = MediaQuery.of(context).size.width < 800;
 
     return KeyboardListener(
-      focusNode: FocusNode(),
-      autofocus: false,
+      focusNode: _kbFocusNode,
+      autofocus: true,
       onKeyEvent: (event) {
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.keyK &&
@@ -159,6 +166,14 @@ class _AppShellState extends ConsumerState<AppShell>
       },
       child: Scaffold(
       backgroundColor: colors.background,
+      // ── 모바일 하단 내비게이션 ────────────────────────────────────────
+      bottomNavigationBar: isCompact ? _CompactBottomNav(
+        activeNav: _activeNav,
+        onHome: _goHome,
+        onSearch: _goSearch,
+        onFocus: _goFocus,
+        onNewProject: () => _showNewProjectSheet(context, user),
+      ) : null,
       body: SafeArea(
         child: Row(
           children: [
@@ -1256,6 +1271,138 @@ class _SidebarLogoutBtnState extends State<_SidebarLogoutBtn> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Compact bottom navigation bar (mobile)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _CompactBottomNav extends StatelessWidget {
+  final String activeNav;
+  final VoidCallback onHome;
+  final VoidCallback onSearch;
+  final VoidCallback onFocus;
+  final VoidCallback onNewProject;
+
+  const _CompactBottomNav({
+    required this.activeNav,
+    required this.onHome,
+    required this.onSearch,
+    required this.onFocus,
+    required this.onNewProject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppTheme.colorsOf(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(top: BorderSide(color: colors.border.withValues(alpha: 0.6))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 56,
+          child: Row(
+            children: [
+              _BottomNavItem(
+                icon: LucideIcons.layoutDashboard,
+                label: '홈',
+                selected: activeNav == 'home',
+                onTap: onHome,
+                colors: colors,
+              ),
+              _BottomNavItem(
+                icon: LucideIcons.search,
+                label: '검색',
+                selected: activeNav == 'search',
+                onTap: onSearch,
+                colors: colors,
+              ),
+              _BottomNavItem(
+                icon: LucideIcons.plus,
+                label: '새 프로젝트',
+                selected: false,
+                onTap: onNewProject,
+                colors: colors,
+                highlight: true,
+              ),
+              _BottomNavItem(
+                icon: LucideIcons.timer,
+                label: '포커스',
+                selected: false,
+                onTap: onFocus,
+                colors: colors,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomNavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final bool highlight;
+  final VoidCallback onTap;
+  final AppColors colors;
+
+  const _BottomNavItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.colors,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color iconColor = selected
+        ? colors.accent
+        : highlight
+        ? colors.accent
+        : colors.textSecondary;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (highlight)
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: AppGradients.accent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: AppShadows.accentGlow(AppTheme.accent, intensity: 0.3),
+                ),
+                child: Icon(icon, size: 16, color: Colors.white),
+              )
+            else ...[
+              Icon(icon, size: 18, color: iconColor),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: iconColor,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

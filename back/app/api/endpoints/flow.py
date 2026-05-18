@@ -230,10 +230,10 @@ def get_flow_summary(
             if f:
                 weak_files.append({
                     "file_id": f.id,
-                    "title": f.title or "제목 없음",
+                    "file_title": f.title or "제목 없음",
                     "score": a.score,
                     "total": a.total,
-                    "pct": round(a.score / a.total * 100),
+                    "avg_score": round(a.score / a.total * 100),
                 })
         if len(weak_files) >= 3:
             break
@@ -253,7 +253,7 @@ def get_flow_summary(
             overdue_days = (now - s.next_review_at).days if s.next_review_at else 0
             due_reviews.append({
                 "file_id": s.file_id,
-                "title": f.title or "제목 없음",
+                "file_title": f.title or "제목 없음",
                 "overdue_days": overdue_days,
                 "review_count": s.review_count,
                 "interval_days": s.interval_days,
@@ -310,7 +310,7 @@ def get_flow_summary(
         "no_quiz_files": [
             {
                 "file_id": f.id,
-                "title": f.title or "제목 없음",
+                "file_title": f.title or "제목 없음",
                 "tags": f.tags or "",
                 "icon": f.icon or "",
                 "char_count": len(f.content or ""),

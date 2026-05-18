@@ -134,8 +134,9 @@ class _HomeContentState extends ConsumerState<HomeContent> {
     }
   }
 
-  void _openFile(String fileId) {
-    Navigator.of(context).push(
+  Future<void> _openFile(String fileId) async {
+    if (fileId.isEmpty) return;
+    await Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (_, __, ___) => FileScreen(fileId: fileId),
         transitionDuration: const Duration(milliseconds: 260),
@@ -145,6 +146,8 @@ class _HomeContentState extends ConsumerState<HomeContent> {
         ),
       ),
     );
+    // 파일에서 돌아오면 flow summary 새로고침 (퀴즈 결과 반영)
+    if (mounted) _loadFlowSummary();
   }
 
   @override
@@ -207,6 +210,7 @@ class _HomeContentState extends ConsumerState<HomeContent> {
                   ? const _FlowShimmer()
                   : _FlowDashboard(
                       summary: _flowSummary!,
+                      userId: widget.user.id ?? '',
                       onOpenFile: _openFile,
                     ),
             ),
@@ -2124,8 +2128,13 @@ class _FlowShimmer extends StatelessWidget {
 
 class _FlowDashboard extends StatefulWidget {
   final Map<String, dynamic> summary;
+  final String userId;
   final void Function(String) onOpenFile;
-  const _FlowDashboard({required this.summary, required this.onOpenFile});
+  const _FlowDashboard({
+    required this.summary,
+    required this.userId,
+    required this.onOpenFile,
+  });
 
   @override
   State<_FlowDashboard> createState() => _FlowDashboardState();
@@ -2133,6 +2142,59 @@ class _FlowDashboard extends StatefulWidget {
 
 class _FlowDashboardState extends State<_FlowDashboard> {
   bool _expanded = false;
+  List<dynamic> _nextActions = [];
+  bool _loadingActions = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNextActions();
+  }
+
+  Future<void> _loadNextActions() async {
+    if (widget.userId.isEmpty) return;
+    final summary = widget.summary;
+    final recentTitles = (summary['recent_files'] as List? ?? [])
+        .map((f) => f['file_title']?.toString() ?? f['title']?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final dueTitles = (summary['due_reviews'] as List? ?? [])
+        .map((f) => f['file_title']?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final weakTitles = (summary['weak_files'] as List? ?? [])
+        .map((f) => f['file_title']?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final noQuizTitles = (summary['no_quiz_files'] as List? ?? [])
+        .map((f) => f['file_title']?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    setState(() => _loadingActions = true);
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/api/flow/next-actions'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': widget.userId,
+              'recent_titles': recentTitles,
+              'due_review_titles': dueTitles,
+              'weak_titles': weakTitles,
+              'no_quiz_titles': noQuizTitles,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        final actions = data['actions'] as List? ?? data['next_actions'] as List? ?? [];
+        setState(() => _nextActions = actions);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loadingActions = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2140,7 +2202,7 @@ class _FlowDashboardState extends State<_FlowDashboard> {
     final dueReviews = widget.summary['due_reviews'] as List? ?? [];
     final noQuizFiles = widget.summary['no_quiz_files'] as List? ?? [];
     final weakFiles = widget.summary['weak_files'] as List? ?? [];
-    final nextActions = widget.summary['next_actions'] as List? ?? [];
+    final nextActions = _nextActions;
 
     final dueCount = stats['due_count'] ?? dueReviews.length;
     final noQuizCount = stats['no_quiz_count'] ?? noQuizFiles.length;
@@ -2270,9 +2332,9 @@ class _FlowDashboardState extends State<_FlowDashboard> {
             const SizedBox(height: 8),
             ...dueReviews.take(3).map((f) => _FlowFileChip(
               title: f['file_title'] ?? '노트',
-              subtitle: '${f['interval_days'] ?? 1}일 경과',
+              subtitle: '${f['overdue_days'] ?? 0}일 경과',
               color: _fRed,
-              onTap: () => widget.onOpenFile(f['file_id']),
+              onTap: () => widget.onOpenFile(f['file_id'] ?? ''),
             )),
             const SizedBox(height: 14),
           ],
@@ -2286,10 +2348,10 @@ class _FlowDashboardState extends State<_FlowDashboard> {
             ),
             const SizedBox(height: 8),
             ...noQuizFiles.take(3).map((f) => _FlowFileChip(
-              title: f['title'] ?? '노트',
+              title: f['file_title'] ?? '노트',
               subtitle: '퀴즈 없음',
               color: _fYel,
-              onTap: () => widget.onOpenFile(f['id']),
+              onTap: () => widget.onOpenFile(f['file_id'] ?? ''),
             )),
             const SizedBox(height: 14),
           ],
@@ -2303,24 +2365,39 @@ class _FlowDashboardState extends State<_FlowDashboard> {
             ),
             const SizedBox(height: 8),
             ...weakFiles.take(3).map((f) {
-              final sc = f['avg_score']?.toDouble() ?? 0;
+              final sc = (f['avg_score'] ?? 0).toDouble();
               return _FlowFileChip(
                 title: f['file_title'] ?? '노트',
                 subtitle: '평균 ${sc.toStringAsFixed(0)}%',
                 color: _fPur,
-                onTap: () => widget.onOpenFile(f['file_id']),
+                onTap: () => widget.onOpenFile(f['file_id'] ?? ''),
               );
             }),
             const SizedBox(height: 14),
           ],
 
           // AI 다음 행동
-          if (nextActions.isNotEmpty) ...[
+          if (_loadingActions || nextActions.isNotEmpty) ...[
             _FlowSubHeader(
               icon: Icons.auto_awesome_rounded,
               label: 'AI 추천 다음 행동',
               color: _fAcc,
             ),
+            if (_loadingActions && nextActions.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: _fAcc),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('AI 분석 중...', style: GoogleFonts.inter(color: _fTxt2, fontSize: 12)),
+                  ],
+                ),
+              ),
             const SizedBox(height: 8),
             ...nextActions.take(3).toList().asMap().entries.map((e) {
               final idx = e.key;
