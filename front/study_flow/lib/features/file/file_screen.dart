@@ -21,6 +21,7 @@ import '../../core/provider_config.dart' show baseUrl;
 import '../../core/theme.dart';
 import '../../core/ui/app_components.dart';
 import '../project/project_provider.dart';
+import '../../providers/user_provider.dart';
 import 'file_provider.dart';
 
 // ══════════════════ TOKENS (AppTheme aliases) ════════════════
@@ -1302,7 +1303,12 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         ),
         _AnaPanel(st: st),
         _MemoPanel(st: st, ref: ref, tCtrl: _tCtrl),
-        _QuizPanel(st: st, ref: ref),
+        _QuizPanel(
+          st: st,
+          ref: ref,
+          fileId: widget.fileId,
+          projectId: widget.projectId,
+        ),
         _AskPanel(
           st: st,
           ctrl: _qaCtrl,
@@ -1943,7 +1949,12 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                   ),
                   _AnaPanel(st: st),
                   _MemoPanel(st: st, ref: ref, tCtrl: _tCtrl),
-                  _QuizPanel(st: st, ref: ref),
+                  _QuizPanel(
+                    st: st,
+                    ref: ref,
+                    fileId: widget.fileId,
+                    projectId: widget.projectId,
+                  ),
                   _AskPanel(
                     st: st,
                     ctrl: _qaCtrl,
@@ -6150,7 +6161,14 @@ class _MemoPanel extends StatelessWidget {
 class _QuizPanel extends StatefulWidget {
   final FileEditorState st;
   final WidgetRef ref;
-  const _QuizPanel({required this.st, required this.ref});
+  final String fileId;
+  final String projectId;
+  const _QuizPanel({
+    required this.st,
+    required this.ref,
+    required this.fileId,
+    required this.projectId,
+  });
   @override
   State<_QuizPanel> createState() => _QuizPanelState();
 }
@@ -6162,6 +6180,8 @@ class _QuizPanelState extends State<_QuizPanel>
   bool _flipped = false;
   late AnimationController _flipAc;
   late Animation<double> _flipAnim;
+  bool _saving = false;
+  bool _saved = false;
 
   @override
   void initState() {
@@ -6206,6 +6226,42 @@ class _QuizPanelState extends State<_QuizPanel>
       });
       _flipAc.reverse();
     }
+  }
+
+  Future<void> _saveResult() async {
+    final st = widget.st;
+    final quiz = st.quizData ?? [];
+    final answers = st.quizAnswers;
+    if (quiz.isEmpty || _saving || _saved) return;
+
+    // 점수 계산
+    int score = 0;
+    for (int i = 0; i < quiz.length; i++) {
+      final correct = quiz[i]['answer'];
+      if (answers[i] != null && answers[i] == correct) score++;
+    }
+
+    final userId = widget.ref.read(userProvider)?.id ?? '';
+    if (userId.isEmpty) return;
+
+    setState(() => _saving = true);
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/api/flow/quiz-attempt'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'file_id': widget.fileId,
+          'project_id': widget.projectId,
+          'score': score,
+          'total': quiz.length,
+        }),
+      );
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        setState(() => _saved = true);
+      }
+    } catch (_) {}
+    setState(() => _saving = false);
   }
 
   @override
@@ -6575,6 +6631,22 @@ class _QuizPanelState extends State<_QuizPanel>
               onTap: () => ref.read(fileEditorProvider.notifier).generateQuiz(),
             ),
           ),
+        // 모든 문제 답했을 때 결과 저장 버튼
+        if (st.quizData != null &&
+            st.quizData!.isNotEmpty &&
+            st.quizAnswers.length == st.quizData!.length)
+          Positioned(
+            bottom: 16,
+            left: 14,
+            right: 14,
+            child: _QuizResultBar(
+              quiz: st.quizData!,
+              answers: st.quizAnswers,
+              saving: _saving,
+              saved: _saved,
+              onSave: _saveResult,
+            ),
+          ),
       ],
     );
   }
@@ -6705,6 +6777,144 @@ class _QCard extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── 퀴즈 결과 저장 바 ──────────────────────────────────────────
+class _QuizResultBar extends StatelessWidget {
+  final List<dynamic> quiz;
+  final Map<int, int> answers;
+  final bool saving;
+  final bool saved;
+  final VoidCallback onSave;
+  const _QuizResultBar({
+    required this.quiz,
+    required this.answers,
+    required this.saving,
+    required this.saved,
+    required this.onSave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    int correct = 0;
+    for (int i = 0; i < quiz.length; i++) {
+      if (answers[i] != null && answers[i] == quiz[i]['answer']) correct++;
+    }
+    final pct = (correct / quiz.length * 100).round();
+    final isGood = pct >= 70;
+    final color = pct >= 80
+        ? _grn
+        : pct >= 60
+        ? _yel
+        : _red;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: _bg2,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: Text(
+                '$pct%',
+                style: GoogleFonts.inter(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isGood ? '잘 하셨어요! 🎉' : '조금 더 공부해봐요',
+                  style: GoogleFonts.inter(
+                    color: _txt0,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$correct / ${quiz.length} 정답',
+                  style: GoogleFonts.inter(color: _txt2, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: saved ? null : onSave,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: saved
+                    ? _grn.withValues(alpha: 0.18)
+                    : _acc.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: saved
+                      ? _grn.withValues(alpha: 0.4)
+                      : _acc.withValues(alpha: 0.4),
+                ),
+              ),
+              child: saving
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _acc,
+                      ),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          saved ? Icons.check_rounded : Icons.save_rounded,
+                          size: 14,
+                          color: saved ? _grn : _acc,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          saved ? '저장됨' : '결과 저장',
+                          style: GoogleFonts.inter(
+                            color: saved ? _grn : _acc,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
         ],
       ),
     );

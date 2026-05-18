@@ -81,11 +81,14 @@ class HomeContent extends StatefulWidget {
 class _HomeContentState extends State<HomeContent> {
   List<_RecentFile> _recentFiles = [];
   bool _loadingRecent = true;
+  Map<String, dynamic>? _flowSummary;
+  bool _loadingFlow = false;
 
   @override
   void initState() {
     super.initState();
     _loadRecentFiles();
+    _loadFlowSummary();
   }
 
   Future<void> _loadRecentFiles() async {
@@ -106,6 +109,28 @@ class _HomeContentState extends State<HomeContent> {
       }
     } catch (_) {
       if (mounted) setState(() => _loadingRecent = false);
+    }
+  }
+
+  Future<void> _loadFlowSummary() async {
+    final uid = widget.user.id;
+    if (uid == null || uid.isEmpty) return;
+    setState(() => _loadingFlow = true);
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/api/flow/summary/$uid'),
+      ).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        setState(() {
+          _flowSummary = jsonDecode(utf8.decode(res.bodyBytes));
+          _loadingFlow = false;
+        });
+      } else {
+        setState(() => _loadingFlow = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingFlow = false);
     }
   }
 
@@ -166,6 +191,22 @@ class _HomeContentState extends State<HomeContent> {
             _RecentFilesList(files: _recentFiles, onOpen: _openFile),
           const SizedBox(height: 28),
         ],
+
+        // ── 학습 흐름 대시보드 ─────────────────────────────────
+        if (_loadingFlow || _flowSummary != null)
+          AppFadeSlide(
+            delay: const Duration(milliseconds: 110),
+            beginOffset: const Offset(0, 10),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 28),
+              child: _loadingFlow
+                  ? const _FlowShimmer()
+                  : _FlowDashboard(
+                      summary: _flowSummary!,
+                      onOpenFile: _openFile,
+                    ),
+            ),
+          ),
 
         AppFadeSlide(
           delay: const Duration(milliseconds: 120),
@@ -2030,6 +2071,437 @@ class _OutlineButtonState extends State<_OutlineButton> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 학습 흐름 대시보드 ──────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// 색상 참조
+const _fBg2 = AppTheme.bgSecondary;
+const _fBg3 = AppTheme.bgTertiary;
+const _fBdr = AppTheme.borderSubtle;
+const _fBdr2 = AppTheme.borderDefault;
+const _fTxt0 = AppTheme.textPrimary;
+const _fTxt1 = AppTheme.textSecondary;
+const _fTxt2 = AppTheme.textTertiary;
+const _fAcc = AppTheme.accent;
+const _fAccD = AppTheme.accentDim;
+const _fGrn = AppTheme.green;
+const _fRed = AppTheme.red;
+const _fYel = AppTheme.yellow;
+const _fPur = AppTheme.purple;
+
+class _FlowShimmer extends StatelessWidget {
+  const _FlowShimmer();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 120,
+      decoration: BoxDecoration(
+        color: _fBg2,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _fBdr),
+      ),
+      child: const Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2, color: _fAcc),
+        ),
+      ),
+    );
+  }
+}
+
+class _FlowDashboard extends StatefulWidget {
+  final Map<String, dynamic> summary;
+  final void Function(String) onOpenFile;
+  const _FlowDashboard({required this.summary, required this.onOpenFile});
+
+  @override
+  State<_FlowDashboard> createState() => _FlowDashboardState();
+}
+
+class _FlowDashboardState extends State<_FlowDashboard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = widget.summary['stats'] as Map<String, dynamic>? ?? {};
+    final dueReviews = widget.summary['due_reviews'] as List? ?? [];
+    final noQuizFiles = widget.summary['no_quiz_files'] as List? ?? [];
+    final weakFiles = widget.summary['weak_files'] as List? ?? [];
+    final nextActions = widget.summary['next_actions'] as List? ?? [];
+
+    final dueCount = stats['due_count'] ?? dueReviews.length;
+    final noQuizCount = stats['no_quiz_count'] ?? noQuizFiles.length;
+    final totalQuizzes = stats['total_quizzes'] ?? 0;
+    final avgScore = (stats['avg_score'] ?? 0).toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 섹션 헤더
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _fPur.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _fPur.withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.psychology_rounded, size: 13, color: _fPur),
+                  const SizedBox(width: 5),
+                  Text(
+                    '학습 흐름',
+                    style: GoogleFonts.inter(
+                      color: _fPur,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '학습 현황',
+              style: GoogleFonts.inter(
+                color: _fTxt0,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _fBg3,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _fBdr2),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _expanded ? '접기' : '자세히',
+                      style: GoogleFonts.inter(
+                        color: _fTxt2,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      _expanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 14,
+                      color: _fTxt2,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        // 통계 스트립
+        Row(
+          children: [
+            _FlowStat(
+              icon: Icons.quiz_rounded,
+              label: '총 퀴즈',
+              value: '$totalQuizzes회',
+              color: _fAcc,
+            ),
+            const SizedBox(width: 8),
+            _FlowStat(
+              icon: Icons.score_rounded,
+              label: '평균 점수',
+              value: totalQuizzes > 0 ? '${avgScore.toStringAsFixed(0)}%' : '-',
+              color: avgScore >= 70 ? _fGrn : (avgScore > 0 ? _fYel : _fTxt2),
+            ),
+            const SizedBox(width: 8),
+            _FlowStat(
+              icon: Icons.alarm_rounded,
+              label: '복습 대기',
+              value: '$dueCount건',
+              color: dueCount > 0 ? _fRed : _fGrn,
+            ),
+            const SizedBox(width: 8),
+            _FlowStat(
+              icon: Icons.radio_button_unchecked_rounded,
+              label: '미퀴즈',
+              value: '$noQuizCount개',
+              color: noQuizCount > 0 ? _fYel : _fGrn,
+            ),
+          ],
+        ),
+
+        // 확장 영역
+        if (_expanded) ...[
+          const SizedBox(height: 16),
+
+          // 복습 필요 파일
+          if (dueReviews.isNotEmpty) ...[
+            _FlowSubHeader(
+              icon: Icons.alarm_rounded,
+              label: '복습 필요',
+              color: _fRed,
+            ),
+            const SizedBox(height: 8),
+            ...dueReviews.take(3).map((f) => _FlowFileChip(
+              title: f['file_title'] ?? '노트',
+              subtitle: '${f['interval_days'] ?? 1}일 경과',
+              color: _fRed,
+              onTap: () => widget.onOpenFile(f['file_id']),
+            )),
+            const SizedBox(height: 14),
+          ],
+
+          // 퀴즈 안 푼 파일
+          if (noQuizFiles.isNotEmpty) ...[
+            _FlowSubHeader(
+              icon: Icons.lightbulb_outline_rounded,
+              label: '퀴즈 미완료',
+              color: _fYel,
+            ),
+            const SizedBox(height: 8),
+            ...noQuizFiles.take(3).map((f) => _FlowFileChip(
+              title: f['title'] ?? '노트',
+              subtitle: '퀴즈 없음',
+              color: _fYel,
+              onTap: () => widget.onOpenFile(f['id']),
+            )),
+            const SizedBox(height: 14),
+          ],
+
+          // 취약 파일
+          if (weakFiles.isNotEmpty) ...[
+            _FlowSubHeader(
+              icon: Icons.trending_down_rounded,
+              label: '점수 낮은 노트',
+              color: _fPur,
+            ),
+            const SizedBox(height: 8),
+            ...weakFiles.take(3).map((f) {
+              final sc = f['avg_score']?.toDouble() ?? 0;
+              return _FlowFileChip(
+                title: f['file_title'] ?? '노트',
+                subtitle: '평균 ${sc.toStringAsFixed(0)}%',
+                color: _fPur,
+                onTap: () => widget.onOpenFile(f['file_id']),
+              );
+            }),
+            const SizedBox(height: 14),
+          ],
+
+          // AI 다음 행동
+          if (nextActions.isNotEmpty) ...[
+            _FlowSubHeader(
+              icon: Icons.auto_awesome_rounded,
+              label: 'AI 추천 다음 행동',
+              color: _fAcc,
+            ),
+            const SizedBox(height: 8),
+            ...nextActions.take(3).toList().asMap().entries.map((e) {
+              final idx = e.key;
+              final action = e.value;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _fAccD,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _fAcc.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: _fAcc.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${idx + 1}',
+                          style: GoogleFonts.inter(
+                            color: _fAcc,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        action.toString(),
+                        style: GoogleFonts.inter(
+                          color: _fTxt1,
+                          fontSize: 12,
+                          height: 1.55,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+class _FlowStat extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  const _FlowStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: GoogleFonts.inter(
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: GoogleFonts.inter(color: _fTxt2, fontSize: 10),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FlowSubHeader extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _FlowSubHeader({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FlowFileChip extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+  const _FlowFileChip({
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: _fBg3,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _fBdr),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.inter(
+                  color: _fTxt0,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Text(
+              subtitle,
+              style: GoogleFonts.inter(color: color, fontSize: 11),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, size: 14, color: _fTxt2),
+          ],
         ),
       ),
     );

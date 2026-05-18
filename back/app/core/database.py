@@ -3,6 +3,9 @@ from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, create_engine, Session
 from .config import settings
 
+# 테이블 생성을 위해 모든 모델을 임포트 (SQLModel.metadata에 등록)
+from app.models import users, projects, files, flow  # noqa: F401
+
 # check_same_thread는 SQLite에서만 필요. PostgreSQL 사용 시 connect_args={} 로 변경
 connect_args = {"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
 
