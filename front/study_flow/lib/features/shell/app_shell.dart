@@ -457,13 +457,44 @@ class _ShellSidebarState extends State<_ShellSidebar>
               ),
             )
           else
+            // 접힌 상태: nav item 과 동일한 36px 높이의 + 버튼
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Center(
-                child: _SidebarCircleBtn(
-                  icon: LucideIcons.plus,
-                  onTap: widget.onNewProject,
-                  tooltip: '새 프로젝트',
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              child: Tooltip(
+                message: '새 프로젝트',
+                preferBelow: false,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  onEnter: (_) => setState(() => _workspaceHovered = true),
+                  onExit: (_) => setState(() => _workspaceHovered = false),
+                  child: GestureDetector(
+                    onTap: widget.onNewProject,
+                    child: SizedBox(
+                      height: 36,
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: 40,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: _workspaceHovered
+                                ? colors.border.withValues(alpha: 0.28)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              LucideIcons.plus,
+                              size: 16,
+                              color: _workspaceHovered
+                                  ? colors.textPrimary
+                                  : colors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -712,27 +743,33 @@ class _SidebarNavItemState extends State<_SidebarNavItem> {
           onExit: (_) => setState(() => _hovered = false),
           child: GestureDetector(
             onTap: widget.onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              height: 34,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: widget.selected
-                    ? colors.accent.withValues(alpha: 0.12)
-                    : _hovered
-                    ? colors.border.withValues(alpha: 0.28)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(7),
-              ),
+            // SizedBox + Center 로 고정 40px 아이콘 박스를 사이드바 중앙에 배치
+            child: SizedBox(
+              height: 36,
               child: Center(
-                child: Icon(
-                  widget.icon,
-                  size: 16,
-                  color: widget.selected
-                      ? colors.accent
-                      : _hovered
-                      ? colors.textPrimary
-                      : colors.textSecondary,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 40,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: widget.selected
+                        ? colors.accent.withValues(alpha: 0.12)
+                        : _hovered
+                        ? colors.border.withValues(alpha: 0.28)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      widget.icon,
+                      size: 16,
+                      color: widget.selected
+                          ? colors.accent
+                          : _hovered
+                          ? colors.textPrimary
+                          : colors.textSecondary,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -946,26 +983,50 @@ class _SidebarProjectTileState extends State<_SidebarProjectTile> {
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          height: 34,
-          padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 10),
-          decoration: BoxDecoration(
-            color: widget.active
-                ? colors.accent.withValues(alpha: 0.12)
-                : _hovered
-                ? colors.border.withValues(alpha: 0.28)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(
-              color: widget.active
-                  ? colors.accent.withValues(alpha: 0.24)
-                  : Colors.transparent,
-            ),
-          ),
-          child: widget.collapsed
-              ? Center(child: Text(emoji, style: const TextStyle(fontSize: 14)))
-              : Row(
+        child: widget.collapsed
+            // 접힌 상태: nav item 과 동일한 40×36 아이콘 타일
+            ? SizedBox(
+                height: 36,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    width: 40,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: widget.active
+                          ? colors.accent.withValues(alpha: 0.12)
+                          : _hovered
+                          ? colors.border.withValues(alpha: 0.28)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: widget.active
+                            ? colors.accent.withValues(alpha: 0.24)
+                            : Colors.transparent,
+                      ),
+                    ),
+                    child: Center(child: Text(emoji, style: const TextStyle(fontSize: 15))),
+                  ),
+                ),
+              )
+            : AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                height: 34,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: widget.active
+                      ? colors.accent.withValues(alpha: 0.12)
+                      : _hovered
+                      ? colors.border.withValues(alpha: 0.28)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: widget.active
+                        ? colors.accent.withValues(alpha: 0.24)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Row(
                   children: [
                     Text(emoji, style: const TextStyle(fontSize: 13)),
                     const SizedBox(width: 9),

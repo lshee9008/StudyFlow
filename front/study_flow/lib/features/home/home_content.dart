@@ -1798,16 +1798,23 @@ class _ProjectEmojiPicker extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _choices
-              .map((e) => _SheetEmojiChip(
-                    emoji: e,
-                    selected: e == current,
-                    onTap: () => onChanged(e),
-                  ))
-              .toList(),
+        // Wrap → 고정 높이 GridView 로 교체: 균일 열 간격, Transform.scale 제거
+        SizedBox(
+          height: 214,
+          child: GridView.builder(
+            padding: EdgeInsets.zero,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 48,
+              crossAxisSpacing: 6,
+              mainAxisSpacing: 6,
+            ),
+            itemCount: _choices.length,
+            itemBuilder: (_, i) => _SheetEmojiChip(
+              emoji: _choices[i],
+              selected: _choices[i] == current,
+              onTap: () => onChanged(_choices[i]),
+            ),
+          ),
         ),
       ],
     );
@@ -1830,108 +1837,65 @@ class _SheetEmojiChip extends StatefulWidget {
   State<_SheetEmojiChip> createState() => _SheetEmojiChipState();
 }
 
-class _SheetEmojiChipState extends State<_SheetEmojiChip>
-    with SingleTickerProviderStateMixin {
+class _SheetEmojiChipState extends State<_SheetEmojiChip> {
   bool _hovered = false;
-  late AnimationController _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _scale = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 120),
-      lowerBound: 0.0,
-      upperBound: 1.0,
-    );
-  }
-
-  @override
-  void dispose() {
-    _scale.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final colors = AppTheme.colorsOf(context);
     final accent = AppTheme.accent;
 
+    // Transform.scale 제거 → GridView 레이아웃에서 이웃 셀 overlap 방지
+    // AnimatedContainer 만으로 색상/테두리 전환 처리
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) {
-        setState(() => _hovered = true);
-        _scale.forward();
-      },
-      onExit: (_) {
-        setState(() => _hovered = false);
-        _scale.reverse();
-      },
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: AnimatedBuilder(
-          animation: _scale,
-          builder: (_, child) => Transform.scale(
-            scale: 1.0 + _scale.value * 0.08,
-            child: child,
-          ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOutCubic,
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: widget.selected
+                ? accent.withValues(alpha: 0.14)
+                : _hovered
+                ? colors.border.withValues(alpha: 0.35)
+                : colors.background,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
               color: widget.selected
-                  ? accent.withValues(alpha: 0.14)
+                  ? accent.withValues(alpha: 0.7)
                   : _hovered
-                  ? colors.border.withValues(alpha: 0.35)
-                  : colors.background,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: widget.selected
-                    ? accent.withValues(alpha: 0.7)
-                    : _hovered
-                    ? colors.border
-                    : colors.border.withValues(alpha: 0.5),
-                width: widget.selected ? 1.5 : 1.0,
-              ),
-              boxShadow: widget.selected
-                  ? [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.22),
-                        blurRadius: 8,
-                        spreadRadius: 0,
-                      ),
-                    ]
-                  : null,
+                  ? colors.border
+                  : colors.border.withValues(alpha: 0.5),
+              width: widget.selected ? 1.5 : 1.0,
             ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Text(
-                  widget.emoji,
-                  style: TextStyle(fontSize: widget.selected ? 20 : 18),
-                ),
-                if (widget.selected)
-                  Positioned(
-                    bottom: 4,
-                    child: Container(
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: accent,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: accent.withValues(alpha: 0.5),
-                            blurRadius: 3,
-                          ),
-                        ],
-                      ),
+            boxShadow: widget.selected
+                ? [BoxShadow(color: accent.withValues(alpha: 0.22), blurRadius: 8, spreadRadius: 0)]
+                : null,
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Text(
+                widget.emoji,
+                style: TextStyle(fontSize: widget.selected ? 21 : 18),
+              ),
+              if (widget.selected)
+                Positioned(
+                  bottom: 4,
+                  child: Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.5), blurRadius: 3)],
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ),
