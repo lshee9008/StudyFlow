@@ -79,10 +79,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   final Set<int> _selectedBlocks = {};
   int _focusedIdx = -1; // 현재 포커스된 블록 인덱스
 
-  // 드래그 박스 선택
+  // 드래그 박스 선택 (좌표는 드래그 레이어 로컬 기준)
   Offset? _dragStart;
   Offset? _dragCurrent;
   bool _isDragging = false;
+  final GlobalKey _dragLayerKey = GlobalKey();
   // Pomodoro
   Timer? _pomT;
   int _pomSecs = 25 * 60; // 25분
@@ -427,6 +428,20 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         bc2.selection = TextSelection(baseOffset: s, extentOffset: s + newText.length);
         _chg(ft: bc2.text);
       }
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl/Cmd+S: 즉시 저장 (브라우저 저장 대화상자 차단)
+    if ((meta || ctrl) && !shift && e.logicalKey == LogicalKeyboardKey.keyS) {
+      _saveT?.cancel();
+      ref.read(fileEditorProvider.notifier).saveFile(
+            fileId: widget.fileId,
+            title: _tCtrl.text,
+            tags: _gCtrl.text,
+            prompt: _pCtrl.text,
+            updateAt: DateTime.now(),
+          );
+      _snack('저장되었습니다');
       return KeyEventResult.handled;
     }
 
@@ -1136,10 +1151,17 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   void _updateSelectedBlocksFromDrag() {
     if (_dragStart == null || _dragCurrent == null) return;
 
-    final left = math.min(_dragStart!.dx, _dragCurrent!.dx);
-    final top = math.min(_dragStart!.dy, _dragCurrent!.dy);
-    final right = math.max(_dragStart!.dx, _dragCurrent!.dx);
-    final bottom = math.max(_dragStart!.dy, _dragCurrent!.dy);
+    // 드래그 좌표는 드래그 레이어 로컬 기준 → 블록과 비교하려면 전역으로 변환
+    final layerBox =
+        _dragLayerKey.currentContext?.findRenderObject() as RenderBox?;
+    final origin = layerBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+    final gStart = _dragStart! + origin;
+    final gCurrent = _dragCurrent! + origin;
+
+    final left = math.min(gStart.dx, gCurrent.dx);
+    final top = math.min(gStart.dy, gCurrent.dy);
+    final right = math.max(gStart.dx, gCurrent.dx);
+    final bottom = math.max(gStart.dy, gCurrent.dy);
     final dragRect = Rect.fromLTRB(left, top, right, bottom);
 
     final blocks = ref.read(fileEditorProvider.select((s) => s.blocks));
@@ -1427,19 +1449,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                     onProofread: () => _showProofreadMenu(),
                   ),
                 ),
-                // 포맷 툴바
-                if (!isMobile)
-                  _EditorFormatBar(
-                    focusedIdx: _focusedIdx,
-                    blocks: ref.watch(fileEditorProvider.select((s) => s.blocks)),
-                    onFormat: _applyFmt,
-                    onTypeChange: (t) {
-                      if (_focusedIdx >= 0) {
-                        ref.read(fileEditorProvider.notifier).setType(_focusedIdx, t);
-                        _chg();
-                      }
-                    },
-                  ),
+                // 상단 포맷 툴바 제거 — 슬래시(/) 메뉴·단축키·선택 툴바로 대체
                 // 블록 선택 시 플로팅 선택 바 (노션 스타일)
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
@@ -1861,21 +1871,22 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         ),
         Positioned.fill(
           child: Listener(
+            key: _dragLayerKey,
             behavior: HitTestBehavior.translucent,
             onPointerDown: (event) {
               setState(() {
-                _dragStart = event.position;
-                _dragCurrent = event.position;
+                _dragStart = event.localPosition;
+                _dragCurrent = event.localPosition;
                 _isDragging = false;
               });
             },
             onPointerMove: (event) {
               if (_dragStart == null) return;
-              final moved = (event.position - _dragStart!).distance;
+              final moved = (event.localPosition - _dragStart!).distance;
               if (moved < 8 && !_isDragging) return;
               setState(() {
                 _isDragging = true;
-                _dragCurrent = event.position;
+                _dragCurrent = event.localPosition;
                 _updateSelectedBlocksFromDrag();
               });
             },
@@ -3696,7 +3707,7 @@ class _MobileTabs extends StatelessWidget {
     (Icons.psychology_rounded, '암기'),
     (Icons.quiz_rounded, '퀴즈'),
     (Icons.chat_bubble_outline_rounded, '질문'),
-    (Icons.edit_note_rounded, '메모'),
+    (Icons.sticky_note_2_outlined, '메모'),
   ];
 
   @override
@@ -4071,37 +4082,20 @@ class _NBState extends State<_NBlock> {
               left: widget.block.type == BlockType.quote ? 6 : 10,
               right: 10,
             ),
+            // 노션식 클린 블록: 테두리/그림자 없이 미묘한 배경 틴트만
             decoration: BoxDecoration(
               color: widget.isAnalyzing
                   ? _acc.withValues(alpha: 0.10)
                   : widget.isSelected
                   ? _acc.withValues(alpha: 0.12)
                   : widget.block.type == BlockType.code
-                  ? _bg2.withValues(alpha: 0.84)
+                  ? _bg2.withValues(alpha: 0.5)
                   : widget.block.type == BlockType.quote
-                  ? Colors.white.withValues(alpha: 0.024)
-                  : showControls
-                  ? Colors.white.withValues(alpha: 0.018)
+                  ? Colors.white.withValues(alpha: 0.022)
+                  : _hover
+                  ? Colors.white.withValues(alpha: 0.014)
                   : null,
-              borderRadius: BorderRadius.circular(16),
-              border: widget.isAnalyzing
-                  ? Border.all(color: _acc.withValues(alpha: 0.5), width: 1.5)
-                  : widget.isSelected
-                  ? Border.all(color: _acc.withValues(alpha: 0.55), width: 1.5)
-                  : widget.block.type == BlockType.code
-                  ? Border.all(color: _bdr.withValues(alpha: 0.8))
-                  : showControls
-                  ? Border.all(color: _bdr.withValues(alpha: 0.32))
-                  : null,
-              boxShadow: showControls
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4336,65 +4330,7 @@ class _NBState extends State<_NBlock> {
                     ),
                   ),
 
-                // 코드 태그 + 복사 버튼
-                if (widget.block.type == BlockType.code && !_isTable)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3, right: 7),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A1A30),
-                            borderRadius: BorderRadius.circular(5),
-                            border: Border.all(
-                              color: const Color(0xFFD4BBFF).withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: Text(
-                            'code',
-                            style: GoogleFonts.jetBrainsMono(
-                              color: const Color(0xFFD4BBFF),
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ),
-                        if (showControls) ...[
-                          const SizedBox(width: 4),
-                          _CodeCopyBtn(text: widget.block.controller.text),
-                        ],
-                      ],
-                    ),
-                  ),
-
-                // 테이블 태그
-                if (_isTable)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3, right: 7),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _accD,
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: _acc.withValues(alpha: 0.25)),
-                      ),
-                      child: Text(
-                        'table',
-                        style: GoogleFonts.inter(
-                          color: _acc,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ),
-                  ),
+                // (code/table/badge 태그 제거 — 클린 노션 스타일)
 
                 // 수평선 블록 (HR)
                 if (widget.block.type == BlockType.hr)
@@ -4462,19 +4398,6 @@ class _NBState extends State<_NBlock> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (showControls &&
-                                {
-                                  BlockType.h1,
-                                  BlockType.h2,
-                                  BlockType.h3,
-                                  BlockType.quote,
-                                  BlockType.code,
-                                  BlockType.table,
-                                }.contains(widget.block.type))
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: _BlockTypeBadge(type: widget.block.type),
-                              ),
                             _buildBlockContent(),
                           ],
                         ),
@@ -5914,7 +5837,7 @@ class _Tabs extends StatelessWidget {
       _T(Icons.psychology_rounded, '암기'),
       _T(Icons.quiz_rounded, '퀴즈'),
       _T(Icons.chat_bubble_outline_rounded, '질문'),
-      _T(Icons.edit_note_rounded, '메모'),
+      _T(Icons.sticky_note_2_outlined, '메모'),
     ],
   );
   Tab _T(IconData i, String t) => Tab(
@@ -9065,30 +8988,31 @@ class _GraphCard extends StatelessWidget {
   }
 
   // ── univai 스타일 팔레트 (정제된 색감) ─────────────────────
+  // 슬레이트 + 인디고 — 고급스럽고 가독성 높은 팔레트
   static const _coreGrad = LinearGradient(
-    colors: [Color(0xFF6D5CE7), Color(0xFF8E7BFF)],
+    colors: [Color(0xFF5965E0), Color(0xFF7B86FF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
   static const _coreSelGrad = LinearGradient(
-    colors: [Color(0xFF7E6EFF), Color(0xFFA395FF)],
+    colors: [Color(0xFF6E7BFF), Color(0xFF93A0FF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
   static const _childGrad = LinearGradient(
-    colors: [Color(0xFF1A4234), Color(0xFF143528)],
+    colors: [Color(0xFF232B3B), Color(0xFF1A2030)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
   static const _childGradSel = LinearGradient(
-    colors: [Color(0xFF236253), Color(0xFF184B3B)],
+    colors: [Color(0xFF2D3858), Color(0xFF232C44)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-  static const _childTxt    = Color(0xFFD6F5E5); // 라이트 민트
-  static const _childBorder = Color(0xFF34866A); // 또렷한 에메랄드 테두리
-  static const _violet      = Color(0xFF9A8BFF); // 선택 강조
-  static const _toggleBg    = Color(0xFF0E1A14); // 토글 칩 배경
+  static const _childTxt    = Color(0xFFE6EAF3); // 밝은 슬레이트 화이트(고가독)
+  static const _childBorder = Color(0xFF3C4660); // 또렷한 슬레이트 테두리
+  static const _violet      = Color(0xFF8497FF); // 선택/펼침 강조(인디고)
+  static const _toggleBg    = Color(0xFF11151E); // 토글 칩 배경
 
   @override
   Widget build(BuildContext context) {
@@ -9114,24 +9038,26 @@ class _GraphCard extends StatelessWidget {
         width: 22,
         height: 22,
         decoration: BoxDecoration(
-          color: _toggleBg.withValues(alpha: 0.55),
+          color: isCollapsed
+              ? _violet.withValues(alpha: 0.18)
+              : _toggleBg.withValues(alpha: 0.6),
           shape: BoxShape.circle,
           border: Border.all(
             color: isCollapsed
-                ? _violet.withValues(alpha: 0.85)
-                : Colors.white.withValues(alpha: 0.3),
+                ? _violet.withValues(alpha: 0.9)
+                : const Color(0xFF3C4660),
           ),
         ),
         child: Icon(
           isCollapsed ? LucideIcons.chevronRight : LucideIcons.chevronLeft,
           size: 13,
-          color: isCollapsed ? _violet : Colors.white,
+          color: isCollapsed ? _violet : const Color(0xFFC2CAD8),
         ),
       ),
     );
   }
 
-  /// ── 깔끔한 알약 노드 (루트=퍼플 / 가지=에메랄드) ─────────────
+  /// ── 깔끔한 알약 노드 (루트=인디고 / 가지=슬레이트) ─────────────
   Widget _buildPill(bool isCore) {
     final highlighted = isSelected || isConnectSource;
     final Color textColor = isCore ? Colors.white : _childTxt;
