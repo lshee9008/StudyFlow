@@ -3970,6 +3970,27 @@ class _NBState extends State<_NBlock> {
       fontWeight: FontWeight.w400,
     ),
     BlockType.image => GoogleFonts.inter(fontSize: 14, color: _txt2),
+    BlockType.table => GoogleFonts.jetBrainsMono(
+      fontSize: 13,
+      color: const Color(0xFFA8D4FF),
+      height: 1.75,
+      letterSpacing: 0.2,
+    ),
+    BlockType.hr => GoogleFonts.inter(fontSize: 15, color: _txt2),
+    BlockType.bullet => GoogleFonts.inter(
+      fontSize: 15,
+      color: _txt0.withValues(alpha: 0.85),
+      height: 1.85,
+      letterSpacing: 0.0,
+      fontWeight: FontWeight.w400,
+    ),
+    BlockType.checkbox => GoogleFonts.inter(
+      fontSize: 15,
+      color: _txt0.withValues(alpha: 0.85),
+      height: 1.85,
+      letterSpacing: 0.0,
+      fontWeight: FontWeight.w400,
+    ),
     _ => GoogleFonts.inter(
       fontSize: 15,
       color: _txt0.withValues(alpha: 0.85),
@@ -4343,14 +4364,34 @@ class _NBState extends State<_NBlock> {
                     ),
                   ),
 
+                // 수평선 블록 (HR)
+                if (widget.block.type == BlockType.hr)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Container(
+                        height: 1,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              _bdr.withValues(alpha: 0),
+                              _bdr.withValues(alpha: 0.6),
+                              _bdr.withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
                 // 이미지 블록 (URL)
                 if (widget.block.type == BlockType.image)
                   Expanded(
                     child: _ImageBlock(url: widget.block.controller.text),
                   ),
 
-                // 텍스트 입력 (이미지 제외)
-                if (widget.block.type != BlockType.image)
+                // 텍스트 입력 (이미지, HR 제외)
+                if (widget.block.type != BlockType.image && widget.block.type != BlockType.hr)
                   Expanded(
                     child: Listener(
                       // ✅ onPointerUp: 브라우저 드래그 선택을 Flutter가 직접 감지
@@ -4393,6 +4434,7 @@ class _NBState extends State<_NBlock> {
                                   BlockType.h3,
                                   BlockType.quote,
                                   BlockType.code,
+                                  BlockType.table,
                                 }.contains(widget.block.type))
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
@@ -4464,6 +4506,8 @@ class _NBState extends State<_NBlock> {
     BlockType.number => '항목 입력...',
     BlockType.quote => '인용 내용을 입력하세요...',
     BlockType.image => 'https://example.com/image.png',
+    BlockType.table => '|컬럼1|컬럼2|\n|---|---|\n|데이터|데이터|',
+    BlockType.hr => '---',
     _ => _foc ? "내용 입력 또는  /  블록 타입 변경" : "",
   };
 
@@ -4509,6 +4553,12 @@ class _BlockTypeBadge extends StatelessWidget {
       BlockType.h3 => ('Heading 3', LucideIcons.heading3),
       BlockType.quote => ('Quote', LucideIcons.quote),
       BlockType.code => ('Code', LucideIcons.code2),
+      BlockType.table => ('Table', LucideIcons.table2),
+      BlockType.bullet => ('List', LucideIcons.list),
+      BlockType.number => ('Numbered', LucideIcons.listOrdered),
+      BlockType.checkbox => ('Todo', LucideIcons.checkSquare),
+      BlockType.image => ('Image', LucideIcons.image),
+      BlockType.hr => ('Divider', LucideIcons.minus),
       _ => ('Text', LucideIcons.text),
     };
     return Container(

@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
 
-enum BlockType { text, h1, h2, h3, bullet, checkbox, code, number, quote, image }
+enum BlockType {
+  text,      // 일반 텍스트
+  h1, h2, h3, // 제목
+  bullet,    // 불릿 리스트
+  number,    // 번호 리스트
+  checkbox,  // 체크박스
+  code,      // 코드 블록
+  quote,     // 블록쿼트
+  image,     // 이미지
+  table,     // 테이블
+  hr,        // 수평선
+}
 
 class Block {
   String id;
