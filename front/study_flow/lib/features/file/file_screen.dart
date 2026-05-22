@@ -7721,10 +7721,14 @@ class _GCS extends State<_GraphCanvas> {
     String rootId,
     Map<String, List<String>> childrenMap,
   ) {
-    // 노드 수에 따라 간격 자동 조정 (35~45개 최적)
+    // 콤팩트 레이아웃: 노드 수에 따라 간격 동적 조정
     final totalNodes = childrenMap.values.fold(1, (s, l) => s + l.length);
-    final xStep = totalNodes > 35 ? 260.0 : 300.0;
-    final yUnit = totalNodes > 35 ? 110.0 : 150.0;
+
+    // xStep: 깊이 간격 (더 compact하게)
+    final xStep = totalNodes > 50 ? 180.0 : totalNodes > 35 ? 220.0 : 260.0;
+
+    // yUnit: 레벨 내 간격 (세로 간격 최소화)
+    final yUnit = totalNodes > 50 ? 85.0 : totalNodes > 35 ? 100.0 : 120.0;
 
     // Step 1: 서브트리 내 리프 수 카운트 (바텀업)
     final leafCount = <String, int>{};
@@ -7845,9 +7849,9 @@ class _GCS extends State<_GraphCanvas> {
 
     final treeW = maxX - minX + margin * 2;
     final treeH = maxY - minY + margin * 2;
-    // 깊은 그래프 표현을 위해 보드 너비 증가 (3200 → 5600)
-    final boardW = math.max(5600.0, treeW);
-    final boardH = math.max(3200.0, treeH);
+    // 보드 크기: 트리 너비와 높이에 맞춤 (과도한 확장 방지)
+    final boardW = math.max(3200.0, treeW);
+    final boardH = math.max(2400.0, treeH);
     _boardSize = Size(boardW, boardH);
 
     final centerX = boardW / 2;
