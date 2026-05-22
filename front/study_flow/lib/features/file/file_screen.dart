@@ -7222,6 +7222,8 @@ class _GCS extends State<_GraphCanvas> {
   String? _connectSourceId;
   String? _selectedNodeId;
   bool _isTreeLayout = true;  // 기본값: 트리 레이아웃 (노드 많아도 보기 좋음)
+  final Set<String> _collapsed = {}; // 접힌(자식 숨김) 노드 id
+  Set<String> _hasKids = {};         // 자식이 있는 노드 id (펼침/접기 토글 표시용)
 
   @override
   void initState() {
@@ -7261,12 +7263,13 @@ class _GCS extends State<_GraphCanvas> {
     return _GraphCardStyle.note;
   }
 
+  // univai 스타일 알약 노드 — 작고 가로로 일정한 크기
   static Size _sizeForStyle(_GraphCardStyle style) => switch (style) {
-    _GraphCardStyle.core       => const Size(280, 210),
-    _GraphCardStyle.branch     => const Size(224, 174),
-    _GraphCardStyle.subcluster => const Size(188, 148),
-    _GraphCardStyle.noteWide   => const Size(200, 156),
-    _GraphCardStyle.note       => const Size(170, 134),
+    _GraphCardStyle.core       => const Size(210, 60),
+    _GraphCardStyle.branch     => const Size(196, 54),
+    _GraphCardStyle.subcluster => const Size(188, 50),
+    _GraphCardStyle.noteWide   => const Size(188, 50),
+    _GraphCardStyle.note       => const Size(180, 48),
   };
 
   /// 바텀업: 각 노드의 서브트리 경계 반지름을 계산한다.
@@ -7737,13 +7740,14 @@ class _GCS extends State<_GraphCanvas> {
     String rootId,
     Map<String, List<String>> childrenMap,
   ) {
-    // 콤팩트 레이아웃: 노드 수에 따라 간격 동적 조정
+    // 콤팩트 가로 트리: 노드 폭(≤210)보다 깊이 간격을 크게 잡아 곡선 엣지 공간 확보
     final totalNodes = childrenMap.values.fold(1, (s, l) => s + l.length);
 
-    // 깊은 개념 계층이 겹치지 않도록 노드 수가 많아도 계층 간 거리를 확보한다.
-    final xStep = totalNodes > 50 ? 250.0 : totalNodes > 35 ? 290.0 : 340.0;
+    // xStep: 깊이(가로) 간격 — 노드 폭 + 곡선 여백
+    final xStep = totalNodes > 50 ? 280.0 : totalNodes > 35 ? 300.0 : 320.0;
 
-    final yUnit = totalNodes > 50 ? 118.0 : totalNodes > 35 ? 136.0 : 156.0;
+    // yUnit: 같은 레벨 내 세로 간격 (알약 높이 ~50 기준 촘촘하게)
+    final yUnit = totalNodes > 50 ? 62.0 : totalNodes > 35 ? 70.0 : 78.0;
 
     // Step 1: 서브트리 내 리프 수 카운트 (바텀업)
     final leafCount = <String, int>{};
@@ -7841,15 +7845,37 @@ class _GCS extends State<_GraphCanvas> {
         id: _nodeHalfSide(styleMap[id]!),
     };
 
+    // ── 펼침/접기: 자식 보유 노드 + 숨김(접힌 노드의 후손) 계산 ──
+    _hasKids = {
+      for (final entry in childrenMap.entries)
+        if (entry.value.isNotEmpty) entry.key,
+    };
+    final hidden = <String>{};
+    void hideDescendants(String id) {
+      for (final c in (childrenMap[id] ?? const <String>[])) {
+        if (hidden.add(c)) hideDescendants(c);
+      }
+    }
+    for (final id in _collapsed) {
+      if (childrenMap.containsKey(id)) hideDescendants(id);
+    }
+    // 접힌 노드는 자식을 비운 형태의 유효 children map 으로 레이아웃
+    final effChildren = <String, List<String>>{
+      for (final entry in childrenMap.entries)
+        entry.key: (_collapsed.contains(entry.key)
+            ? const <String>[]
+            : entry.value.where((c) => !hidden.contains(c)).toList()),
+    };
+
     // ── 5&6. 레이아웃 모드에 따라 위치 배정 ─────────────────
     final Map<String, Offset> relativePositions;
     if (_isTreeLayout) {
-      relativePositions = _placeTreeNodes(rootId, childrenMap);
+      relativePositions = _placeTreeNodes(rootId, effChildren);
     } else {
       // 부분트리삽입 지원: 서브트리 깊이 ≥ 3 자식은 삼각형 영역 선형 배치
-      final subtreeMaxDepths = _computeSubtreeMaxDepths(rootId, childrenMap);
-      final boundary = _computeBoundariesV2(rootId, childrenMap, halfSide, subtreeMaxDepths);
-      relativePositions = _placeNodesV2(rootId, childrenMap, halfSide, boundary, subtreeMaxDepths);
+      final subtreeMaxDepths = _computeSubtreeMaxDepths(rootId, effChildren);
+      final boundary = _computeBoundariesV2(rootId, effChildren, halfSide, subtreeMaxDepths);
+      relativePositions = _placeNodesV2(rootId, effChildren, halfSide, boundary, subtreeMaxDepths);
     }
 
     // ── 7. 보드 크기 계산 & 루트를 보드 중앙으로 이동 ────────
@@ -7905,6 +7931,7 @@ class _GCS extends State<_GraphCanvas> {
     for (final raw in rn) {
       final node = raw as Map<String, dynamic>;
       final id = node['id'].toString();
+      if (hidden.contains(id)) continue; // 접힌 노드의 후손은 표시하지 않음
       if (ns.any((n) => n.id == id)) continue;
       final col = ns.length % 5;
       final row = ns.length ~/ 5;
@@ -8136,6 +8163,16 @@ class _GCS extends State<_GraphCanvas> {
                             _connectSourceId!.isNotEmpty &&
                             _connectSourceId != node.id,
                         isSelected: _selectedNodeId == node.id,
+                        hasChildren: _hasKids.contains(node.id),
+                        isCollapsed: _collapsed.contains(node.id),
+                        onToggleCollapse: () {
+                          if (_collapsed.contains(node.id)) {
+                            _collapsed.remove(node.id);
+                          } else {
+                            _collapsed.add(node.id);
+                          }
+                          _build(); // 내부에서 setState 호출
+                        },
                         onSelect: () => _handleNodeTap(node),
                         onAddChild: () => _addChildNode(node.id),
                         onMove: (offset) {
@@ -8350,32 +8387,33 @@ class _GraphBoardPainter extends CustomPainter {
     final nodeMap = {for (final node in nodes) node.id: node};
 
     final linePaint = Paint()
-      ..strokeWidth = 1.6
+      ..strokeWidth = 1.8
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..color = Colors.white.withValues(alpha: 0.14);
-
-    final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.55);
+      ..color = Colors.white.withValues(alpha: 0.22);
 
     for (final e in es) {
       final a = nodeMap[e.s];
       final b = nodeMap[e.t];
       if (a == null || b == null) continue;
 
-      final start = a.rect.center;
-      final end = b.rect.center;
-
       if (isTree) {
-        // 트리 모드: 직각 엘보우 라인 (부모 오른쪽 → 자식 왼쪽)
-        final midX = (start.dx + end.dx) / 2;
+        // 트리(가로) 모드: 부모 오른쪽 가장자리 → 자식 왼쪽 가장자리 부드러운 S-곡선
+        final start = Offset(a.rect.right, a.rect.center.dy);
+        final end = Offset(b.rect.left, b.rect.center.dy);
+        final dx = end.dx - start.dx;
         final path = Path()
           ..moveTo(start.dx, start.dy)
-          ..lineTo(midX, start.dy)
-          ..lineTo(midX, end.dy)
-          ..lineTo(end.dx, end.dy);
+          ..cubicTo(
+            start.dx + dx * 0.5, start.dy,
+            end.dx - dx * 0.5, end.dy,
+            end.dx, end.dy,
+          );
         c.drawPath(path, linePaint);
       } else {
-        // 방사형: 부드러운 곡선
+        // 방사형: 중심 → 중심 부드러운 곡선
+        final start = a.rect.center;
+        final end = b.rect.center;
         final dx = (end.dx - start.dx).abs();
         final ctrl = math.max(60.0, dx * 0.28);
         final path = Path()
@@ -8390,9 +8428,6 @@ class _GraphBoardPainter extends CustomPainter {
           );
         c.drawPath(path, linePaint);
       }
-
-      // 끝점 점
-      c.drawCircle(end, 3.0, dotPaint);
     }
   }
 
@@ -8466,6 +8501,9 @@ class _GraphCard extends StatelessWidget {
   final void Function({String? type, String? group, String? parentId})
   onEditMeta;
   final VoidCallback onDelete;
+  final bool hasChildren;
+  final bool isCollapsed;
+  final VoidCallback onToggleCollapse;
   const _GraphCard({
     required this.node,
     required this.parentId,
@@ -8482,6 +8520,9 @@ class _GraphCard extends StatelessWidget {
     required this.onEdit,
     required this.onEditMeta,
     required this.onDelete,
+    this.hasChildren = false,
+    this.isCollapsed = false,
+    required this.onToggleCollapse,
   });
 
   Future<void> _openEditor(BuildContext context) async {
@@ -8630,32 +8671,104 @@ class _GraphCard extends StatelessWidget {
     );
   }
 
-  // ── 스티키노트 팔레트 ───────────────────────────────────────
+  // ── univai 스타일 팔레트 ───────────────────────────────────
   static const _coreGrad = LinearGradient(
-    colors: [Color(0xFF3D6AFF), Color(0xFF5E8BFF)],
+    colors: [Color(0xFF6E5CF0), Color(0xFF8B7BFF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-  static const _branchBg  = Color(0xFF6E3DD9); // 보라
-  static const _groupBg   = Color(0xFF0D9488); // 청록
-  static const _noteBg    = Color(0xFFF5C518); // 노란 스티키
-  static const _noteTxt   = Color(0xFF1C1000); // 노트 텍스트
+  static const _coreSelGrad = LinearGradient(
+    colors: [Color(0xFF7C6BFF), Color(0xFF9D8DFF)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const _childBg    = Color(0xFF173A30); // 딥 틸-그린
+  static const _childBgSel = Color(0xFF1E4A3C);
+  static const _childTxt   = Color(0xFFCDEFE0); // 라이트 민트
+  static const _childBorder = Color(0xFF2C5A4B);
+  static const _violet     = Color(0xFF9A8BFF); // 선택 강조
 
   @override
   Widget build(BuildContext context) {
-    final isNote = node.style == _GraphCardStyle.note ||
-        node.style == _GraphCardStyle.noteWide;
     final isCore = node.style == _GraphCardStyle.core;
-    final isBranch = node.style == _GraphCardStyle.branch;
 
-    // 연결 모드 강조 테두리
-    final Border? connectBorder = isSelected
-        ? Border.all(color: Colors.white, width: 2.0)
-        : isConnectSource
-            ? Border.all(color: Colors.white, width: 2.2)
-            : isConnectTarget
-                ? Border.all(color: Colors.white.withValues(alpha: 0.42), width: 1.4)
-                : null;
+    // 펼침/접기 토글 (자식이 있을 때만)
+    final toggle = hasChildren
+        ? Positioned(
+            right: -11,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: onToggleCollapse,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B2438),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isCollapsed
+                          ? _violet.withValues(alpha: 0.7)
+                          : Colors.white.withValues(alpha: 0.22),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    isCollapsed
+                        ? LucideIcons.chevronRight
+                        : LucideIcons.chevronLeft,
+                    size: 14,
+                    color: isCollapsed ? _violet : Colors.white70,
+                  ),
+                ),
+              ),
+            ),
+          )
+        : null;
+
+    // 선택 시 떠 있는 액션 툴바
+    final toolbar = isSelected
+        ? Positioned(
+            top: -44,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF131A2B),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _CardActionBtn(icon: LucideIcons.pencil, label: '편집', onTap: () => _openEditor(context), color: Colors.white70),
+                    const SizedBox(width: 4),
+                    _CardActionBtn(icon: LucideIcons.plusCircle, label: '자식', onTap: onAddChild, color: Colors.white70),
+                    const SizedBox(width: 4),
+                    _CardActionBtn(icon: LucideIcons.trash2, label: '삭제', onTap: onDelete, color: Colors.red.withValues(alpha: 0.85)),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : null;
 
     return GestureDetector(
       onTap: onSelect,
@@ -8663,203 +8776,85 @@ class _GraphCard extends StatelessWidget {
       onPanEnd: (_) => onMoveEnd(),
       onDoubleTap: () => _openEditor(context),
       onLongPress: () => _openEditor(context),
-      child: isNote
-          ? _buildNoteCard(context, connectBorder)
-          : _buildColorCard(context, isCore, isBranch, connectBorder),
-    );
-  }
-
-  /// ── 색상 카드 (Core / Branch / Subcluster) ───────────────
-  Widget _buildColorCard(
-    BuildContext context,
-    bool isCore,
-    bool isBranch,
-    Border? connectBorder,
-  ) {
-    final bg = isCore ? null : (isBranch ? _branchBg : _groupBg);
-    final textColor = Colors.white;
-    final descColor = Colors.white.withValues(alpha: 0.80);
-    final radius = isCore ? 24.0 : isBranch ? 20.0 : 16.0;
-    final labelSize = isCore ? 19.0 : isBranch ? 14.5 : 12.5;
-    final descSize  = isCore ? 12.5 : 11.0;
-    final pad = isCore
-        ? const EdgeInsets.fromLTRB(20, 16, 20, 16)
-        : const EdgeInsets.fromLTRB(16, 13, 16, 13);
-
-    return Container(
-      clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: bg,
-        gradient: isCore ? _coreGrad : null,
-        borderRadius: BorderRadius.circular(radius),
-        border: connectBorder,
-        boxShadow: [
-          BoxShadow(
-            color: (isCore
-                    ? const Color(0xFF3D6AFF)
-                    : isBranch
-                        ? _branchBg
-                        : _groupBg)
-                .withValues(alpha: 0.35),
-            blurRadius: isCore ? 28 : 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: pad,
-        child: Column(
-          crossAxisAlignment: isCore
-              ? CrossAxisAlignment.center
-              : CrossAxisAlignment.start,
-          children: [
-            // 타입 태그
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                isCore ? 'CORE' : isBranch ? 'TOPIC' : 'GROUP',
-                style: GoogleFonts.inter(
-                  color: Colors.white,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              node.label,
-              maxLines: isCore ? 4 : 3,
-              overflow: TextOverflow.ellipsis,
-              textAlign: isCore ? TextAlign.center : TextAlign.left,
-              style: GoogleFonts.inter(
-                color: textColor,
-                fontSize: labelSize,
-                fontWeight: isCore ? FontWeight.w800 : FontWeight.w700,
-                height: 1.3,
-                letterSpacing: -0.3,
-              ),
-            ),
-            if (node.description.trim().isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                node.description,
-                maxLines: isCore ? 5 : 3,
-                overflow: TextOverflow.ellipsis,
-                textAlign: isCore ? TextAlign.center : TextAlign.left,
-                style: GoogleFonts.inter(
-                  color: descColor,
-                  fontSize: descSize,
-                  fontWeight: FontWeight.w500,
-                  height: 1.45,
-                ),
-              ),
-            ],
-            if (isSelected) ...[
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _CardActionBtn(icon: LucideIcons.pencil, label: '편집', onTap: () => _openEditor(context), color: Colors.white70),
-                  const SizedBox(width: 6),
-                  _CardActionBtn(icon: LucideIcons.plusCircle, label: '자식', onTap: onAddChild, color: Colors.white70),
-                  const SizedBox(width: 6),
-                  _CardActionBtn(icon: LucideIcons.trash2, label: '삭제', onTap: onDelete, color: Colors.red.withValues(alpha: 0.85)),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// ── 스티키노트 카드 (Note / Detail) ──────────────────────
-  Widget _buildNoteCard(BuildContext context, Border? connectBorder) {
-    const foldSize = 28.0;
-    return Container(
-      clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: _noteBg,
-        borderRadius: BorderRadius.circular(10),
-        border: connectBorder,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.10),
-            blurRadius: 4,
-            offset: const Offset(2, 2),
-          ),
-        ],
-      ),
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          // 접힌 모서리 효과
-          Positioned(
-            top: 0,
-            right: 0,
-            child: CustomPaint(
-              size: const Size(foldSize, foldSize),
-              painter: _StickyFoldPainter(),
-            ),
-          ),
-          // 내용
-          Padding(
-            padding: EdgeInsets.fromLTRB(12, 10, foldSize + 4, isSelected ? 8 : 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  node.label,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    color: _noteTxt,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                if (node.description.trim().isNotEmpty) ...[
-                  const SizedBox(height: 5),
-                  Text(
-                    node.description,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      color: _noteTxt.withValues(alpha: 0.70),
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w500,
-                      height: 1.45,
-                    ),
-                  ),
-                ],
-                if (isSelected) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _CardActionBtn(icon: LucideIcons.pencil, label: '편집', onTap: () => _openEditor(context), color: _noteTxt.withValues(alpha: 0.75)),
-                      const SizedBox(width: 6),
-                      _CardActionBtn(icon: LucideIcons.plusCircle, label: '자식', onTap: onAddChild, color: _noteTxt.withValues(alpha: 0.75)),
-                      const SizedBox(width: 6),
-                      _CardActionBtn(icon: LucideIcons.trash2, label: '삭제', onTap: onDelete, color: Colors.red.shade700),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
+          Positioned.fill(child: _buildPill(isCore)),
+          if (toggle != null) toggle,
+          if (toolbar != null) toolbar,
         ],
+      ),
+    );
+  }
+
+  /// ── 깔끔한 알약 노드 (루트=퍼플 / 가지=딥틸) ─────────────
+  Widget _buildPill(bool isCore) {
+    final highlighted = isSelected || isConnectSource;
+    final Color textColor = isCore ? Colors.white : _childTxt;
+    final double labelSize = isCore ? 15.0 : 13.5;
+
+    final BoxDecoration deco = isCore
+        ? BoxDecoration(
+            gradient: highlighted ? _coreSelGrad : _coreGrad,
+            borderRadius: BorderRadius.circular(16),
+            border: highlighted
+                ? Border.all(color: Colors.white.withValues(alpha: 0.9), width: 2)
+                : null,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6E5CF0).withValues(
+                  alpha: highlighted ? 0.55 : 0.38,
+                ),
+                blurRadius: highlighted ? 26 : 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          )
+        : BoxDecoration(
+            color: highlighted ? _childBgSel : _childBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: highlighted
+                  ? _violet
+                  : (isConnectTarget
+                      ? Colors.white.withValues(alpha: 0.4)
+                      : _childBorder),
+              width: highlighted ? 2 : 1.2,
+            ),
+            boxShadow: highlighted
+                ? [
+                    BoxShadow(
+                      color: _violet.withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.28),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+          );
+
+    return Container(
+      clipBehavior: Clip.hardEdge,
+      decoration: deco,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      alignment: Alignment.center,
+      child: Text(
+        node.label,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.inter(
+          color: textColor,
+          fontSize: labelSize,
+          fontWeight: isCore ? FontWeight.w800 : FontWeight.w600,
+          height: 1.2,
+          letterSpacing: -0.3,
+        ),
       ),
     );
   }
