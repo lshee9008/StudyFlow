@@ -7352,7 +7352,7 @@ class _GCS extends State<_GraphCanvas> {
     return _GraphCardStyle.note;
   }
 
-  // univai 스타일 알약 노드 — 작고 가로로 일정한 크기
+  // univai 스타일 알약 노드 — 작고 가로로 일정한 크기 (반사형 보조용)
   static Size _sizeForStyle(_GraphCardStyle style) => switch (style) {
     _GraphCardStyle.core       => const Size(210, 60),
     _GraphCardStyle.branch     => const Size(196, 54),
@@ -7360,6 +7360,40 @@ class _GCS extends State<_GraphCanvas> {
     _GraphCardStyle.noteWide   => const Size(188, 50),
     _GraphCardStyle.note       => const Size(180, 48),
   };
+
+  /// 라벨 텍스트를 실제 측정해 알약 크기를 계산한다(글자 잘림 방지).
+  /// 우측 펼침/접기 토글 공간도 폭에 포함한다.
+  static Size _measureNodeSize(
+    String label,
+    _GraphCardStyle style,
+    bool hasChildren,
+  ) {
+    final isCore = style == _GraphCardStyle.core;
+    final fontSize = isCore ? 15.0 : 13.5;
+    const hPad = 14.0; // 좌우 패딩
+    const vPad = 9.0;  // 상하 패딩
+    final toggleW = hasChildren ? 29.0 : 0.0; // 토글칩(22) + 간격(7)
+    const maxContentW = 188.0; // 라벨 최대 폭 → 넘으면 2줄
+
+    final tp = TextPainter(
+      text: TextSpan(
+        text: label.isEmpty ? ' ' : label,
+        style: GoogleFonts.inter(
+          fontSize: fontSize,
+          fontWeight: isCore ? FontWeight.w800 : FontWeight.w600,
+          height: 1.2,
+          letterSpacing: -0.3,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+      ellipsis: '…',
+    )..layout(maxWidth: maxContentW);
+
+    final w = (tp.width + hPad * 2 + toggleW).clamp(100.0, 250.0);
+    final h = (tp.height + vPad * 2).clamp(44.0, 86.0);
+    return Size(w, h);
+  }
 
   /// 바텀업: 각 노드의 서브트리 경계 반지름을 계산한다.
   /// 경계 = 해당 노드를 루트로 하는 서브트리 전체를 포함하는
@@ -7832,8 +7866,8 @@ class _GCS extends State<_GraphCanvas> {
     // 콤팩트 가로 트리: 노드 폭(≤210)보다 깊이 간격을 크게 잡아 곡선 엣지 공간 확보
     final totalNodes = childrenMap.values.fold(1, (s, l) => s + l.length);
 
-    // xStep: 깊이(가로) 간격 — 노드 폭 + 곡선 여백
-    final xStep = totalNodes > 50 ? 280.0 : totalNodes > 35 ? 300.0 : 320.0;
+    // xStep: 깊이(가로) 간격 — 가변 노드 폭(최대 250) + 곡선 여백 확보
+    final xStep = totalNodes > 50 ? 300.0 : totalNodes > 35 ? 330.0 : 360.0;
 
     // yUnit: 같은 레벨 내 세로 간격 (알약 높이 ~50 기준 촘촘하게)
     final yUnit = totalNodes > 50 ? 62.0 : totalNodes > 35 ? 70.0 : 78.0;
@@ -7997,12 +8031,14 @@ class _GCS extends State<_GraphCanvas> {
       final finalPos = _savedOffset(rawNode, computedPos);
 
       final style = styleMap[id] ?? _GraphCardStyle.note;
-      final size = _sizeForStyle(style);
+      final label = _stripMd(rawNode['label']?.toString() ?? '');
+      // 라벨 길이에 맞춰 노드 크기를 측정 → 글자 잘림 방지
+      final size = _measureNodeSize(label, style, _hasKids.contains(id));
 
       ns.add(
         _GraphNodeLayout(
           id: id,
-          label: _stripMd(rawNode['label']?.toString() ?? ''),
+          label: label,
           description: _stripMd(rawNode['description']?.toString() ?? ''),
           type: rawNode['type']?.toString() ?? 'detail',
           group: rawNode['group']?.toString() ?? '',
@@ -8827,70 +8863,37 @@ class _GraphCard extends StatelessWidget {
     );
   }
 
-  // ── univai 스타일 팔레트 ───────────────────────────────────
+  // ── univai 스타일 팔레트 (정제된 색감) ─────────────────────
   static const _coreGrad = LinearGradient(
-    colors: [Color(0xFF6E5CF0), Color(0xFF8B7BFF)],
+    colors: [Color(0xFF6D5CE7), Color(0xFF8E7BFF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
   static const _coreSelGrad = LinearGradient(
-    colors: [Color(0xFF7C6BFF), Color(0xFF9D8DFF)],
+    colors: [Color(0xFF7E6EFF), Color(0xFFA395FF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-  static const _childBg    = Color(0xFF173A30); // 딥 틸-그린
-  static const _childBgSel = Color(0xFF1E4A3C);
-  static const _childTxt   = Color(0xFFCDEFE0); // 라이트 민트
-  static const _childBorder = Color(0xFF2C5A4B);
-  static const _violet     = Color(0xFF9A8BFF); // 선택 강조
+  static const _childGrad = LinearGradient(
+    colors: [Color(0xFF1A4234), Color(0xFF143528)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const _childGradSel = LinearGradient(
+    colors: [Color(0xFF236253), Color(0xFF184B3B)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const _childTxt    = Color(0xFFD6F5E5); // 라이트 민트
+  static const _childBorder = Color(0xFF34866A); // 또렷한 에메랄드 테두리
+  static const _violet      = Color(0xFF9A8BFF); // 선택 강조
+  static const _toggleBg    = Color(0xFF0E1A14); // 토글 칩 배경
 
   @override
   Widget build(BuildContext context) {
     final isCore = node.style == _GraphCardStyle.core;
 
-    // 펼침/접기 토글 (자식이 있을 때만)
-    final toggle = hasChildren
-        ? Positioned(
-            right: -11,
-            top: 0,
-            bottom: 0,
-            child: Center(
-              child: GestureDetector(
-                onTap: onToggleCollapse,
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1B2438),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isCollapsed
-                          ? _violet.withValues(alpha: 0.7)
-                          : Colors.white.withValues(alpha: 0.22),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    isCollapsed
-                        ? LucideIcons.chevronRight
-                        : LucideIcons.chevronLeft,
-                    size: 14,
-                    color: isCollapsed ? _violet : Colors.white70,
-                  ),
-                ),
-              ),
-            ),
-          )
-        : null;
-
-    // 선택 시 떠 있는 액션 툴바
+    // 선택 시 떠 있는 액션 툴바 (노드 위)
     final toolbar = isSelected
         ? Positioned(
             top: -44,
@@ -8936,14 +8939,39 @@ class _GraphCard extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(child: _buildPill(isCore)),
-          if (toggle != null) toggle,
           if (toolbar != null) toolbar,
         ],
       ),
     );
   }
 
-  /// ── 깔끔한 알약 노드 (루트=퍼플 / 가지=딥틸) ─────────────
+  /// 펼침/접기 토글 칩 — 알약 내부 우측에 배치하여 항상 클릭 가능
+  Widget _toggleChip() {
+    return GestureDetector(
+      onTap: onToggleCollapse,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          color: _toggleBg.withValues(alpha: 0.55),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isCollapsed
+                ? _violet.withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Icon(
+          isCollapsed ? LucideIcons.chevronRight : LucideIcons.chevronLeft,
+          size: 13,
+          color: isCollapsed ? _violet : Colors.white,
+        ),
+      ),
+    );
+  }
+
+  /// ── 깔끔한 알약 노드 (루트=퍼플 / 가지=에메랄드) ─────────────
   Widget _buildPill(bool isCore) {
     final highlighted = isSelected || isConnectSource;
     final Color textColor = isCore ? Colors.white : _childTxt;
@@ -8954,12 +8982,12 @@ class _GraphCard extends StatelessWidget {
             gradient: highlighted ? _coreSelGrad : _coreGrad,
             borderRadius: BorderRadius.circular(16),
             border: highlighted
-                ? Border.all(color: Colors.white.withValues(alpha: 0.9), width: 2)
+                ? Border.all(color: Colors.white.withValues(alpha: 0.92), width: 2)
                 : null,
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF6E5CF0).withValues(
-                  alpha: highlighted ? 0.55 : 0.38,
+                color: const Color(0xFF6D5CE7).withValues(
+                  alpha: highlighted ? 0.55 : 0.40,
                 ),
                 blurRadius: highlighted ? 26 : 18,
                 offset: const Offset(0, 8),
@@ -8967,50 +8995,59 @@ class _GraphCard extends StatelessWidget {
             ],
           )
         : BoxDecoration(
-            color: highlighted ? _childBgSel : _childBg,
+            gradient: highlighted ? _childGradSel : _childGrad,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: highlighted
                   ? _violet
                   : (isConnectTarget
                       ? Colors.white.withValues(alpha: 0.4)
-                      : _childBorder),
-              width: highlighted ? 2 : 1.2,
+                      : _childBorder.withValues(alpha: 0.85)),
+              width: highlighted ? 2 : 1.3,
             ),
             boxShadow: highlighted
                 ? [
                     BoxShadow(
-                      color: _violet.withValues(alpha: 0.35),
+                      color: _violet.withValues(alpha: 0.32),
                       blurRadius: 18,
                       offset: const Offset(0, 4),
                     ),
                   ]
                 : [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.28),
+                      color: Colors.black.withValues(alpha: 0.30),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
                   ],
           );
 
+    final label = Text(
+      node.label,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: GoogleFonts.inter(
+        color: textColor,
+        fontSize: labelSize,
+        fontWeight: isCore ? FontWeight.w800 : FontWeight.w600,
+        height: 1.2,
+        letterSpacing: -0.3,
+      ),
+    );
+
     return Container(
       clipBehavior: Clip.hardEdge,
       decoration: deco,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      alignment: Alignment.center,
-      child: Text(
-        node.label,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-        style: GoogleFonts.inter(
-          color: textColor,
-          fontSize: labelSize,
-          fontWeight: isCore ? FontWeight.w800 : FontWeight.w600,
-          height: 1.2,
-          letterSpacing: -0.3,
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      child: Row(
+        children: [
+          Expanded(child: label),
+          if (hasChildren) ...[
+            const SizedBox(width: 7),
+            _toggleChip(),
+          ],
+        ],
       ),
     );
   }
