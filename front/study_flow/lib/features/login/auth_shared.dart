@@ -21,143 +21,83 @@ class AuthScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Force a clean light palette for the entire auth flow so all
+    // theme-coupled components (AppInput, AppButton, ...) render light.
+    return Theme(
+      data: AppTheme.lightTheme,
+      child: Builder(builder: _buildContent),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final colors = AppTheme.colorsOf(context);
-    final isCompact = MediaQuery.of(context).size.width < 960;
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: Stack(
-        children: [
-          // Subtle aurora
-          Positioned(
-            top: -200,
-            left: -100,
-            child: Container(
-              width: 500,
-              height: 500,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.accent.withValues(alpha: 0.05),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -150,
-            right: -80,
-            child: Container(
-              width: 400,
-              height: 400,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.purple.withValues(alpha: 0.04),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-              child: const SizedBox.expand(),
-            ),
-          ),
-          // Content
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 16,
-              ),
-              child: Column(
-                children: [
-                  // Top bar
-                  AppFadeSlide(
-                    beginOffset: const Offset(0, -8),
-                    duration: const Duration(milliseconds: 400),
-                    child: Row(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Column(
+            children: [
+              // Top bar
+              AppFadeSlide(
+                beginOffset: const Offset(0, -8),
+                duration: const Duration(milliseconds: 400),
+                child: Row(
+                  children: [
+                    if (showBack) ...[
+                      _AuthBackButton(
+                        onTap: onBack ?? () => Navigator.pop(context),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    // Brand wordmark (clean black)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (showBack) ...[
-                          _AuthBackButton(
-                            onTap: onBack ?? () => Navigator.pop(context),
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-                        // Brand wordmark
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 26,
-                              height: 26,
-                              decoration: BoxDecoration(
-                                gradient: AppGradients.accent,
-                                borderRadius: BorderRadius.circular(7),
-                                boxShadow: AppShadows.accentGlow(
-                                  AppTheme.accent,
-                                  intensity: 0.25,
-                                ),
-                              ),
-                              child: Center(
-                                child: Image.asset(
-                                  'assets/images/logo_icon.png',
-                                  width: 18,
-                                  height: 18,
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ShaderMask(
-                              shaderCallback: (bounds) =>
-                                  AppGradients.accent.createShader(bounds),
-                              blendMode: BlendMode.srcIn,
-                              child: Text(
-                                AppTheme.brandName,
-                                style: GoogleFonts.inter(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.4,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
+                          width: 28,
+                          height: 28,
                           decoration: BoxDecoration(
-                            color: colors.border.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(20),
+                            color: colors.textPrimary,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(
-                            'Account',
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: colors.textSecondary,
-                            ),
+                          child: const Icon(
+                            LucideIcons.zap,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 9),
+                        Text(
+                          AppTheme.brandName,
+                          style: GoogleFonts.inter(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                            color: colors.textPrimary,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 32),
-                  Expanded(
-                    child: isCompact
-                        ? SingleChildScrollView(child: child)
-                        : Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 1120),
-                              child: child,
-                            ),
-                          ),
-                  ),
-                ],
+                    const Spacer(),
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(height: 24),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: child,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -211,6 +151,9 @@ class _AuthBackButtonState extends State<_AuthBackButton> {
 // Split layout
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Clean single-column centered layout (reference: univai.co.kr).
+/// The [left] hero is intentionally not rendered — the form card is the
+/// sole focus, centered on a light background.
 class AuthSplitLayout extends StatelessWidget {
   final Widget left;
   final Widget right;
@@ -218,25 +161,7 @@ class AuthSplitLayout extends StatelessWidget {
   const AuthSplitLayout({super.key, required this.left, required this.right});
 
   @override
-  Widget build(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.width < 960;
-
-    if (isCompact) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [left, const SizedBox(height: 20), right],
-      );
-    }
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(flex: 10, child: left),
-        const SizedBox(width: 32),
-        Expanded(flex: 8, child: right),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => right;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
