@@ -671,29 +671,28 @@ class _GlowWordmarkIconState extends State<_GlowWordmarkIcon>
 
   @override
   Widget build(BuildContext context) {
+    // 보라색 박스 제거 — 아이콘만 깔끔하게 (은은한 글로우만 유지)
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, child) {
         final t = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut).value;
-        return Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            gradient: AppGradients.accent,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.accent.withValues(alpha: 0.15 + 0.20 * t),
-                blurRadius: 10 + 8 * t,
-                spreadRadius: -2,
-              ),
-            ],
-          ),
-          child: Center(
+        return SizedBox(
+          width: 30,
+          height: 30,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.accent.withValues(alpha: 0.12 + 0.16 * t),
+                  blurRadius: 12 + 8 * t,
+                  spreadRadius: -4,
+                ),
+              ],
+            ),
             child: Image.asset(
               'assets/images/logo_icon.png',
-              width: 20,
-              height: 20,
+              width: 30,
+              height: 30,
               fit: BoxFit.contain,
             ),
           ),
