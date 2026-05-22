@@ -7210,6 +7210,355 @@ class _GCS extends State<_GraphCanvas> {
     return positions;
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 부분트리삽입 방식 (Partial Subtree Insertion)
+  //
+  // 조건: 같은 레벨 형제 중 어떤 노드의 서브트리 깊이가 3 이상일 때 적용
+  //   → 해당 노드에 할당된 이등변삼각형 영역 안에서 직사각형 행 배치
+  //
+  // 흐름:
+  //   1. 바텀업(_computeSubtreeMaxDepths, _computeTriangleNeeded,
+  //      _computeBoundariesV2)으로 각 노드의 필요 삼각형 크기 계산
+  //   2. 오버플로우 시: 같은 레벨에서 가장 큰 삼각형을 기준으로 r 결정
+  //   3. 탑다운(_placeNodesV2, _placeSubtreeLinear)으로 실제 위치 배정
+  // ════════════════════════════════════════════════════════════════════════
+
+  /// [바텀업] 각 노드의 서브트리 최대깊이를 계산한다.
+  /// 0 = 리프, 1 = 자식만, 2 = 손자까지, 3+ = 부분트리삽입 대상
+  static Map<String, int> _computeSubtreeMaxDepths(
+    String rootId,
+    Map<String, List<String>> childrenMap,
+  ) {
+    final result = <String, int>{};
+    void dfs(String id) {
+      if (result.containsKey(id)) return;
+      final children = childrenMap[id] ?? [];
+      if (children.isEmpty) { result[id] = 0; return; }
+      for (final c in children) dfs(c);
+      result[id] = 1 + children.fold(0, (m, c) => math.max(m, result[c] ?? 0));
+    }
+    dfs(rootId);
+    return result;
+  }
+
+  /// [바텀업] 부분트리삽입에서 필요한 삼각형 영역 크기를 계산한다.
+  ///
+  /// 반환 레코드:
+  ///   r     — 삼각형 y축(깊이) 방향 필요 길이
+  ///   halfW — 삼각형 x축(폭) 방향 최대 반폭
+  ///
+  /// 회전불가 노드 조건 적용: 모든 경계에 ×√2 패딩
+  static ({double r, double halfW}) _computeTriangleNeeded(
+    String nodeId,
+    Map<String, List<String>> childrenMap,
+    Map<String, double> halfSide,
+  ) {
+    // BFS로 레벨별 노드 수집
+    final levels = <List<String>>[];
+    {
+      final q = <String>[nodeId];
+      final vis = <String>{nodeId};
+      while (q.isNotEmpty) {
+        final lvl = List<String>.from(q);
+        q.clear();
+        levels.add(lvl);
+        for (final id in lvl) {
+          for (final c in (childrenMap[id] ?? [])) {
+            if (!vis.contains(c)) { vis.add(c); q.add(c); }
+          }
+        }
+      }
+    }
+
+    const minGap = 20.0; // 노드 간 최소 간격
+
+    // 레벨 0: 루트 자체의 초기 r, halfW
+    final a0 = halfSide[nodeId] ?? 84.0;
+    double totalR = a0 * math.sqrt2;
+    double maxHalfW = a0 * math.sqrt2;
+
+    // 레벨 1 이상: 직사각형 행 배치
+    for (int i = 1; i < levels.length; i++) {
+      final prev = levels[i - 1];
+      final curr = levels[i];
+
+      // 회전불가 조건: ×√2
+      final mPrev = prev.fold(0.0, (m, id) => math.max(m, (halfSide[id] ?? 84.0))) * math.sqrt2;
+      final mCurr = curr.fold(0.0, (m, id) => math.max(m, (halfSide[id] ?? 84.0))) * math.sqrt2;
+      // l_n: 현재 레벨 노드 폭 합 + 간격
+      final lCurr = curr.fold(0.0, (s, id) => s + (halfSide[id] ?? 84.0) * 2 * math.sqrt2)
+          + minGap * (curr.length - 1).toDouble();
+
+      // r_n ≥ √2·(m_prev + m_curr)/2 (문서 조건, + 최소간격)
+      final rn = math.sqrt2 * (mPrev + mCurr) / 2 + minGap;
+      totalR += rn + mCurr;        // 레벨 간 거리 + 현 레벨 높이
+      maxHalfW = math.max(maxHalfW, lCurr / 2);
+    }
+
+    return (r: totalR, halfW: maxHalfW);
+  }
+
+  /// [탑다운] 서브트리 노드를 삼각형 y축 방향으로 선형 배치한다.
+  ///
+  /// [nodeId]    : 서브트리 루트 (이미 basePos에 배치됨)
+  /// [basePos]   : 서브트리 루트의 절대 좌표
+  /// [axisAngle] : 부모→루트 방향 각도 (radians, cos/sin 좌표계)
+  ///
+  /// 짝수 레벨: 중심점 양쪽에 Tn/2, Tn/2+1번 노드
+  /// 홀수 레벨: (Tn/2)+1번 노드가 중심점에 배치
+  static void _placeSubtreeLinear(
+    String nodeId,
+    Offset basePos,
+    double axisAngle,
+    Map<String, List<String>> childrenMap,
+    Map<String, double> halfSide,
+    Map<String, Offset> positions,
+    Set<String> visited,
+  ) {
+    if (visited.contains(nodeId)) return;
+    visited.add(nodeId);
+    positions[nodeId] = basePos;
+
+    // BFS로 레벨별 노드 수집
+    final levels = <List<String>>[];
+    {
+      final q = <String>[nodeId];
+      final vis = <String>{nodeId};
+      while (q.isNotEmpty) {
+        final lvl = List<String>.from(q);
+        q.clear();
+        levels.add(lvl);
+        for (final id in lvl) {
+          for (final c in (childrenMap[id] ?? [])) {
+            if (!vis.contains(c)) { vis.add(c); q.add(c); }
+          }
+        }
+      }
+    }
+
+    // 삼각형 좌표계: y축 = axisAngle 방향, x축 = 수직 방향
+    final ax = math.cos(axisAngle); // y축 단위벡터 x
+    final ay = math.sin(axisAngle); // y축 단위벡터 y
+    final px = -math.sin(axisAngle); // x축 단위벡터 x (반시계 90°)
+    final py = math.cos(axisAngle);  // x축 단위벡터 y
+
+    const minGap = 20.0;
+    double cumulativeR = 0.0;
+
+    for (int i = 1; i < levels.length; i++) {
+      final prev = levels[i - 1];
+      final curr = levels[i];
+
+      final mPrev = prev.fold(0.0, (m, id) => math.max(m, (halfSide[id] ?? 84.0))) * math.sqrt2;
+      final mCurr = curr.fold(0.0, (m, id) => math.max(m, (halfSide[id] ?? 84.0))) * math.sqrt2;
+
+      final rn = math.sqrt2 * (mPrev + mCurr) / 2 + minGap;
+      cumulativeR += rn + mCurr;
+
+      // 이 레벨의 중심 좌표 (basePos 기준 y축 방향 cumulativeR)
+      final cx = basePos.dx + ax * cumulativeR;
+      final cy = basePos.dy + ay * cumulativeR;
+
+      final tn = curr.length;
+      final nodeWidths = curr.map((id) => (halfSide[id] ?? 84.0) * 2 * math.sqrt2).toList();
+      final totalNodeW = nodeWidths.fold(0.0, (s, w) => s + w);
+      final lCurr = totalNodeW + minGap * math.max(0, tn - 1).toDouble();
+
+      // 홀수/짝수 문서 조건: 모든 노드를 중심 p 기준으로 균등 배치
+      // M = lCurr(사용가능폭 최대값) - totalNodeW → 노드 사이 간격 M/(Tn-1)
+      // 여기서 lCurr = totalNodeW + gap*(tn-1) 이므로 gap = M/(Tn-1) ✓
+      double xOffset = -lCurr / 2;
+      for (int m = 0; m < tn; m++) {
+        final id = curr[m];
+        if (visited.contains(id)) continue;
+        visited.add(id);
+        final nodeHW = nodeWidths[m] / 2;
+        positions[id] = Offset(
+          cx + px * (xOffset + nodeHW),
+          cy + py * (xOffset + nodeHW),
+        );
+        xOffset += nodeWidths[m] + minGap;
+      }
+    }
+  }
+
+  /// [바텀업] 부분트리삽입 지원 경계 계산
+  ///
+  /// - 서브트리깊이 ≥ 3 이고 형제가 있는 자식 → 삼각형 영역으로 경계 환산
+  /// - 삼각형 오버플로우(halfW > r·tan(π/n)) 시 가장 큰 삼각형 기준으로 r 결정
+  static Map<String, double> _computeBoundariesV2(
+    String rootId,
+    Map<String, List<String>> childrenMap,
+    Map<String, double> halfSide,
+    Map<String, int> subtreeMaxDepths,
+  ) {
+    final boundary = <String, double>{};
+    final visited = <String>{};
+
+    void compute(String id) {
+      if (visited.contains(id)) return;
+      visited.add(id);
+
+      final a = halfSide[id] ?? 72.0;
+      final children = childrenMap[id] ?? [];
+
+      if (children.isEmpty) {
+        boundary[id] = a * math.sqrt2;
+        return;
+      }
+
+      for (final cid in children) compute(cid);
+
+      final n = children.length;
+      // 형제가 있어야(n > 1) 부분트리삽입 대상
+      final needsIns = <String, bool>{
+        for (final c in children)
+          c: n > 1 && (subtreeMaxDepths[c] ?? 0) >= 3,
+      };
+      final hasAny = needsIns.values.any((v) => v);
+
+      double maxEffB = 0.0;
+
+      if (hasAny) {
+        // 삼각형 반각 = π/n
+        final tanHa = n > 1 ? math.tan(math.pi / n) : 1.0;
+
+        for (final cid in children) {
+          double effB;
+          if (needsIns[cid] == true) {
+            final tri = _computeTriangleNeeded(cid, childrenMap, halfSide);
+            // 오버플로우 처리: 필요 r = max(tri.r, tri.halfW / tanHa)
+            final rNeeded = tanHa > 1e-6
+                ? math.max(tri.r, tri.halfW / tanHa)
+                : tri.r;
+            // 삼각형을 외접하는 원으로 변환
+            effB = math.sqrt(rNeeded * rNeeded + tri.halfW * tri.halfW);
+          } else {
+            effB = boundary[cid] ?? a * math.sqrt2;
+          }
+          maxEffB = math.max(maxEffB, effB);
+        }
+      } else {
+        maxEffB = children.fold(0.0, (prev, c) => math.max(prev, boundary[c] ?? a));
+      }
+
+      double r;
+      if (n == 1) {
+        r = math.max(2 * math.sqrt2 * a, a + maxEffB * 1.3 + 20);
+      } else {
+        final sinHalf = math.sin(math.pi / n);
+        final r1 = 2 * math.sqrt2 * a;
+        final r2 = sinHalf > 1e-6 ? maxEffB / sinHalf : double.infinity;
+        r = math.max(r1, r2) * 1.15;
+        r = r.clamp(80.0, 3000.0);
+      }
+      boundary[id] = r + maxEffB;
+    }
+
+    compute(rootId);
+    return boundary;
+  }
+
+  /// [탑다운] 부분트리삽입 지원 노드 배치
+  ///
+  /// - 정다각형 기반 방사형 배치를 기본으로
+  /// - 서브트리깊이 ≥ 3 이고 형제가 있는 자식: _placeSubtreeLinear 호출
+  /// - 삼각형 오버플로우시: 같은 레벨에서 가장 큰 삼각형 r 기준으로 r 통일
+  static Map<String, Offset> _placeNodesV2(
+    String rootId,
+    Map<String, List<String>> childrenMap,
+    Map<String, double> halfSide,
+    Map<String, double> boundary,
+    Map<String, int> subtreeMaxDepths,
+  ) {
+    final positions = <String, Offset>{};
+    final visited = <String>{};
+
+    void place(String id, Offset pos, double incomingAngle) {
+      if (visited.contains(id)) return;
+      visited.add(id);
+      positions[id] = pos;
+
+      final children = childrenMap[id] ?? [];
+      if (children.isEmpty) return;
+
+      final n = children.length;
+      final a = halfSide[id] ?? 72.0;
+
+      final needsIns = <String, bool>{
+        for (final c in children)
+          c: n > 1 && (subtreeMaxDepths[c] ?? 0) >= 3,
+      };
+      final hasAny = needsIns.values.any((v) => v);
+
+      double r;
+
+      if (hasAny) {
+        // 삼각형 반각
+        final tanHa = math.tan(math.pi / n);
+        double maxEffB = 0.0;
+        double maxTriR = 0.0; // 가장 큰 삼각형의 r (오버플로우 기준점)
+
+        for (final cid in children) {
+          if (needsIns[cid] == true) {
+            final tri = _computeTriangleNeeded(cid, childrenMap, halfSide);
+            final rNeeded = tanHa > 1e-6
+                ? math.max(tri.r, tri.halfW / tanHa)
+                : tri.r;
+            final effB = math.sqrt(rNeeded * rNeeded + tri.halfW * tri.halfW);
+            maxEffB = math.max(maxEffB, effB);
+            // 가장 큰 삼각형 기준: 오버플로우시 r 결정에 사용
+            maxTriR = math.max(maxTriR, rNeeded);
+          } else {
+            maxEffB = math.max(maxEffB, boundary[cid] ?? a * math.sqrt2);
+          }
+        }
+
+        final sinHalf = math.sin(math.pi / n);
+        final r1 = 2 * math.sqrt2 * a;
+        final r2 = sinHalf > 1e-6 ? maxEffB / sinHalf : double.infinity;
+        // 가장 큰 삼각형이 기준: r_polygon과 r_triangle_overflow 중 최대값
+        r = math.max(math.max(r1, r2), maxTriR) * 1.15;
+        r = r.clamp(80.0, 3000.0);
+      } else {
+        // 기존 정다각형법
+        final maxCB = children.fold(0.0, (prev, c) => math.max(prev, boundary[c] ?? a));
+        if (n == 1) {
+          r = math.max(2 * math.sqrt2 * a, a + maxCB * 1.3 + 20);
+        } else {
+          final sinHalf = math.sin(math.pi / n);
+          final r1 = 2 * math.sqrt2 * a;
+          final r2 = sinHalf > 1e-6 ? maxCB / sinHalf : double.infinity;
+          r = math.max(r1, r2) * 1.15;
+          r = r.clamp(80.0, 3000.0);
+        }
+      }
+
+      for (int k = 0; k < n; k++) {
+        final cid = children[k];
+        // 12시 방향 시작, 시계방향
+        final angle = k * 2 * math.pi / n - math.pi / 2;
+        final childPos = Offset(
+          pos.dx + r * math.cos(angle),
+          pos.dy + r * math.sin(angle),
+        );
+
+        if (needsIns[cid] == true) {
+          // 부분트리삽입: 삼각형 y축 방향(= angle)으로 선형 배치
+          _placeSubtreeLinear(
+            cid, childPos, angle,
+            childrenMap, halfSide, positions, visited,
+          );
+        } else {
+          place(cid, childPos, angle);
+        }
+      }
+    }
+
+    place(rootId, Offset.zero, -math.pi / 2);
+    return positions;
+  }
+
   /// 마크다운 심볼 제거 (**bold**, *italic*, #heading 등)
   static String _stripMd(String s) => s
       .replaceAll(RegExp(r'\*{1,3}'), '')
@@ -7330,8 +7679,10 @@ class _GCS extends State<_GraphCanvas> {
     if (_isTreeLayout) {
       relativePositions = _placeTreeNodes(rootId, childrenMap);
     } else {
-      final boundary = _computeBoundaries(rootId, childrenMap, halfSide);
-      relativePositions = _placeNodes(rootId, childrenMap, halfSide, boundary);
+      // 부분트리삽입 지원: 서브트리 깊이 ≥ 3 자식은 삼각형 영역 선형 배치
+      final subtreeMaxDepths = _computeSubtreeMaxDepths(rootId, childrenMap);
+      final boundary = _computeBoundariesV2(rootId, childrenMap, halfSide, subtreeMaxDepths);
+      relativePositions = _placeNodesV2(rootId, childrenMap, halfSide, boundary, subtreeMaxDepths);
     }
 
     // ── 7. 보드 크기 계산 & 루트를 보드 중앙으로 이동 ────────
