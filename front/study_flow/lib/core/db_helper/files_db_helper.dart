@@ -43,6 +43,7 @@ class FilesDBHelper {
     String? content,
     String? summary,
     String? graph,
+    String? memo,
   }) async {
     if (kIsWeb) return 0;
     final db = await LocalDatabase.instance.database;
@@ -55,6 +56,7 @@ class FilesDBHelper {
     if (content != null) updates['content'] = content;
     if (summary != null) updates['summary'] = summary;
     if (graph != null) updates['graph'] = graph;
+    if (memo != null) updates['memo'] = memo;
     if (updates.isEmpty) return 0;
     return await db.update('files', updates, where: 'id = ?', whereArgs: [id]);
   }

@@ -22,6 +22,7 @@ class Files(SQLModel, table=True):
     content: Optional[str] = None
     summary: Optional[str] = None
     graph: Optional[str] = None
+    memo: Optional[str] = None
     create_at: datetime
     update_at: Optional[datetime] = None
 
@@ -40,6 +41,7 @@ class FileCreate(SQLModel):
     content: Optional[str] = None
     summary: Optional[str] = None
     graph: Optional[str] = None
+    memo: Optional[str] = None
     create_at: datetime
     update_at: Optional[datetime] = None
 
@@ -55,5 +57,6 @@ class FileRead(SQLModel):
     content: Optional[str] = None
     summary: Optional[str] = None
     graph: Optional[str] = None
+    memo: Optional[str] = None
     create_at: datetime
     update_at: Optional[datetime] = None

@@ -166,7 +166,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 5, vsync: this);
+    _tab = TabController(length: 6, vsync: this);
     _saveAc = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -1270,6 +1270,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           onAsk: (q) =>
               ref.read(fileEditorProvider.notifier).askAI(q, widget.projectId),
         ),
+        _NotePanel(st: st, ref: ref, onChanged: _chg),
       ],
     );
   }
@@ -1961,6 +1962,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                         .read(fileEditorProvider.notifier)
                         .askAI(q, widget.projectId),
                   ),
+                  _NotePanel(st: st, ref: ref, onChanged: _chg),
                 ],
               ),
             ),
@@ -3692,6 +3694,7 @@ class _MobileTabs extends StatelessWidget {
     (Icons.psychology_rounded, '암기'),
     (Icons.quiz_rounded, '퀴즈'),
     (Icons.chat_bubble_outline_rounded, '질문'),
+    (Icons.edit_note_rounded, '메모'),
   ];
 
   @override
@@ -5740,6 +5743,7 @@ class _Tabs extends StatelessWidget {
       _T(Icons.psychology_rounded, '암기'),
       _T(Icons.quiz_rounded, '퀴즈'),
       _T(Icons.chat_bubble_outline_rounded, '질문'),
+      _T(Icons.edit_note_rounded, '메모'),
     ],
   );
   Tab _T(IconData i, String t) => Tab(
@@ -6319,6 +6323,88 @@ class _MemoPanel extends StatelessWidget {
         ),
     ],
   );
+}
+
+// ══════════════════ 메모 패널 (자유 입력 노트) ═══════════════════
+class _NotePanel extends StatefulWidget {
+  final FileEditorState st;
+  final WidgetRef ref;
+  final VoidCallback onChanged;
+  const _NotePanel({
+    required this.st,
+    required this.ref,
+    required this.onChanged,
+  });
+  @override
+  State<_NotePanel> createState() => _NotePanelState();
+}
+
+class _NotePanelState extends State<_NotePanel> {
+  late final TextEditingController _ctrl;
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.st.userMemo);
+  }
+
+  @override
+  void didUpdateWidget(covariant _NotePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 서버에서 메모가 늦게 로드되거나 동기화될 때 — 편집 중이 아니면 반영
+    final incoming = widget.st.userMemo;
+    if (!_focus.hasFocus && incoming != _ctrl.text) {
+      _ctrl.text = incoming;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+      child: TextField(
+        controller: _ctrl,
+        focusNode: _focus,
+        maxLines: null,
+        expands: true,
+        textAlignVertical: TextAlignVertical.top,
+        keyboardType: TextInputType.multiline,
+        cursorColor: _acc,
+        style: GoogleFonts.inter(
+          fontSize: 15,
+          height: 1.7,
+          color: _txt0,
+          letterSpacing: -0.1,
+        ),
+        decoration: InputDecoration(
+          isCollapsed: true,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          filled: false,
+          hintText: '이 자료에 대한 메모를 자유롭게 작성하세요.\n언제든 자동 저장됩니다.',
+          hintStyle: GoogleFonts.inter(
+            fontSize: 15,
+            height: 1.7,
+            color: _txt2.withValues(alpha: 0.5),
+            letterSpacing: -0.1,
+          ),
+        ),
+        onChanged: (v) {
+          widget.ref.read(fileEditorProvider.notifier).setMemo(v);
+          widget.onChanged(); // 디바운스 저장 트리거
+        },
+      ),
+    );
+  }
 }
 
 class _QuizPanel extends StatefulWidget {

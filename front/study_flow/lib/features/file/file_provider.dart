@@ -66,6 +66,9 @@ class FileEditorState {
   // 현재 분석 중인 블록 인덱스 (-1 = 없음)
   final int analyzingBlockIndex;
 
+  // 사용자 자유 입력 메모 (서버 동기화 — files.memo)
+  final String userMemo;
+
   FileEditorState({
     required this.blocks,
     this.isLoading = false,
@@ -94,6 +97,7 @@ class FileEditorState {
     this.isProofreadLoading = false,
     this.summaryProgress = '',
     this.analyzingBlockIndex = -1,
+    this.userMemo = '',
   });
 
   FileEditorState copyWith({
@@ -125,6 +129,7 @@ class FileEditorState {
     bool? isProofreadLoading,
     String? summaryProgress,
     int? analyzingBlockIndex,
+    String? userMemo,
   }) => FileEditorState(
     blocks: blocks ?? this.blocks,
     isLoading: isLoading ?? this.isLoading,
@@ -153,6 +158,7 @@ class FileEditorState {
     isProofreadLoading: isProofreadLoading ?? this.isProofreadLoading,
     summaryProgress: summaryProgress ?? this.summaryProgress,
     analyzingBlockIndex: analyzingBlockIndex ?? this.analyzingBlockIndex,
+    userMemo: userMemo ?? this.userMemo,
   );
 
   String get fullContent => blocks.map((b) => b.controller.text).join('\n');
@@ -221,6 +227,11 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
           ? state.summaryBlocks
           : summary;
 
+      // syncMode: 로컬에서 편집 중인 메모가 있으면 서버 값으로 덮어쓰지 않음
+      final memoToUse = (syncMode && state.userMemo.isNotEmpty)
+          ? state.userMemo
+          : (file.memo ?? '');
+
       state = state.copyWith(
         blocks: blocks.isEmpty ? [_newBlock(0)] : blocks,
         isLoading: false,
@@ -231,6 +242,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         lastSentContent: file.content,
         fileTitle: file.title == '제목 없음' ? '' : file.title,
         fileTags: file.tags,
+        userMemo: memoToUse,
       );
     } else {
       if (!syncMode)
@@ -337,6 +349,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         content: blocksJson,
         summary: summaryJson,
         graph: graphJson,
+        memo: state.userMemo,
       );
     } else {
       try {
@@ -352,6 +365,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
                 'summary': summaryJson,
                 'graph': graphJson,
                 'icon': state.icon,
+                'memo': state.userMemo,
               }),
             )
             .timeout(const Duration(seconds: 30));
@@ -1332,6 +1346,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
 
   void setIcon(String? icon) => state = state.copyWith(icon: icon);
   void setPrompt(String prompt) => state = state.copyWith(filePrompt: prompt);
+  void setMemo(String memo) => state = state.copyWith(userMemo: memo);
 
   Block _newBlock(
     int i, {

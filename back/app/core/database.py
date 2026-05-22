@@ -32,6 +32,9 @@ def init_db():
     if columns and "graph" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE files ADD COLUMN graph TEXT"))
+    if columns and "memo" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE files ADD COLUMN memo TEXT"))
     if project_columns and "icon" not in project_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE projects ADD COLUMN icon TEXT"))

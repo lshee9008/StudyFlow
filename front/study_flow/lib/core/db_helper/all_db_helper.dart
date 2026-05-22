@@ -71,9 +71,10 @@ class LocalDatabase {
         tags TEXT, 
         icon TEXT, 
         prompt TEXT, 
-        content TEXT, 
-        summary TEXT, 
+        content TEXT,
+        summary TEXT,
         graph TEXT,
+        memo TEXT,
         FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
       )
     ''');
@@ -109,6 +110,9 @@ class LocalDatabase {
     } catch (_) {}
     try {
       await db.execute('ALTER TABLE files ADD COLUMN graph TEXT');
+    } catch (_) {}
+    try {
+      await db.execute('ALTER TABLE files ADD COLUMN memo TEXT');
     } catch (_) {}
   }
 
