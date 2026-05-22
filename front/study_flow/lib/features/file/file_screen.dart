@@ -8130,6 +8130,31 @@ class _GCS extends State<_GraphCanvas> {
     _fitBoard();
   }
 
+  /// univai식 드릴다운: 특정 노드를 화면 좌측(32%) 지점에 맞춰 이동시켜
+  /// 펼쳐진 자식들(오른쪽)이 자연스럽게 보이도록 한다. 현재 배율은 유지.
+  void _centerOnNodeId(String id, {double leftBias = 0.32}) {
+    _GraphNodeLayout? node;
+    for (final n in ns) {
+      if (n.id == id) { node = n; break; }
+    }
+    if (node == null) { _fitBoard(); return; }
+
+    final box = context.findRenderObject() as RenderBox?;
+    final viewSize = box?.size ?? const Size(800, 600);
+
+    // 현재 배율 유지 (너무 작거나 크지 않게 클램프)
+    final current = _controller.value.getMaxScaleOnAxis();
+    final scale = current.clamp(0.45, 1.2);
+
+    final c = node.rect.center;
+    final targetX = viewSize.width * leftBias;
+    final targetY = viewSize.height / 2;
+
+    _controller.value = Matrix4.identity()
+      ..translateByDouble(targetX - c.dx * scale, targetY - c.dy * scale, 0, 1)
+      ..scaleByDouble(scale, scale, 1, 1);
+  }
+
   void _zoomIn() {
     final box = context.findRenderObject() as RenderBox?;
     final viewSize = box?.size ?? const Size(800, 600);
@@ -8257,7 +8282,11 @@ class _GCS extends State<_GraphCanvas> {
                           } else {
                             _collapsed.add(node.id);
                           }
-                          _build(); // 내부에서 setState 호출
+                          _build(); // 내부에서 setState 호출 (ns 갱신)
+                          // 펼친/접은 노드를 화면에 맞춰 드릴다운 포커스
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _centerOnNodeId(node.id);
+                          });
                         },
                         onSelect: () => _handleNodeTap(node),
                         onAddChild: () => _addChildNode(node.id),
