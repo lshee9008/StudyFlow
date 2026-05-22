@@ -354,7 +354,7 @@ def _normalize_node_type(raw_type: str) -> str:
     token = (raw_type or "").strip().lower()
     if token in {"core", "root", "main"}:
         return "core"
-    if token in {"branch", "topic", "section"}:
+    if token in {"branch", "topic", "section", "chapter"}:
         return "branch"
     return "detail"
 
@@ -439,19 +439,26 @@ def _normalize_graph_payload(nodes, edges, text: str):
         details = [n for n in details if n not in promoted]
 
     connected_targets = {(e["source"], e["target"]) for e in clean_edges}
+    incoming = {n["id"]: 0 for n in clean_nodes}
+    for edge in clean_edges:
+        incoming[edge["target"]] = incoming.get(edge["target"], 0) + 1
     if branches:
         for branch in branches:
-            if (root["id"], branch["id"]) not in connected_targets:
+            if incoming.get(branch["id"], 0) == 0 and (root["id"], branch["id"]) not in connected_targets:
                 clean_edges.append({"source": root["id"], "target": branch["id"], "label": "핵심"})
                 connected_targets.add((root["id"], branch["id"]))
+                incoming[branch["id"]] = incoming.get(branch["id"], 0) + 1
 
     if details:
         branch_cycle = branches or [root]
         for idx, detail in enumerate(details):
+            if incoming.get(detail["id"], 0) > 0:
+                continue
             parent = branch_cycle[idx % len(branch_cycle)]
             if (parent["id"], detail["id"]) not in connected_targets:
                 clean_edges.append({"source": parent["id"], "target": detail["id"], "label": "세부"})
                 connected_targets.add((parent["id"], detail["id"]))
+                incoming[detail["id"]] = incoming.get(detail["id"], 0) + 1
 
     ordered_nodes = [root]
     ordered_nodes.extend(sorted(
@@ -497,7 +504,7 @@ def _fallback_graph_from_text(text: str, title: str = ""):
             continue
         if cleaned not in terms:
             terms.append(cleaned)
-        if len(terms) >= 10:
+        if len(terms) >= 28:
             break
 
     if not terms:
@@ -520,10 +527,15 @@ def _fallback_graph_from_text(text: str, title: str = ""):
     }]
     edges = []
 
-    branch_count = min(5, max(1, len(terms)))
-    for index, term in enumerate(terms[:10], start=1):
+    branch_count = min(6, max(1, len(terms)))
+    last_by_branch = {branch: f"n{branch}" for branch in range(1, branch_count + 1)}
+    for index, term in enumerate(terms[:28], start=1):
         node_type = "branch" if index <= branch_count else "detail"
-        parent = "root" if node_type == "branch" else f"n{((index - branch_count - 1) % branch_count) + 1}"
+        if node_type == "branch":
+            parent = "root"
+        else:
+            branch_no = ((index - branch_count - 1) % branch_count) + 1
+            parent = last_by_branch.get(branch_no, f"n{branch_no}")
         node_id = f"n{index}"
         nodes.append({
             "id": node_id,
@@ -537,6 +549,11 @@ def _fallback_graph_from_text(text: str, title: str = ""):
             "target": node_id,
             "label": "핵심" if node_type == "branch" else "세부",
         })
+        if node_type == "detail":
+            branch_no = ((index - branch_count - 1) % branch_count) + 1
+            chain_pos = (index - branch_count - 1) // branch_count
+            if chain_pos < 4:
+                last_by_branch[branch_no] = node_id
 
     return _normalize_graph_payload(nodes, edges, text)
 
@@ -1325,8 +1342,8 @@ async def graph(req: GraphReq):
             mandatory_hint += f"  - {b}\n"
         mandatory_hint += "\n"
 
-    # branch 5~7개, 각 branch 하위 detail 4~6개 → 30~45개 (가독성 최적)
-    target_count = max(30, min(45, len(branches) * 5 + len(subbranches[:10]) + 3))
+    # 4~6단계로 퍼지는 그래프를 만들되, 화면 가독성을 위해 상한을 둔다.
+    target_count = max(34, min(56, len(branches) * 6 + len(subbranches[:14]) + 8))
 
     p = (
         f"{context_hint}"
@@ -1338,26 +1355,29 @@ async def graph(req: GraphReq):
         '{"id":"root","label":"주제","description":"한 줄 설명","type":"core"},'
         '{"id":"b1","label":"대섹션1","description":"한 줄 설명","type":"branch"},'
         '{"id":"b2","label":"대섹션2","description":"한 줄 설명","type":"branch"},'
-        '{"id":"d1","label":"소섹션1-1","description":"한 줄 설명","type":"detail"},'
-        '{"id":"d2","label":"소섹션1-2","description":"한 줄 설명","type":"detail"},'
-        '{"id":"d3","label":"개념2-1","description":"한 줄 설명","type":"detail"},'
-        '{"id":"d4","label":"개념2-2","description":"한 줄 설명","type":"detail"}'
+        '{"id":"t1","label":"소섹션1-1","description":"한 줄 설명","type":"detail"},'
+        '{"id":"c1","label":"개념1-1-a","description":"한 줄 설명","type":"detail"},'
+        '{"id":"e1","label":"예시1-1-a","description":"한 줄 설명","type":"detail"},'
+        '{"id":"t2","label":"소섹션2-1","description":"한 줄 설명","type":"detail"},'
+        '{"id":"c2","label":"개념2-1-a","description":"한 줄 설명","type":"detail"}'
         '],"edges":['
         '{"source":"root","target":"b1","label":"포함"},'
         '{"source":"root","target":"b2","label":"포함"},'
-        '{"source":"b1","target":"d1","label":"구성"},'
-        '{"source":"b1","target":"d2","label":"구성"},'
-        '{"source":"b2","target":"d3","label":"구성"},'
-        '{"source":"b2","target":"d4","label":"구성"}'
+        '{"source":"b1","target":"t1","label":"구성"},'
+        '{"source":"t1","target":"c1","label":"개념"},'
+        '{"source":"c1","target":"e1","label":"예시"},'
+        '{"source":"b2","target":"t2","label":"구성"},'
+        '{"source":"t2","target":"c2","label":"개념"}'
         "]}\n\n"
         "【핵심 규칙】\n"
         f"1. 노드 총 {target_count}개 이상 반드시 생성 (이보다 적으면 출력 실패로 간주)\n"
-        "2. root 직속 branch는 5~8개 — 위 대섹션 목록만 root에 직접 연결\n"
-        "3. 각 branch 하위에 detail 노드를 최소 5개 이상 배치 (소섹션·용어·개념·원리 모두 추출)\n"
+        "2. root 직속 branch는 4~8개만 허용 — 모든 노드를 root에 직접 연결하지 말 것\n"
+        "3. 각 branch 아래를 소섹션 → 개념 → 원리/특징 → 예시/주의점 순서로 4~6단계까지 깊게 연결\n"
         "4. 위 【반드시 포함할 노드】를 하나도 빠짐없이 포함할 것\n"
         "5. 본문 텍스트에서 중요 개념·용어·원리·예시를 detail로 최대한 추출할 것\n"
-        "6. type: core(1개) / branch(5~8개) / detail(나머지 전부)\n"
-        "7. description은 40자 이내 한 줄, id 중복 금지"
+        "6. 계층 엣지는 각 노드당 부모 1개를 원칙으로 하며, 교차 연결은 정말 필요한 경우 4개 이하만 추가\n"
+        "7. type: core(1개) / branch(root 직속만) / detail(나머지 전부)\n"
+        "8. description은 48자 이내 한 줄, id 중복 금지"
     )
 
     try:
@@ -1408,7 +1428,7 @@ async def graph(req: GraphReq):
             existing_ids.add(f"{prefix}{i}")
             return f"{prefix}{i}"
 
-        MAX_NODES = 45  # 가독성 최적 상한
+        MAX_NODES = 56  # 깊은 계층 표현을 위한 상한
 
         # branch 보강: ## 헤딩이 누락된 경우 추가 (최대 7개)
         for i, h in enumerate(branches[:7]):

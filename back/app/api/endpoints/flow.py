@@ -5,9 +5,9 @@
 - POST /review-done    : 복습 완료 → 다음 스케줄 업데이트
 """
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -191,7 +191,7 @@ def get_flow_summary(
     recent_files = session.exec(
         select(Files)
         .where(Files.project_id.in_(project_ids))
-        .where(Files.content != None)
+        .where(Files.content.is_not(None))
         .where(Files.content != "")
         .order_by(Files.update_at.desc())
         .limit(4)
@@ -207,7 +207,7 @@ def get_flow_summary(
     all_content_files = session.exec(
         select(Files)
         .where(Files.project_id.in_(project_ids))
-        .where(Files.content != None)
+        .where(Files.content.is_not(None))
         .where(Files.content != "")
     ).all()
 
@@ -397,7 +397,7 @@ async def get_next_actions(req: NextActionsReq):
         response = model.generate_content(prompt, generation_config=cfg)
         raw = (response.text or "").strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
-        import json, re
+        import json
         s, e = raw.find("["), raw.rfind("]")
         if s != -1 and e != -1:
             actions = json.loads(raw[s:e+1])

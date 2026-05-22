@@ -940,112 +940,20 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.code);
         break;
       case 'table':
-        // 테이블 기본 템플릿 삽입
-        c.text = '| 항목 | 내용 | 비고 |\n|------|------|------|\n| | | |';
-        ref.read(fileEditorProvider.notifier).setType(i, BlockType.code);
+        c.text = '| 항목 | 설명 | 체크 |\n| --- | --- | --- |\n|  |  |  |';
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.table);
         break;
       case 'div':
         c.text = '────────────────────────────────────';
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.code);
         break;
       case 'image':
-        _pickImage(i);
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.image);
         break;
       default:
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
     }
     _foc(i);
-  }
-
-  Future<void> _pickImage(int blockIdx) async {
-    if (!kIsWeb) {
-      _snack('이미지 삽입은 웹에서만 지원됩니다.');
-      return;
-    }
-    // URL 입력 방식 (가장 범용적)
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _bg3,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: _bdr2),
-        ),
-        title: Text(
-          '이미지 URL 입력',
-          style: GoogleFonts.inter(
-            color: _txt0,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              style: GoogleFonts.inter(color: _txt0, fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'https://example.com/image.png',
-                hintStyle: GoogleFonts.inter(color: _txt2, fontSize: 13),
-                filled: true,
-                fillColor: _bg2,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: _bdr2),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: _bdr2),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: _acc, width: 1.5),
-                ),
-              ),
-              onSubmitted: (v) => Navigator.pop(ctx, v),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('취소', style: GoogleFonts.inter(color: _txt2)),
-          ),
-          GestureDetector(
-            onTap: () => Navigator.pop(ctx, ctrl.text),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: _acc,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '삽입',
-                style: GoogleFonts.inter(
-                  color: Colors.black,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-    );
-    if (result != null && result.isNotEmpty) {
-      final blocks = ref.read(fileEditorProvider).blocks;
-      if (blockIdx < blocks.length) {
-        blocks[blockIdx].controller.text = result.trim();
-        ref
-            .read(fileEditorProvider.notifier)
-            .setType(blockIdx, BlockType.image);
-        _chg();
-      }
-    }
   }
 
   void _removeSlash() {
@@ -1948,40 +1856,45 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         ),
       ],
         ),
-        // 드래그 박스 선택 오버레이
-        Listener(
-          onPointerDown: (event) {
-            setState(() {
-              _dragStart = event.position;
-              _dragCurrent = event.position;
-              _isDragging = true;
-            });
-          },
-          onPointerMove: (event) {
-            if (!_isDragging || _dragStart == null) return;
-            setState(() {
-              _dragCurrent = event.position;
-              _updateSelectedBlocksFromDrag();
-            });
-          },
-          onPointerUp: (event) {
-            if (!_isDragging || _dragStart == null) return;
-            setState(() {
-              _isDragging = false;
-            });
-            _dragStart = null;
-            _dragCurrent = null;
-          },
-          child: _isDragging && _dragStart != null && _dragCurrent != null
-              ? Positioned.fill(
-                  child: CustomPaint(
-                    painter: _DragSelectionPainter(
-                      startPos: _dragStart!,
-                      endPos: _dragCurrent!,
-                    ),
-                  ),
-                )
-              : const SizedBox.shrink(),
+        Positioned.fill(
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (event) {
+              setState(() {
+                _dragStart = event.position;
+                _dragCurrent = event.position;
+                _isDragging = false;
+              });
+            },
+            onPointerMove: (event) {
+              if (_dragStart == null) return;
+              final moved = (event.position - _dragStart!).distance;
+              if (moved < 8 && !_isDragging) return;
+              setState(() {
+                _isDragging = true;
+                _dragCurrent = event.position;
+                _updateSelectedBlocksFromDrag();
+              });
+            },
+            onPointerUp: (event) {
+              if (_dragStart == null) return;
+              setState(() {
+                _isDragging = false;
+                _dragStart = null;
+                _dragCurrent = null;
+              });
+            },
+            child: IgnorePointer(
+              child: _isDragging && _dragStart != null && _dragCurrent != null
+                  ? CustomPaint(
+                      painter: _DragSelectionPainter(
+                        startPos: _dragStart!,
+                        endPos: _dragCurrent!,
+                      ),
+                    )
+                  : const SizedBox.expand(),
+            ),
+          ),
         ),
       ],
     );
@@ -3823,14 +3736,17 @@ class _MobileTabs extends StatelessWidget {
 
 // ══════════════════ IMAGE BLOCK ═════════════════════
 class _ImageBlock extends StatefulWidget {
-  final String url;
-  const _ImageBlock({required this.url});
+  final TextEditingController controller;
+  final ValueChanged<String>? onChanged;
+  const _ImageBlock({required this.controller, this.onChanged});
   @override
   State<_ImageBlock> createState() => _IBState();
 }
 
 class _IBState extends State<_ImageBlock> {
   bool _hover = false;
+  String get _url => widget.controller.text.trim();
+
   @override
   Widget build(BuildContext context) => MouseRegion(
     onEnter: (_) => setState(() => _hover = true),
@@ -3845,23 +3761,48 @@ class _IBState extends State<_ImageBlock> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(9),
-        child: widget.url.isEmpty
+        child: _url.isEmpty
             ? Padding(
-                padding: const EdgeInsets.all(32),
+                padding: const EdgeInsets.all(18),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.image_outlined, color: _txt2, size: 28),
-                    const SizedBox(height: 8),
-                    Text(
-                      '이미지 URL이 없습니다',
-                      style: TextStyle(color: _txt2, fontSize: 12),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: widget.controller,
+                      autofocus: true,
+                      style: GoogleFonts.inter(color: _txt0, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: '이미지 URL 붙여넣기',
+                        hintStyle: GoogleFonts.inter(color: _txt2, fontSize: 13),
+                        filled: true,
+                        fillColor: _bg2,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: _bdr2),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: _bdr2),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: _acc, width: 1.4),
+                        ),
+                      ),
+                      onChanged: widget.onChanged,
                     ),
                   ],
                 ),
               )
             : Image.network(
-                widget.url,
+                _url,
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => Padding(
                   padding: const EdgeInsets.all(24),
@@ -4473,7 +4414,10 @@ class _NBState extends State<_NBlock> {
                 // 이미지 블록 (URL)
                 if (widget.block.type == BlockType.image)
                   Expanded(
-                    child: _ImageBlock(url: widget.block.controller.text),
+                    child: _ImageBlock(
+                      controller: widget.block.controller,
+                      onChanged: (value) => widget.onText(value, widget.idx),
+                    ),
                   ),
 
                 // 텍스트 입력 (이미지, HR 제외)
@@ -4945,7 +4889,7 @@ class _Opt {
   ]);
 }
 
-class _SlashMenu extends StatelessWidget {
+class _SlashMenu extends StatefulWidget {
   final List<_Opt> opts;
   final int sel;
   final bool isSearching;
@@ -4961,26 +4905,65 @@ class _SlashMenu extends StatelessWidget {
   static const _groupOrder = ['기본 블록', '목록', '특수'];
 
   @override
+  State<_SlashMenu> createState() => _SlashMenuState();
+}
+
+class _SlashMenuState extends State<_SlashMenu> {
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void didUpdateWidget(covariant _SlashMenu oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sel != widget.sel || oldWidget.opts != widget.opts) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _scrollToSelected() {
+    if (!_scroll.hasClients) return;
+    final target = (widget.sel * 54.0 - 120).clamp(
+      0.0,
+      _scroll.position.maxScrollExtent,
+    );
+    _scroll.animateTo(
+      target,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final children = <Widget>[];
 
-    if (isSearching || opts.length <= 4) {
+    if (widget.isSearching || widget.opts.length <= 4) {
       // 검색 모드: 플랫 리스트
-      for (int i = 0; i < opts.length; i++) {
+      for (int i = 0; i < widget.opts.length; i++) {
         children.add(
-          _SI(opt: opts[i], sel: i == sel, onTap: () => onSel(opts[i])),
+          _SI(
+            key: ValueKey('slash-${widget.opts[i].id}'),
+            opt: widget.opts[i],
+            sel: i == widget.sel,
+            onTap: () => widget.onSel(widget.opts[i]),
+          ),
         );
       }
     } else {
       // 브라우즈 모드: 카테고리별 그룹
       final groups = <String, List<_Opt>>{};
-      for (final o in opts) {
+      for (final o in widget.opts) {
         groups.putIfAbsent(o.group, () => []).add(o);
       }
       int globalIdx = 0;
       final orderedKeys = [
-        ..._groupOrder.where((g) => groups.containsKey(g)),
-        ...groups.keys.where((g) => !_groupOrder.contains(g)),
+        ..._SlashMenu._groupOrder.where((g) => groups.containsKey(g)),
+        ...groups.keys.where((g) => !_SlashMenu._groupOrder.contains(g)),
       ];
       for (final groupName in orderedKeys) {
         final groupOpts = groups[groupName]!;
@@ -5001,7 +4984,14 @@ class _SlashMenu extends StatelessWidget {
         );
         for (final opt in groupOpts) {
           final idx = globalIdx;
-          children.add(_SI(opt: opt, sel: idx == sel, onTap: () => onSel(opt)));
+          children.add(
+            _SI(
+              key: ValueKey('slash-${opt.id}'),
+              opt: opt,
+              sel: idx == widget.sel,
+              onTap: () => widget.onSel(opt),
+            ),
+          );
           globalIdx++;
         }
       }
@@ -5028,6 +5018,7 @@ class _SlashMenu extends StatelessWidget {
               ],
             ),
             child: SingleChildScrollView(
+              controller: _scroll,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -5584,7 +5575,12 @@ class _SI extends StatefulWidget {
   final _Opt opt;
   final bool sel;
   final VoidCallback onTap;
-  const _SI({required this.opt, required this.sel, required this.onTap});
+  const _SI({
+    super.key,
+    required this.opt,
+    required this.sel,
+    required this.onTap,
+  });
   @override
   State<_SI> createState() => _SIS();
 }
@@ -5600,20 +5596,29 @@ class _SIS extends State<_SI> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
+          duration: const Duration(milliseconds: 100),
           margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: active ? _bg4 : Colors.transparent,
+            color: widget.sel
+                ? _acc.withValues(alpha: 0.18)
+                : _h
+                    ? _bg4
+                    : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             border: active
-                ? Border.all(color: _acc.withValues(alpha: 0.5), width: 1.5)
+                ? Border.all(
+                    color: widget.sel
+                        ? _acc.withValues(alpha: 0.8)
+                        : _acc.withValues(alpha: 0.4),
+                    width: widget.sel ? 2 : 1,
+                  )
                 : null,
             boxShadow: active
                 ? [
                     BoxShadow(
-                      color: _acc.withValues(alpha: 0.15),
-                      blurRadius: 8,
+                      color: _acc.withValues(alpha: widget.sel ? 0.22 : 0.12),
+                      blurRadius: widget.sel ? 14 : 8,
                       spreadRadius: 0,
                     ),
                   ]
@@ -5621,6 +5626,16 @@ class _SIS extends State<_SI> {
           ),
           child: Row(
             children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 100),
+                width: 3,
+                height: 28,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: widget.sel ? _acc : Colors.transparent,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
               // 아이콘 컨테이너
               Container(
                 width: 32,
@@ -7242,6 +7257,7 @@ class _GCS extends State<_GraphCanvas> {
     if (depth == 0) return _GraphCardStyle.core;
     if (depth == 1) return _GraphCardStyle.branch;
     if (depth == 2) return _GraphCardStyle.subcluster;
+    if (depth == 3) return _GraphCardStyle.noteWide;
     return _GraphCardStyle.note;
   }
 
@@ -7724,11 +7740,10 @@ class _GCS extends State<_GraphCanvas> {
     // 콤팩트 레이아웃: 노드 수에 따라 간격 동적 조정
     final totalNodes = childrenMap.values.fold(1, (s, l) => s + l.length);
 
-    // xStep: 깊이 간격 (더 compact하게)
-    final xStep = totalNodes > 50 ? 180.0 : totalNodes > 35 ? 220.0 : 260.0;
+    // 깊은 개념 계층이 겹치지 않도록 노드 수가 많아도 계층 간 거리를 확보한다.
+    final xStep = totalNodes > 50 ? 250.0 : totalNodes > 35 ? 290.0 : 340.0;
 
-    // yUnit: 레벨 내 간격 (세로 간격 최소화)
-    final yUnit = totalNodes > 50 ? 85.0 : totalNodes > 35 ? 100.0 : 120.0;
+    final yUnit = totalNodes > 50 ? 118.0 : totalNodes > 35 ? 136.0 : 156.0;
 
     // Step 1: 서브트리 내 리프 수 카운트 (바텀업)
     final leafCount = <String, int>{};
