@@ -4045,9 +4045,13 @@ class _NBState extends State<_NBlock> {
 
   // ── 테이블 감지 (코드 블록 내 마크다운 표) ──────
   bool get _isTable {
+    if (widget.block.type == BlockType.table) return true;
     if (widget.block.type != BlockType.code) return false;
+    // |로 시작하는 줄이 2줄 이상이면 표로 인식 (--- 구분선 없어도 OK)
     final t = widget.block.controller.text;
-    return t.contains('|') && t.contains('---');
+    final pipeLines =
+        t.split('\n').where((l) => l.trim().startsWith('|')).length;
+    return pipeLines >= 2;
   }
 
   @override
@@ -4424,6 +4428,14 @@ class _NBState extends State<_NBlock> {
   /// 포커스 없음 → 렌더링(표/인라인 마크다운), 포커스 → raw TextField
   Widget _buildBlockContent() {
     final text = widget.block.controller.text;
+    // 표 블록: 항상 편집 가능한 표 위젯 (노션식 — 셀 입력 / 행·열 추가·삭제)
+    if (_isTableBlock && text.trim().isNotEmpty) {
+      return _EditableTable(
+        source: widget.block.controller,
+        onChanged: () =>
+            widget.onText(widget.block.controller.text, widget.idx),
+      );
+    }
     if (!_foc && text.trim().isNotEmpty) {
       // 단독 --- / *** / ___ → 구분선
       if (RegExp(r'^(-{3,}|\*{3,}|_{3,})$').hasMatch(text.trim())) {
@@ -4434,13 +4446,6 @@ class _NBState extends State<_NBlock> {
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: Container(height: 1, color: _bdr.withValues(alpha: 0.6)),
           ),
-        );
-      }
-      if (_isTableBlock) {
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => widget.block.focusNode.requestFocus(),
-          child: _renderTable(text),
         );
       }
       if (_hasInlineMarkdown(text)) {
@@ -4710,6 +4715,285 @@ class _BlockTypeBadge extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ══════════════════ 편집 가능한 표 (노션식) ══════════════════
+class _EditableTable extends StatefulWidget {
+  final TextEditingController source; // 블록 마크다운
+  final VoidCallback onChanged;
+  const _EditableTable({required this.source, required this.onChanged});
+  @override
+  State<_EditableTable> createState() => _EditableTableState();
+}
+
+class _EditableTableState extends State<_EditableTable> {
+  late List<List<TextEditingController>> _cells;
+  static const double _colW = 150;
+
+  @override
+  void initState() {
+    super.initState();
+    _parse();
+  }
+
+  void _parse() {
+    final rows = <List<String>>[];
+    for (final l in widget.source.text.split('\n')) {
+      final t = l.trim();
+      if (!t.startsWith('|')) continue;
+      // 구분선(|---|) 건너뛰기
+      if (t.contains('-') && RegExp(r'^\|?[\s:|\-]+\|?$').hasMatch(t)) continue;
+      final cells = t.split('|').map((c) => c.trim()).toList();
+      if (cells.isNotEmpty && cells.first.isEmpty) cells.removeAt(0);
+      if (cells.isNotEmpty && cells.last.isEmpty) cells.removeLast();
+      if (cells.isEmpty) continue;
+      rows.add(cells);
+    }
+    if (rows.isEmpty) rows.add(['', '']);
+    final colCount = rows.map((r) => r.length).reduce(math.max).clamp(1, 99);
+    _cells = [
+      for (final r in rows)
+        [
+          for (int c = 0; c < colCount; c++)
+            TextEditingController(text: c < r.length ? r[c] : ''),
+        ],
+    ];
+  }
+
+  @override
+  void dispose() {
+    for (final r in _cells) {
+      for (final c in r) c.dispose();
+    }
+    super.dispose();
+  }
+
+  // 셀 → 마크다운 (setState 없음, 커서 보존)
+  void _sync() {
+    final sb = StringBuffer();
+    for (int i = 0; i < _cells.length; i++) {
+      final cells = _cells[i]
+          .map((c) => c.text.replaceAll('|', r'\|').replaceAll('\n', ' '))
+          .join(' | ');
+      sb.write('| $cells |\n');
+      if (i == 0) {
+        sb.write('| ${List.filled(_cells[0].length, '---').join(' | ')} |\n');
+      }
+    }
+    widget.source.text = sb.toString().trimRight();
+    widget.onChanged();
+  }
+
+  void _addRow() {
+    setState(() => _cells.add([for (var _ in _cells[0]) TextEditingController()]));
+    _sync();
+  }
+
+  void _addCol() {
+    setState(() {
+      for (final r in _cells) r.add(TextEditingController());
+    });
+    _sync();
+  }
+
+  void _delRow(int i) {
+    if (_cells.length <= 1) return;
+    setState(() {
+      for (final c in _cells[i]) c.dispose();
+      _cells.removeAt(i);
+    });
+    _sync();
+  }
+
+  void _delCol(int j) {
+    if (_cells[0].length <= 1) return;
+    setState(() {
+      for (final r in _cells) {
+        r[j].dispose();
+        r.removeAt(j);
+      }
+    });
+    _sync();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colCount = _cells[0].length;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 열 삭제 컨트롤
+                Row(
+                  children: [
+                    const SizedBox(width: 22),
+                    for (int j = 0; j < colCount; j++)
+                      SizedBox(
+                        width: _colW,
+                        child: Center(
+                          child: _TableMiniBtn(
+                            icon: LucideIcons.x,
+                            tip: '열 삭제',
+                            onTap: () => _delCol(j),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: _bdr),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  clipBehavior: Clip.hardEdge,
+                  child: Column(
+                    children: [
+                      for (int i = 0; i < _cells.length; i++)
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // 행 삭제 거터
+                              SizedBox(
+                                width: 22,
+                                child: Center(
+                                  child: _TableMiniBtn(
+                                    icon: LucideIcons.x,
+                                    tip: '행 삭제',
+                                    onTap: () => _delRow(i),
+                                  ),
+                                ),
+                              ),
+                              for (int j = 0; j < colCount; j++)
+                                Container(
+                                  width: _colW,
+                                  decoration: BoxDecoration(
+                                    color: i == 0
+                                        ? _bg3.withValues(alpha: 0.6)
+                                        : null,
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: _bdr.withValues(alpha: 0.6),
+                                      ),
+                                      top: i == 0
+                                          ? BorderSide.none
+                                          : BorderSide(
+                                              color:
+                                                  _bdr.withValues(alpha: 0.6),
+                                            ),
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 7,
+                                  ),
+                                  child: TextField(
+                                    controller: _cells[i][j],
+                                    maxLines: null,
+                                    onChanged: (_) => _sync(),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13,
+                                      height: 1.4,
+                                      color: i == 0 ? _txt0 : _txt1,
+                                      fontWeight: i == 0
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      contentPadding: EdgeInsets.zero,
+                                      hintText: '',
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _TableAddBtn(label: '행 추가', icon: LucideIcons.plus, onTap: _addRow),
+              const SizedBox(width: 8),
+              _TableAddBtn(label: '열 추가', icon: LucideIcons.plus, onTap: _addCol),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TableMiniBtn extends StatelessWidget {
+  final IconData icon;
+  final String tip;
+  final VoidCallback onTap;
+  const _TableMiniBtn({required this.icon, required this.tip, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(5),
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: Icon(icon, size: 12, color: _txt2.withValues(alpha: 0.6)),
+        ),
+      ),
+    );
+  }
+}
+
+class _TableAddBtn extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _TableAddBtn({required this.label, required this.icon, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: _bg3.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _bdr),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: _txt2),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: _txt1,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
