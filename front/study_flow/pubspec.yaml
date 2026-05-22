@@ -45,6 +45,9 @@ dependencies:
   emoji_picker_flutter: ^4.4.0
   flutter_markdown: ^0.7.3
   lucide_icons: ^0.257.0
+  # ── 마인드맵 PDF 내보내기 ─────────────────────────────────
+  pdf: ^3.11.1
+  printing: ^5.13.2
   # ── Firebase ──────────────────────────────────────────────
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.1

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -23,6 +24,7 @@ import '../../core/ui/app_components.dart';
 import '../project/project_provider.dart';
 import '../../providers/user_provider.dart';
 import 'file_provider.dart';
+import 'graph_pdf_export.dart';
 
 // ══════════════════ TOKENS (AppTheme aliases) ════════════════
 const _bg0 = AppTheme.bgDeep;
@@ -7303,6 +7305,7 @@ class _GraphCanvas extends StatefulWidget {
 class _GCS extends State<_GraphCanvas> {
   Size _boardSize = const Size(3000, 2000);
   late final TransformationController _controller;
+  final GlobalKey _boardKey = GlobalKey(); // 마인드맵 PDF 캡처용
   List<_GraphNodeLayout> ns = [];
   List<_GE> es = [];
   String? _connectSourceId;
@@ -8130,6 +8133,35 @@ class _GCS extends State<_GraphCanvas> {
     _fitBoard();
   }
 
+  bool _exporting = false;
+
+  /// 마인드맵 보드 전체를 캡처하여 PDF로 다운로드한다.
+  Future<void> _exportPdf() async {
+    if (_exporting) return;
+    final boundary =
+        _boardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return;
+    setState(() => _exporting = true);
+    try {
+      // 보드가 매우 클 수 있으므로 최대 변 ~3200px 기준으로 배율 조정
+      final pr = (3200.0 / math.max(_boardSize.width, _boardSize.height))
+          .clamp(0.5, 2.0);
+      final image = await boundary.toImage(pixelRatio: pr);
+      final byteData = await image.toByteData(format: ImageByteFormat.png);
+      if (byteData == null) return;
+      final pngBytes = byteData.buffer.asUint8List();
+      await exportPngAsPdf(pngBytes, filename: 'mindmap.pdf');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF 내보내기에 실패했습니다.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   /// univai식 드릴다운: 특정 노드를 화면 좌측(32%) 지점에 맞춰 이동시켜
   /// 펼쳐진 자식들(오른쪽)이 자연스럽게 보이도록 한다. 현재 배율은 유지.
   void _centerOnNodeId(String id, {double leftBias = 0.32}) {
@@ -8249,7 +8281,9 @@ class _GCS extends State<_GraphCanvas> {
             minScale: 0.08,
             maxScale: 3.0,
             transformationController: _controller,
-            child: SizedBox(
+            child: RepaintBoundary(
+              key: _boardKey,
+              child: SizedBox(
               width: _boardSize.width,
               height: _boardSize.height,
               child: Stack(
@@ -8367,6 +8401,7 @@ class _GCS extends State<_GraphCanvas> {
                 ],
               ),
             ),
+            ),
           ),
         ),
         Positioned(
@@ -8402,6 +8437,12 @@ class _GCS extends State<_GraphCanvas> {
                       });
                     }),
                     isActive: _isTreeLayout,
+                  ),
+                  const _PillDivider(),
+                  _PillBtn(
+                    icon: _exporting ? LucideIcons.loader : LucideIcons.download,
+                    tip: 'PDF로 다운로드',
+                    onTap: _exportPdf,
                   ),
                   const _PillDivider(),
                   _PillBtn(icon: LucideIcons.rotateCcw, tip: '레이아웃 재정렬', onTap: _resetLayout),
