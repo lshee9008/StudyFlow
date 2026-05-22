@@ -76,6 +76,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   // 멀티 블록 선택
   final Set<int> _selectedBlocks = {};
   int _focusedIdx = -1; // 현재 포커스된 블록 인덱스
+
+  // 드래그 박스 선택
+  Offset? _dragStart;
+  Offset? _dragCurrent;
+  bool _isDragging = false;
   // Pomodoro
   Timer? _pomT;
   int _pomSecs = 25 * 60; // 25분
@@ -5520,6 +5525,18 @@ class _SIS extends State<_SI> {
           decoration: BoxDecoration(
             color: active ? _bg4 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
+            border: active
+                ? Border.all(color: _acc.withValues(alpha: 0.5), width: 1.5)
+                : null,
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: _acc.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             children: [
@@ -7747,8 +7764,9 @@ class _GCS extends State<_GraphCanvas> {
 
     final treeW = maxX - minX + margin * 2;
     final treeH = maxY - minY + margin * 2;
-    final boardW = math.max(3200.0, treeW);
-    final boardH = math.max(2200.0, treeH);
+    // 깊은 그래프 표현을 위해 보드 너비 증가 (3200 → 5600)
+    final boardW = math.max(5600.0, treeW);
+    final boardH = math.max(3200.0, treeH);
     _boardSize = Size(boardW, boardH);
 
     final centerX = boardW / 2;
