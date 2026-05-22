@@ -80,7 +80,9 @@ class AppMotion {
 class AppRadius {
   const AppRadius._();
 
-  static const double md = 6;
+  static const double sm = 8;
+  static const double md = 10;
+  static const double lg = 14;
 }
 
 class AppTheme {
@@ -92,12 +94,12 @@ class AppTheme {
   static const String brandTagline = '배움의 흐름을 이어가는 학습 워크스페이스';
 
   static const AppColors darkColors = AppColors(
-    background: Color(0xFF0A0F1C),
-    surface: Color(0xFF12192A),
-    border: Color(0xFF27324A),
-    textPrimary: Color(0xFFF5F7FB),
-    textSecondary: Color(0xFF93A0BA),
-    accent: Color(0xFF7A92FF),
+    background: Color(0xFF0B0E14),
+    surface: Color(0xFF151922),
+    border: Color(0xFF242A36),
+    textPrimary: Color(0xFFF3F5F9),
+    textSecondary: Color(0xFF99A2B2),
+    accent: Color(0xFF6E83FF),
   );
 
   static const AppColors lightColors = AppColors(
@@ -141,7 +143,7 @@ class AppTheme {
         onPrimary: Colors.white,
         secondary: colors.accent,
         onSecondary: Colors.white,
-        error: const Color(0xFFE26D5A),
+        error: const Color(0xFFE8705E),
         onError: Colors.white,
         surface: colors.surface,
         onSurface: colors.textPrimary,
@@ -241,34 +243,35 @@ class AppTheme {
   }
 
   // Compatibility aliases while remaining screens migrate.
-  static const Color bgDeep = Color(0xFF0A0F1C);
-  static const Color bgPrimary = Color(0xFF0A0F1C);
-  static const Color bgSecondary = Color(0xFF12192A);
-  static const Color bgTertiary = Color(0xFF0F1524);
-  static const Color bgQuaternary = Color(0xFF0B1120);
-  static const Color borderSubtle = Color(0xFF27324A);
-  static const Color borderDefault = Color(0xFF27324A);
-  static const Color borderStrong = Color(0xFF35425D);
-  static const Color borderFocus = Color(0xFF7A92FF);
-  static const Color textPrimary = Color(0xFFF5F7FB);
-  static const Color textSecondary = Color(0xFF93A0BA);
-  static const Color textTertiary = Color(0xFF93A0BA);
-  static const Color textMuted = Color(0xFF6C7892);
-  static const Color accent = Color(0xFF7A92FF);
-  static const Color accentDim = Color(0x1A7A92FF);
-  static const Color accentMuted = Color(0xFFA5B5FF);
-  static const Color accentHover = Color(0xFF8EA2FF);
-  static const Color accentGlow = Color(0x247A92FF);
-  static const Color blue = Color(0xFF7A92FF);
-  static const Color blueDim = Color(0x1A7A92FF);
+  // 정제된 중성 슬레이트 팔레트 (탁한 푸른기 제거)
+  static const Color bgDeep = Color(0xFF0B0E14);
+  static const Color bgPrimary = Color(0xFF0B0E14);
+  static const Color bgSecondary = Color(0xFF151922);
+  static const Color bgTertiary = Color(0xFF11151D);
+  static const Color bgQuaternary = Color(0xFF0E121A);
+  static const Color borderSubtle = Color(0xFF20262F);
+  static const Color borderDefault = Color(0xFF242A36);
+  static const Color borderStrong = Color(0xFF323948);
+  static const Color borderFocus = Color(0xFF6E83FF);
+  static const Color textPrimary = Color(0xFFF3F5F9);
+  static const Color textSecondary = Color(0xFF99A2B2);
+  static const Color textTertiary = Color(0xFF8A93A4);
+  static const Color textMuted = Color(0xFF687085);
+  static const Color accent = Color(0xFF6E83FF);
+  static const Color accentDim = Color(0x1A6E83FF);
+  static const Color accentMuted = Color(0xFFA6B4FF);
+  static const Color accentHover = Color(0xFF8497FF);
+  static const Color accentGlow = Color(0x246E83FF);
+  static const Color blue = Color(0xFF6E83FF);
+  static const Color blueDim = Color(0x1A6E83FF);
   static const Color purple = Color(0xFF9B8BFF);
   static const Color purpleDim = Color(0x149B8BFF);
-  static const Color red = Color(0xFFE26D5A);
-  static const Color redDim = Color(0x14E26D5A);
-  static const Color green = Color(0xFF5FA36A);
-  static const Color greenDim = Color(0x145FA36A);
-  static const Color yellow = Color(0xFFB69155);
-  static const Color yellowDim = Color(0x14B69155);
+  static const Color red = Color(0xFFE8705E);
+  static const Color redDim = Color(0x14E8705E);
+  static const Color green = Color(0xFF54B98A);
+  static const Color greenDim = Color(0x1454B98A);
+  static const Color yellow = Color(0xFFD2A24A);
+  static const Color yellowDim = Color(0x14D2A24A);
 
   static TextStyle get displayLarge =>
       _text(textPrimary, 32, FontWeight.w600, -0.5);
@@ -299,25 +302,25 @@ class AppGradients {
   const AppGradients._();
 
   static const LinearGradient accent = LinearGradient(
-    colors: [Color(0xFF5A7BFF), Color(0xFF8B7BFF)],
+    colors: [Color(0xFF6E83FF), Color(0xFF8E7BFF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient accentSoft = LinearGradient(
-    colors: [Color(0x226C8CFF), Color(0x229B8BFF)],
+    colors: [Color(0x226E83FF), Color(0x229B8BFF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient heroCard = LinearGradient(
-    colors: [Color(0xFF1A2035), Color(0xFF0F1419)],
+    colors: [Color(0xFF1A1F2C), Color(0xFF10131B)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
   static const LinearGradient surface = LinearGradient(
-    colors: [Color(0xFF1A2030), Color(0xFF161B22)],
+    colors: [Color(0xFF1A1F2A), Color(0xFF151922)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
