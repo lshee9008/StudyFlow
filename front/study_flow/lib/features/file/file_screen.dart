@@ -4475,49 +4475,7 @@ class _NBState extends State<_NBlock> {
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: _BlockTypeBadge(type: widget.block.type),
                               ),
-                            TextField(
-                              controller: widget.block.controller,
-                              focusNode: widget.block.focusNode,
-                              maxLines: null,
-                              style: _style().copyWith(
-                                decoration:
-                                    (widget.block.type == BlockType.checkbox &&
-                                        widget.block.isChecked)
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                color:
-                                    (widget.block.type == BlockType.checkbox &&
-                                        widget.block.isChecked)
-                                    ? _txt2
-                                    : null,
-                              ),
-                              decoration: InputDecoration(
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                filled: true,
-                                fillColor: Colors.transparent,
-                                hoverColor: Colors.transparent,
-                                isDense: true,
-                                contentPadding: EdgeInsets.zero,
-                                hintText: widget.block.controller.text.isEmpty
-                                    ? _hint(widget.block.type)
-                                    : '',
-                                hintStyle: TextStyle(
-                                  color: _foc
-                                      ? _txt2.withValues(alpha: 0.5)
-                                      : _txt2.withValues(alpha: 0.22),
-                                  fontSize: widget.block.type == BlockType.h1
-                                      ? 28
-                                      : widget.block.type == BlockType.h2
-                                      ? 22
-                                      : widget.block.type == BlockType.h3
-                                      ? 18
-                                      : 15,
-                                ),
-                              ),
-                              onChanged: (t) => widget.onText(t, widget.idx),
-                            ),
+                            _buildBlockContent(),
                           ],
                         ),
                       ),
@@ -4529,6 +4487,217 @@ class _NBState extends State<_NBlock> {
         ),
       ),
     ); // KeyedSubtree > MouseRegion > GestureDetector > Container
+  }
+
+  bool get _isTableBlock =>
+      _isTable || widget.block.type == BlockType.table;
+
+  bool _hasInlineMarkdown(String t) =>
+      t.contains('**') ||
+      t.contains('~~') ||
+      t.contains('`') ||
+      RegExp(r'(?<!\*)\*(?!\*)[^*\n]+\*(?!\*)').hasMatch(t);
+
+  /// 포커스 없음 → 렌더링(표/인라인 마크다운), 포커스 → raw TextField
+  Widget _buildBlockContent() {
+    final text = widget.block.controller.text;
+    if (!_foc && text.trim().isNotEmpty) {
+      // 단독 --- / *** / ___ → 구분선
+      if (RegExp(r'^(-{3,}|\*{3,}|_{3,})$').hasMatch(text.trim())) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.block.focusNode.requestFocus(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Container(height: 1, color: _bdr.withValues(alpha: 0.6)),
+          ),
+        );
+      }
+      if (_isTableBlock) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.block.focusNode.requestFocus(),
+          child: _renderTable(text),
+        );
+      }
+      if (_hasInlineMarkdown(text)) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.block.focusNode.requestFocus(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Text.rich(
+              TextSpan(children: _inlineSpans(text, _style())),
+            ),
+          ),
+        );
+      }
+    }
+    return _buildTextField();
+  }
+
+  Widget _buildTextField() {
+    return TextField(
+      controller: widget.block.controller,
+      focusNode: widget.block.focusNode,
+      maxLines: null,
+      style: _style().copyWith(
+        decoration:
+            (widget.block.type == BlockType.checkbox && widget.block.isChecked)
+            ? TextDecoration.lineThrough
+            : null,
+        color:
+            (widget.block.type == BlockType.checkbox && widget.block.isChecked)
+            ? _txt2
+            : null,
+      ),
+      decoration: InputDecoration(
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        filled: true,
+        fillColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        isDense: true,
+        contentPadding: EdgeInsets.zero,
+        hintText:
+            widget.block.controller.text.isEmpty ? _hint(widget.block.type) : '',
+        hintStyle: TextStyle(
+          color: _foc
+              ? _txt2.withValues(alpha: 0.5)
+              : _txt2.withValues(alpha: 0.22),
+          fontSize: widget.block.type == BlockType.h1
+              ? 28
+              : widget.block.type == BlockType.h2
+              ? 22
+              : widget.block.type == BlockType.h3
+              ? 18
+              : 15,
+        ),
+      ),
+      onChanged: (t) => widget.onText(t, widget.idx),
+    );
+  }
+
+  /// 인라인 마크다운(**굵게**, *기울임*, `코드`, ~~취소선~~) → TextSpan
+  List<InlineSpan> _inlineSpans(String text, TextStyle base) {
+    final spans = <InlineSpan>[];
+    final pattern = RegExp(
+      r'(\*\*(.+?)\*\*|~~(.+?)~~|`([^`]+)`|\*(.+?)\*)',
+      dotAll: true,
+    );
+    int last = 0;
+    for (final m in pattern.allMatches(text)) {
+      if (m.start > last) {
+        spans.add(TextSpan(text: text.substring(last, m.start), style: base));
+      }
+      if (m.group(2) != null) {
+        spans.add(TextSpan(
+          text: m.group(2),
+          style: base.copyWith(fontWeight: FontWeight.w800, color: _txt0),
+        ));
+      } else if (m.group(3) != null) {
+        spans.add(TextSpan(
+          text: m.group(3),
+          style: base.copyWith(
+            decoration: TextDecoration.lineThrough,
+            color: _txt2,
+          ),
+        ));
+      } else if (m.group(4) != null) {
+        spans.add(TextSpan(
+          text: m.group(4),
+          style: GoogleFonts.jetBrainsMono(
+            textStyle: base.copyWith(
+              color: const Color(0xFFD4BBFF),
+              backgroundColor: const Color(0x22D4BBFF),
+            ),
+          ),
+        ));
+      } else if (m.group(5) != null) {
+        spans.add(TextSpan(
+          text: m.group(5),
+          style: base.copyWith(fontStyle: FontStyle.italic),
+        ));
+      }
+      last = m.end;
+    }
+    if (last < text.length) {
+      spans.add(TextSpan(text: text.substring(last), style: base));
+    }
+    if (spans.isEmpty) spans.add(TextSpan(text: text, style: base));
+    return spans;
+  }
+
+  /// 마크다운 표 → 실제 Table 위젯
+  Widget _renderTable(String raw) {
+    final lines = raw
+        .trim()
+        .split('\n')
+        .where((l) => l.trim().startsWith('|'))
+        .toList();
+    final rows = <List<String>>[];
+    for (final l in lines) {
+      // 구분선(|---|---|) 건너뛰기
+      if (l.contains('-') &&
+          RegExp(r'^\s*\|?[\s:|\-]+\|?\s*$').hasMatch(l)) {
+        continue;
+      }
+      final cells = l.split('|').map((c) => c.trim()).toList();
+      if (cells.isNotEmpty && cells.first.isEmpty) cells.removeAt(0);
+      if (cells.isNotEmpty && cells.last.isEmpty) cells.removeLast();
+      if (cells.isEmpty) continue;
+      rows.add(cells);
+    }
+    if (rows.isEmpty) return _buildTextField();
+    final colCount = rows.map((r) => r.length).reduce(math.max);
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          border: Border.all(color: _bdr),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: Table(
+          defaultColumnWidth: const IntrinsicColumnWidth(),
+          border: TableBorder.symmetric(
+            inside: BorderSide(color: _bdr.withValues(alpha: 0.6)),
+          ),
+          children: [
+            for (int i = 0; i < rows.length; i++)
+              TableRow(
+                decoration: BoxDecoration(
+                  color: i == 0
+                      ? _bg3.withValues(alpha: 0.9)
+                      : (i.isOdd ? Colors.white.withValues(alpha: 0.018) : null),
+                ),
+                children: [
+                  for (int c = 0; c < colCount; c++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
+                      ),
+                      child: Text(
+                        c < rows[i].length ? rows[i][c] : '',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: i == 0 ? _txt0 : _txt1,
+                          fontWeight:
+                              i == 0 ? FontWeight.w700 : FontWeight.w400,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _hint(BlockType t) => switch (t) {
