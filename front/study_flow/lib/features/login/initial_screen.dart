@@ -13,6 +13,7 @@ const _gray = Color(0xFF8A8F9A); // secondary text
 const _line = Color(0xFFE7E8EC); // subtle border
 const _highlight = Color(0xFFEDEEF1); // marker behind headline
 const _accent = Color(0xFF5D7FFF);
+const _surface = Color(0xFFF7F8FA); // feature card bg
 
 class InitialScreen extends StatefulWidget {
   const InitialScreen({super.key});
@@ -22,6 +23,15 @@ class InitialScreen extends StatefulWidget {
 }
 
 class _InitialScreenState extends State<InitialScreen> {
+  final ScrollController _scroll = ScrollController();
+  final GlobalKey _featuresKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   void _openAuth() {
     Navigator.push(
       context,
@@ -48,6 +58,17 @@ class _InitialScreenState extends State<InitialScreen> {
     );
   }
 
+  void _scrollToFeatures() {
+    final ctx = _featuresKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOutCubic,
+      alignment: 0.0,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
@@ -58,7 +79,7 @@ class _InitialScreenState extends State<InitialScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Top nav ───────────────────────────────────────────────
+            // ── Top nav (fixed) ───────────────────────────────────────
             AppFadeSlide(
               beginOffset: const Offset(0, -8),
               duration: const Duration(milliseconds: 420),
@@ -81,28 +102,57 @@ class _InitialScreenState extends State<InitialScreen> {
                 ),
               ),
             ),
-            // ── Hero ──────────────────────────────────────────────────
+            // ── Scrollable content ────────────────────────────────────
             Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isCompact ? 24 : 32,
-                        vertical: 28,
-                      ),
-                      child: _Hero(
-                        isCompact: isCompact,
-                        onStart: _openAuth,
-                      ),
+              child: CustomScrollView(
+                controller: _scroll,
+                slivers: [
+                  // First screen: centered hero + scroll hint
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(height: 24),
+                        Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 760),
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isCompact ? 24 : 32,
+                              ),
+                              child: _Hero(
+                                isCompact: isCompact,
+                                onStart: _openAuth,
+                                onSeeFeatures: _scrollToFeatures,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 36),
+                        GestureDetector(
+                          onTap: _scrollToFeatures,
+                          behavior: HitTestBehavior.opaque,
+                          child: const _ScrollHint(),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
                     ),
                   ),
-                ),
+                  // Features section
+                  SliverToBoxAdapter(
+                    child: _FeaturesSection(
+                      key: _featuresKey,
+                      isCompact: isCompact,
+                    ),
+                  ),
+                  // Closing CTA
+                  SliverToBoxAdapter(
+                    child: _FooterCta(isCompact: isCompact, onStart: _openAuth),
+                  ),
+                ],
               ),
             ),
-            // ── Scroll hint ──────────────────────────────────────────
-            const _ScrollHint(),
           ],
         ),
       ),
@@ -117,8 +167,13 @@ class _InitialScreenState extends State<InitialScreen> {
 class _Hero extends StatelessWidget {
   final bool isCompact;
   final VoidCallback onStart;
+  final VoidCallback onSeeFeatures;
 
-  const _Hero({required this.isCompact, required this.onStart});
+  const _Hero({
+    required this.isCompact,
+    required this.onStart,
+    required this.onSeeFeatures,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -128,21 +183,16 @@ class _Hero extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Eyebrow — "Powered by" badge
         AppFadeSlide(
           delay: const Duration(milliseconds: 60),
           child: const _PoweredByBadge(),
         ),
         const SizedBox(height: 28),
-        // Headline
         AppFadeSlide(
           delay: const Duration(milliseconds: 120),
           child: Column(
             children: [
-              _HighlightLine(
-                text: '복잡한 학습 자료',
-                fontSize: titleSize,
-              ),
+              _HighlightLine(text: '복잡한 학습 자료', fontSize: titleSize),
               SizedBox(height: titleSize * 0.12),
               Text(
                 '한눈에 끝내보세요.',
@@ -159,7 +209,6 @@ class _Hero extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 24),
-        // Subtitle
         AppFadeSlide(
           delay: const Duration(milliseconds: 180),
           child: Text(
@@ -175,7 +224,6 @@ class _Hero extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 36),
-        // CTAs
         AppFadeSlide(
           delay: const Duration(milliseconds: 240),
           child: Wrap(
@@ -183,21 +231,12 @@ class _Hero extends StatelessWidget {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _PillButton(
-                label: '기능 보기',
-                filled: false,
-                onTap: () {},
-              ),
-              _PillButton(
-                label: '지금 시작하기',
-                filled: true,
-                onTap: onStart,
-              ),
+              _PillButton(label: '기능 보기', filled: false, onTap: onSeeFeatures),
+              _PillButton(label: '지금 시작하기', filled: true, onTap: onStart),
             ],
           ),
         ),
         const SizedBox(height: 32),
-        // Social proof
         AppFadeSlide(
           delay: const Duration(milliseconds: 320),
           child: const _SocialProof(),
@@ -207,7 +246,6 @@ class _Hero extends StatelessWidget {
   }
 }
 
-// Headline line with a soft marker highlight behind the text.
 class _HighlightLine extends StatelessWidget {
   final String text;
   final double fontSize;
@@ -219,7 +257,6 @@ class _HighlightLine extends StatelessWidget {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Marker bar behind the lower half of the text
         Positioned(
           left: 0,
           right: 0,
@@ -250,7 +287,246 @@ class _HighlightLine extends StatelessWidget {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Brand mark (black logo + wordmark)
+// Features section
+// ───────────────────────────────────────────────────────────────────────────
+
+class _FeaturesSection extends StatelessWidget {
+  final bool isCompact;
+  const _FeaturesSection({super.key, required this.isCompact});
+
+  static const _features = [
+    (
+      LucideIcons.fileText,
+      'AI 요약',
+      '긴 PDF·노트를 핵심만 추려 빠르게 정리합니다.',
+    ),
+    (
+      LucideIcons.share2,
+      '지식 그래프',
+      '개념 사이의 연결을 마인드맵으로 한눈에 봅니다.',
+    ),
+    (
+      LucideIcons.checkCircle,
+      '퀴즈 · 암기',
+      '자동 생성된 퀴즈와 암기 노트로 능동 복습합니다.',
+    ),
+    (
+      LucideIcons.edit3,
+      '메모',
+      '자료마다 자유롭게 메모하고 어디서든 동기화합니다.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: _bg,
+      padding: EdgeInsets.fromLTRB(
+        isCompact ? 24 : 40,
+        isCompact ? 56 : 96,
+        isCompact ? 24 : 40,
+        isCompact ? 40 : 72,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1000),
+          child: Column(
+            children: [
+              Text(
+                '학습에 필요한 모든 것',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: isCompact ? 28 : 38,
+                  fontWeight: FontWeight.w800,
+                  color: _ink,
+                  letterSpacing: -1.0,
+                  height: 1.15,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '하나의 자료에서 요약부터 복습까지, 끊김 없이 이어집니다.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: isCompact ? 14 : 16,
+                  fontWeight: FontWeight.w400,
+                  color: _gray,
+                  height: 1.6,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 44),
+              Wrap(
+                spacing: 18,
+                runSpacing: 18,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final f in _features)
+                    _FeatureCard(
+                      icon: f.$1,
+                      title: f.$2,
+                      desc: f.$3,
+                      width: isCompact ? double.infinity : 320,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeatureCard extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String desc;
+  final double width;
+
+  const _FeatureCard({
+    required this.icon,
+    required this.title,
+    required this.desc,
+    required this.width,
+  });
+
+  @override
+  State<_FeatureCard> createState() => _FeatureCardState();
+}
+
+class _FeatureCardState extends State<_FeatureCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: widget.width,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: _hovered ? _accent.withValues(alpha: 0.4) : _line,
+            width: 1.5,
+          ),
+          boxShadow: _hovered
+              ? [
+                  BoxShadow(
+                    color: _ink.withValues(alpha: 0.06),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: _ink,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(widget.icon, size: 21, color: Colors.white),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              widget.title,
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: _ink,
+                letterSpacing: -0.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.desc,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: _gray,
+                height: 1.6,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Footer CTA
+// ───────────────────────────────────────────────────────────────────────────
+
+class _FooterCta extends StatelessWidget {
+  final bool isCompact;
+  final VoidCallback onStart;
+  const _FooterCta({required this.isCompact, required this.onStart});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: _ink,
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 24 : 40,
+        vertical: isCompact ? 56 : 88,
+      ),
+      child: Column(
+        children: [
+          Text(
+            '지금 바로 시작해보세요.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: isCompact ? 26 : 36,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -1.0,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '몇 초면 충분합니다. 무료로 학습 흐름을 만들어 보세요.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: isCompact ? 14 : 16,
+              fontWeight: FontWeight.w400,
+              color: Colors.white.withValues(alpha: 0.6),
+              height: 1.6,
+              letterSpacing: -0.2,
+            ),
+          ),
+          const SizedBox(height: 28),
+          _PillButton(label: '지금 시작하기', filled: true, invert: true, onTap: onStart),
+          const SizedBox(height: 40),
+          Text(
+            '© StudyFlow',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.white.withValues(alpha: 0.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Brand mark
 // ───────────────────────────────────────────────────────────────────────────
 
 class _BrandMark extends StatelessWidget {
@@ -386,36 +662,34 @@ class _ScrollHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18, top: 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'SCROLL',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: _gray.withValues(alpha: 0.7),
-              letterSpacing: 1.6,
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'SCROLL',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: _gray.withValues(alpha: 0.7),
+            letterSpacing: 1.6,
           ),
-          const SizedBox(height: 4),
-          Icon(LucideIcons.chevronDown, size: 14, color: _gray.withValues(alpha: 0.7)),
-        ],
-      ),
+        ),
+        const SizedBox(height: 4),
+        Icon(LucideIcons.chevronDown, size: 14, color: _gray.withValues(alpha: 0.7)),
+      ],
     );
   }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Pill button (filled black / outline)
+// Pill button (filled black / outline / inverted)
 // ───────────────────────────────────────────────────────────────────────────
 
 class _PillButton extends StatefulWidget {
   final String label;
   final bool filled;
   final bool compact;
+  final bool invert; // dark background context → white pill
   final VoidCallback onTap;
 
   const _PillButton({
@@ -423,6 +697,7 @@ class _PillButton extends StatefulWidget {
     required this.filled,
     required this.onTap,
     this.compact = false,
+    this.invert = false,
   });
 
   @override
@@ -438,10 +713,19 @@ class _PillButtonState extends State<_PillButton> {
     final hPad = widget.compact ? 18.0 : 26.0;
     final vPad = widget.compact ? 10.0 : 15.0;
 
-    final bg = filled
-        ? (_hovered ? const Color(0xFF22232B) : _ink)
-        : (_hovered ? _highlight : _bg);
-    final fg = filled ? Colors.white : _ink;
+    final Color bg;
+    final Color fg;
+    if (widget.invert) {
+      // On dark footer: white pill, dark text
+      bg = _hovered ? const Color(0xFFE9EAEE) : Colors.white;
+      fg = _ink;
+    } else if (filled) {
+      bg = _hovered ? const Color(0xFF22232B) : _ink;
+      fg = Colors.white;
+    } else {
+      bg = _hovered ? _highlight : _bg;
+      fg = _ink;
+    }
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -455,8 +739,10 @@ class _PillButtonState extends State<_PillButton> {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(999),
-            border: filled ? null : Border.all(color: _line, width: 1.5),
-            boxShadow: filled && _hovered
+            border: (!filled && !widget.invert)
+                ? Border.all(color: _line, width: 1.5)
+                : null,
+            boxShadow: (filled && _hovered && !widget.invert)
                 ? [
                     BoxShadow(
                       color: _ink.withValues(alpha: 0.18),
