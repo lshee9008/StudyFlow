@@ -7313,6 +7313,7 @@ class _GCS extends State<_GraphCanvas> {
   bool _isTreeLayout = true;  // 기본값: 트리 레이아웃 (노드 많아도 보기 좋음)
   final Set<String> _collapsed = {}; // 접힌(자식 숨김) 노드 id
   Set<String> _hasKids = {};         // 자식이 있는 노드 id (펼침/접기 토글 표시용)
+  bool _initCollapsed = false;       // 최초 1회: 1레벨만 보이도록 전부 접기
 
   @override
   void initState() {
@@ -7373,7 +7374,7 @@ class _GCS extends State<_GraphCanvas> {
     const hPad = 14.0; // 좌우 패딩
     const vPad = 9.0;  // 상하 패딩
     final toggleW = hasChildren ? 29.0 : 0.0; // 토글칩(22) + 간격(7)
-    const maxContentW = 188.0; // 라벨 최대 폭 → 넘으면 2줄
+    const maxContentW = 200.0; // 라벨 최대 폭 → 넘으면 2줄
 
     final tp = TextPainter(
       text: TextSpan(
@@ -7381,7 +7382,7 @@ class _GCS extends State<_GraphCanvas> {
         style: GoogleFonts.inter(
           fontSize: fontSize,
           fontWeight: isCore ? FontWeight.w800 : FontWeight.w600,
-          height: 1.2,
+          height: 1.3,
           letterSpacing: -0.3,
         ),
       ),
@@ -7390,8 +7391,9 @@ class _GCS extends State<_GraphCanvas> {
       ellipsis: '…',
     )..layout(maxWidth: maxContentW);
 
-    final w = (tp.width + hPad * 2 + toggleW).clamp(100.0, 250.0);
-    final h = (tp.height + vPad * 2).clamp(44.0, 86.0);
+    // 한글 폰트(Inter 폴백) 메트릭 오차로 측정값이 작게 나올 수 있어 여유를 둔다.
+    final w = (tp.width + hPad * 2 + toggleW + 8).clamp(110.0, 262.0);
+    final h = (tp.height + vPad * 2 + 10).clamp(46.0, 104.0);
     return Size(w, h);
   }
 
@@ -7973,6 +7975,13 @@ class _GCS extends State<_GraphCanvas> {
       for (final entry in childrenMap.entries)
         if (entry.value.isNotEmpty) entry.key,
     };
+    // 최초 1회: 루트 직계(1레벨)만 보이도록 깊이 ≥ 1 의 노드를 전부 접는다.
+    if (!_initCollapsed) {
+      for (final id in _hasKids) {
+        if ((depthMap[id] ?? 0) >= 1) _collapsed.add(id);
+      }
+      _initCollapsed = true;
+    }
     final hidden = <String>{};
     void hideDescendants(String id) {
       for (final c in (childrenMap[id] ?? const <String>[])) {
@@ -8821,8 +8830,16 @@ class _GraphCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      SFButton(
+                        label: '자식 추가',
+                        outlined: true,
+                        onPressed: () {
+                          onAddChild();
+                          Navigator.pop(dialogContext);
+                        },
+                      ),
+                      const Spacer(),
                       SFButton(
                         label: '삭제',
                         outlined: true,
@@ -8892,56 +8909,15 @@ class _GraphCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCore = node.style == _GraphCardStyle.core;
-
-    // 선택 시 떠 있는 액션 툴바 (노드 위)
-    final toolbar = isSelected
-        ? Positioned(
-            top: -44,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF131A2B),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _CardActionBtn(icon: LucideIcons.pencil, label: '편집', onTap: () => _openEditor(context), color: Colors.white70),
-                    const SizedBox(width: 4),
-                    _CardActionBtn(icon: LucideIcons.plusCircle, label: '자식', onTap: onAddChild, color: Colors.white70),
-                    const SizedBox(width: 4),
-                    _CardActionBtn(icon: LucideIcons.trash2, label: '삭제', onTap: onDelete, color: Colors.red.withValues(alpha: 0.85)),
-                  ],
-                ),
-              ),
-            ),
-          )
-        : null;
-
+    // 액션(편집·자식 추가·삭제)은 더블탭/길게눌러 열리는 편집 다이얼로그로 통합.
+    // (노드 위 떠 있는 툴바는 화면을 벗어나거나 클릭이 안 되는 문제로 제거)
     return GestureDetector(
       onTap: onSelect,
       onPanUpdate: (details) => onMove(details.delta),
       onPanEnd: (_) => onMoveEnd(),
       onDoubleTap: () => _openEditor(context),
       onLongPress: () => _openEditor(context),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(child: _buildPill(isCore)),
-          if (toolbar != null) toolbar,
-        ],
-      ),
+      child: _buildPill(isCore),
     );
   }
 
