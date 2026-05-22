@@ -333,37 +333,48 @@ class AppGradients {
 class AppShadows {
   const AppShadows._();
 
+  // 부드럽고 확산되는 2-레이어 그림자 (앰비언트 + 키)
   static List<BoxShadow> get elevation1 => [
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.12),
-      blurRadius: 8,
-      offset: const Offset(0, 2),
+      color: Colors.black.withValues(alpha: 0.18),
+      blurRadius: 12,
+      spreadRadius: -2,
+      offset: const Offset(0, 4),
+    ),
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.10),
+      blurRadius: 3,
+      offset: const Offset(0, 1),
     ),
   ];
 
   static List<BoxShadow> get elevation2 => [
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.16),
-      blurRadius: 18,
-      offset: const Offset(0, 6),
+      color: Colors.black.withValues(alpha: 0.22),
+      blurRadius: 28,
+      spreadRadius: -6,
+      offset: const Offset(0, 12),
     ),
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.06),
-      blurRadius: 4,
-      offset: const Offset(0, 1),
+      color: Colors.black.withValues(alpha: 0.12),
+      blurRadius: 8,
+      spreadRadius: -2,
+      offset: const Offset(0, 3),
     ),
   ];
 
   static List<BoxShadow> get floating => [
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.24),
-      blurRadius: 32,
-      offset: const Offset(0, 12),
+      color: Colors.black.withValues(alpha: 0.30),
+      blurRadius: 40,
+      spreadRadius: -8,
+      offset: const Offset(0, 18),
     ),
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.10),
-      blurRadius: 8,
-      offset: const Offset(0, 3),
+      color: Colors.black.withValues(alpha: 0.14),
+      blurRadius: 12,
+      spreadRadius: -2,
+      offset: const Offset(0, 4),
     ),
   ];
 
@@ -396,15 +407,16 @@ class AppShadows {
 class AppProjectColors {
   const AppProjectColors._();
 
+  // 슬레이트+인디고 테마에 어울리는 정제된 조화 팔레트
   static const List<Color> palette = [
-    Color(0xFF1E3A6E), // deep blue
-    Color(0xFF3A1E6E), // purple
-    Color(0xFF1E5E3A), // forest green
-    Color(0xFF6E1E1E), // crimson
-    Color(0xFF4A3218), // warm brown
-    Color(0xFF1A4A5E), // teal
-    Color(0xFF4A1A4A), // magenta
-    Color(0xFF2E4A1A), // lime
+    Color(0xFF2C3578), // indigo
+    Color(0xFF43307E), // violet
+    Color(0xFF1C5A45), // emerald
+    Color(0xFF6E2A44), // rose
+    Color(0xFF5C4420), // amber
+    Color(0xFF1E4E6E), // sky
+    Color(0xFF562462), // fuchsia
+    Color(0xFF1F5454), // teal
   ];
 
   static Color forIndex(int i) => palette[i % palette.length];
