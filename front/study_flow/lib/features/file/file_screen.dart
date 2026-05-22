@@ -1695,9 +1695,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     final maxWidth = _view == 1 ? 940.0 : 860.0;
     final isMobile = width < 700;
 
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
+    return Stack(
+      children: [
+        CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
         SliverToBoxAdapter(
           child: Center(
             child: ConstrainedBox(
@@ -1901,6 +1903,42 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
               ),
             ),
           ),
+        ),
+      ],
+        ),
+        // 드래그 박스 선택 오버레이
+        Listener(
+          onPointerDown: (event) {
+            setState(() {
+              _dragStart = event.position;
+              _dragCurrent = event.position;
+              _isDragging = true;
+            });
+          },
+          onPointerMove: (event) {
+            if (!_isDragging || _dragStart == null) return;
+            setState(() {
+              _dragCurrent = event.position;
+            });
+          },
+          onPointerUp: (event) {
+            if (!_isDragging || _dragStart == null) return;
+            setState(() {
+              _isDragging = false;
+            });
+            _dragStart = null;
+            _dragCurrent = null;
+          },
+          child: _isDragging && _dragStart != null && _dragCurrent != null
+              ? Positioned.fill(
+                  child: CustomPaint(
+                    painter: _DragSelectionPainter(
+                      startPos: _dragStart!,
+                      endPos: _dragCurrent!,
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
         ),
       ],
     );
@@ -9645,3 +9683,43 @@ MarkdownStyleSheet _md() => MarkdownStyleSheet(
   h2Padding: const EdgeInsets.only(top: 2, bottom: 2),
   h3Padding: const EdgeInsets.only(top: 2, bottom: 1),
 );
+
+// ══════════════════ 드래그 선택 박스 페인터 ══════════════════
+class _DragSelectionPainter extends CustomPainter {
+  final Offset startPos;
+  final Offset endPos;
+
+  _DragSelectionPainter({required this.startPos, required this.endPos});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final left = math.min(startPos.dx, endPos.dx);
+    final top = math.min(startPos.dy, endPos.dy);
+    final right = math.max(startPos.dx, endPos.dx);
+    final bottom = math.max(startPos.dy, endPos.dy);
+
+    final rect = Rect.fromLTRB(left, top, right, bottom);
+
+    // 배경 (반투명 파란색)
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = const Color(0xFF5D7FFF).withValues(alpha: 0.15)
+        ..style = PaintingStyle.fill,
+    );
+
+    // 테두리
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = const Color(0xFF5D7FFF).withValues(alpha: 0.6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DragSelectionPainter oldDelegate) {
+    return oldDelegate.startPos != startPos || oldDelegate.endPos != endPos;
+  }
+}
