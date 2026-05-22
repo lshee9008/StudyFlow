@@ -1222,6 +1222,48 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     _chg(ft: bc.text);
   }
 
+  /// 드래그 박스와 겹치는 블록들을 자동으로 선택합니다.
+  void _updateSelectedBlocksFromDrag() {
+    if (_dragStart == null || _dragCurrent == null) return;
+
+    final left = math.min(_dragStart!.dx, _dragCurrent!.dx);
+    final top = math.min(_dragStart!.dy, _dragCurrent!.dy);
+    final right = math.max(_dragStart!.dx, _dragCurrent!.dx);
+    final bottom = math.max(_dragStart!.dy, _dragCurrent!.dy);
+    final dragRect = Rect.fromLTRB(left, top, right, bottom);
+
+    final blocks = ref.read(fileEditorProvider.select((s) => s.blocks));
+    _selectedBlocks.clear();
+
+    // 각 블록의 위치를 확인하고 드래그 박스와 교집합 확인
+    for (int i = 0; i < blocks.length; i++) {
+      final key = _blockKeys[i];
+      if (key?.currentContext == null) continue;
+
+      try {
+        final renderBox = key!.currentContext!.findRenderObject() as RenderBox?;
+        if (renderBox == null) continue;
+
+        // 블록의 전역 위치
+        final offset = renderBox.localToGlobal(Offset.zero);
+        final blockRect = Rect.fromLTWH(
+          offset.dx,
+          offset.dy,
+          renderBox.size.width,
+          renderBox.size.height,
+        );
+
+        // 드래그 박스와 블록이 겹치는지 확인
+        if (dragRect.overlaps(blockRect)) {
+          _selectedBlocks.add(i);
+        }
+      } catch (e) {
+        // 렌더 박스를 얻을 수 없으면 스킵
+        continue;
+      }
+    }
+  }
+
   void _showMobilePanel(BuildContext context, FileEditorState st) {
     showModalBottomSheet(
       context: context,
@@ -1919,6 +1961,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
             if (!_isDragging || _dragStart == null) return;
             setState(() {
               _dragCurrent = event.position;
+              _updateSelectedBlocksFromDrag();
             });
           },
           onPointerUp: (event) {
