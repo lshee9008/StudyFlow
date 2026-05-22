@@ -8123,11 +8123,16 @@ class _GCS extends State<_GraphCanvas> {
       widget.ref
           .read(fileEditorProvider.notifier)
           .connectGraphNodes(sourceId, tappedNode.id);
+      // 접힌 출발 노드면 펼쳐서 연결된 노드가 보이도록 한다.
+      _collapsed.remove(sourceId);
       setState(() {
         es.add(_GE(sourceId, tappedNode.id));
         _connectSourceId = null;
       });
       widget.onChanged();
+      Future.delayed(const Duration(milliseconds: 80), () {
+        if (mounted) _centerOnNodeId(sourceId);
+      });
     } else {
       setState(() {
         _selectedNodeId = _selectedNodeId == tappedNode.id ? null : tappedNode.id;
@@ -8264,6 +8269,8 @@ class _GCS extends State<_GraphCanvas> {
       parent.rect.center.dx + r * math.cos(angle),
       parent.rect.center.dy + r * math.sin(angle),
     );
+    // 접힌 부모면 펼쳐서 새 자식이 보이도록 한다.
+    _collapsed.remove(parentId);
     widget.ref.read(fileEditorProvider.notifier).addGraphNode(
       label: '새 노드',
       description: '',
@@ -8273,6 +8280,10 @@ class _GCS extends State<_GraphCanvas> {
       y: position.dy,
     );
     widget.onChanged();
+    // 레이아웃 갱신 후 부모로 포커스
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (mounted) _centerOnNodeId(parentId);
+    });
   }
 
   void _resetLayout() {
@@ -8288,6 +8299,7 @@ class _GCS extends State<_GraphCanvas> {
       orElse: () => ns.first,
     );
     final position = root.rect.center + const Offset(260, 0);
+    _collapsed.remove(root.id); // 루트 펼침 보장
     widget.ref
         .read(fileEditorProvider.notifier)
         .addGraphNode(
@@ -8299,6 +8311,9 @@ class _GCS extends State<_GraphCanvas> {
           y: position.dy,
         );
     widget.onChanged();
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (mounted) _centerOnNodeId(root.id);
+    });
   }
 
   Offset _savedOffset(Map<String, dynamic>? node, Offset fallback) {
