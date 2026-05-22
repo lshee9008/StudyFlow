@@ -1434,8 +1434,12 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                           .copyMarkdown(_tCtrl.text, _gCtrl.text);
                       _snack('Markdown 복사됨');
                     },
-                    onView: () => setState(() => _view = _view == 0 ? 1 : 0),
+                    onView: () {
+                      _removeSlash();
+                      setState(() => _view = _view == 0 ? 1 : 0);
+                    },
                     onMindmap: () {
+                      _removeSlash();
                       setState(() => _view = _view == 2 ? 0 : 2);
                       if (_view == 2) {
                         ref
@@ -1723,7 +1727,10 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                       _chg();
                     }
                   },
-                  onFocusMode: () => setState(() => _view = _view == 1 ? 0 : 1),
+                  onFocusMode: () {
+                    _removeSlash();
+                    setState(() => _view = _view == 1 ? 0 : 1);
+                  },
                   onGenerateSummary: _doSum,
                   onSuggestTags: _suggestTags,
                 ),
