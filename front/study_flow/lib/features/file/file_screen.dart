@@ -14,7 +14,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter_highlighter/flutter_highlighter.dart';
+import 'package:flutter_highlighter/themes/atom-one-dark.dart';
 
 import '../../models/block_model.dart';
 import '../../core/db_helper/files_db_helper.dart';
@@ -1398,12 +1403,40 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
               onLongPress: _pomReset,
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      body: SafeArea(
-        bottom: false, // 하단은 _MobileBottomBar의 SafeArea가 처리
-        child: Stack(
-          children: [
-            const RepaintBoundary(child: _AuroraBG()),
-            Column(
+      body: DropTarget(
+        onDragDone: (detail) {
+          final blocksLen = ref.read(fileEditorProvider).blocks.length;
+          final newBlocks = <String>[];
+          final types = <BlockType>[];
+          for (final xfile in detail.files) {
+            final path = xfile.path;
+            final lower = path.toLowerCase();
+            final isPdf = lower.endsWith('.pdf');
+            final isImg = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.webp');
+            if (isPdf) {
+              newBlocks.add(path);
+              types.add(BlockType.pdf);
+            } else if (isImg) {
+              newBlocks.add(path);
+              types.add(BlockType.image);
+            }
+          }
+          if (newBlocks.isNotEmpty) {
+            for (int i = 0; i < newBlocks.length; i++) {
+              ref.read(fileEditorProvider.notifier).insertAfter(
+                blocksLen - 1 + i,
+                type: types[i],
+                content: newBlocks[i],
+              );
+            }
+          }
+        },
+        child: SafeArea(
+          bottom: false, // 하단은 _MobileBottomBar의 SafeArea가 처리
+          child: Stack(
+            children: [
+              const RepaintBoundary(child: _AuroraBG()),
+              Column(
               children: [
                 ValueListenableBuilder<bool>(
                   valueListenable: _savingN,
@@ -3824,27 +3857,218 @@ class _IBState extends State<_ImageBlock> {
                   ],
                 ),
               )
-            : Image.network(
-                _url,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.broken_image_outlined, color: _txt2, size: 28),
-                      const SizedBox(height: 8),
-                      Text(
-                        '이미지를 불러올 수 없습니다',
-                        style: TextStyle(color: _txt2, fontSize: 12),
+            : (_url.startsWith('http') || kIsWeb)
+                ? Image.network(
+                    _url,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.broken_image_outlined, color: _txt2, size: 28),
+                          const SizedBox(height: 8),
+                          Text(
+                            '이미지를 불러올 수 없습니다',
+                            style: TextStyle(color: _txt2, fontSize: 12),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                  )
+                : Image.file(
+                    File(_url),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.broken_image_outlined, color: _txt2, size: 28),
+                          const SizedBox(height: 8),
+                          Text(
+                            '로컬 이미지를 불러올 수 없습니다',
+                            style: TextStyle(color: _txt2, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
       ),
     ),
   );
+}
+
+class _PdfBlock extends StatelessWidget {
+  final TextEditingController controller;
+  const _PdfBlock({required this.controller});
+  
+  @override
+  Widget build(BuildContext context) {
+    final path = controller.text.trim();
+    final filename = path.split('/').last.split('\\').last;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: _bg3,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _bdr),
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.fileText, color: _red, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  filename.isEmpty ? 'PDF 문서' : filename,
+                  style: GoogleFonts.inter(color: _txt0, fontSize: 14, fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (path.isNotEmpty)
+                  Text(
+                    'PDF 첨부됨',
+                    style: GoogleFonts.inter(color: _txt2, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // PDF 열기 기능 (나중에 구현)
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _bg2,
+              foregroundColor: _txt1,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              side: BorderSide(color: _bdr2),
+            ),
+            child: Text('열기', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CodeBlockWidget extends StatefulWidget {
+  final Block block;
+  final bool isFocused;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onFocusRequest;
+
+  const _CodeBlockWidget({
+    required this.block,
+    required this.isFocused,
+    required this.onChanged,
+    required this.onFocusRequest,
+  });
+
+  @override
+  State<_CodeBlockWidget> createState() => _CodeBlockWidgetState();
+}
+
+class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
+  bool _hover = false;
+  final List<String> _languages = ['dart', 'python', 'javascript', 'html', 'css', 'json', 'yaml', 'c', 'cpp', 'java'];
+  
+  String get _lang => widget.block.metadata?['language'] as String? ?? 'dart';
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E), // Atom One Dark bg
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _bdr.withValues(alpha: 0.5)),
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 언어 선택 헤더
+            if (_hover || widget.isFocused)
+              Container(
+                color: Colors.black26,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _languages.contains(_lang) ? _lang : 'dart',
+                        dropdownColor: _bg3,
+                        icon: Icon(Icons.arrow_drop_down, color: _txt2, size: 16),
+                        style: TextStyle(color: _txt2, fontSize: 12),
+                        isDense: true,
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              widget.block.metadata ??= {};
+                              widget.block.metadata!['language'] = val;
+                            });
+                            widget.onChanged(widget.block.controller.text); // trigger save
+                          }
+                        },
+                        items: _languages.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.copy, size: 14, color: _txt2),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: widget.block.controller.text));
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            // 본문
+            GestureDetector(
+              onTap: widget.onFocusRequest,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: widget.isFocused
+                    ? TextField(
+                        controller: widget.block.controller,
+                        focusNode: widget.block.focusNode,
+                        maxLines: null,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 13,
+                          color: const Color(0xFFD4BBFF),
+                          height: 1.5,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        onChanged: widget.onChanged,
+                      )
+                    : HighlightView(
+                        widget.block.controller.text.isEmpty ? '// 코드를 입력하세요' : widget.block.controller.text,
+                        language: _lang,
+                        theme: atomOneDarkTheme,
+                        padding: EdgeInsets.zero,
+                        textStyle: GoogleFonts.jetBrainsMono(fontSize: 13, height: 1.5),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _Div extends StatelessWidget {
@@ -4363,7 +4587,7 @@ class _NBState extends State<_NBlock> {
                     ),
                   ),
 
-                // 이미지 블록 (URL)
+                // 이미지 블록
                 if (widget.block.type == BlockType.image)
                   Expanded(
                     child: _ImageBlock(
@@ -4372,8 +4596,14 @@ class _NBState extends State<_NBlock> {
                     ),
                   ),
 
-                // 텍스트 입력 (이미지, HR 제외)
-                if (widget.block.type != BlockType.image && widget.block.type != BlockType.hr)
+                // PDF 블록
+                if (widget.block.type == BlockType.pdf)
+                  Expanded(
+                    child: _PdfBlock(controller: widget.block.controller),
+                  ),
+
+                // 텍스트 입력 (이미지, PDF, HR 제외)
+                if (widget.block.type != BlockType.image && widget.block.type != BlockType.pdf && widget.block.type != BlockType.hr)
                   Expanded(
                     child: Listener(
                       // ✅ onPointerUp: 브라우저 드래그 선택을 Flutter가 직접 감지
@@ -4435,6 +4665,17 @@ class _NBState extends State<_NBlock> {
   /// 포커스 없음 → 렌더링(표/인라인 마크다운), 포커스 → raw TextField
   Widget _buildBlockContent() {
     final text = widget.block.controller.text;
+    
+    // 코드 블록: 언어 선택 및 구문 강조 지원
+    if (widget.block.type == BlockType.code) {
+      return _CodeBlockWidget(
+        block: widget.block,
+        isFocused: _foc,
+        onChanged: (val) => widget.onText(val, widget.idx),
+        onFocusRequest: () => widget.block.focusNode.requestFocus(),
+      );
+    }
+    
     // 표 블록: 항상 편집 가능한 표 위젯 (노션식 — 셀 입력 / 행·열 추가·삭제)
     if (_isTableBlock && text.trim().isNotEmpty) {
       return _EditableTable(
@@ -4697,6 +4938,7 @@ class _BlockTypeBadge extends StatelessWidget {
       BlockType.number => ('Numbered', LucideIcons.listOrdered),
       BlockType.checkbox => ('Todo', LucideIcons.checkSquare),
       BlockType.image => ('Image', LucideIcons.image),
+      BlockType.pdf => ('PDF Document', LucideIcons.file),
       BlockType.hr => ('Divider', LucideIcons.minus),
       _ => ('Text', LucideIcons.text),
     };
@@ -4739,6 +4981,7 @@ class _EditableTable extends StatefulWidget {
 class _EditableTableState extends State<_EditableTable> {
   late List<List<TextEditingController>> _cells;
   static const double _colW = 150;
+  bool _hover = false;
 
   @override
   void initState() {
@@ -4828,121 +5071,155 @@ class _EditableTableState extends State<_EditableTable> {
 
   @override
   Widget build(BuildContext context) {
-    final colCount = _cells[0].length;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 열 삭제 컨트롤
-                Row(
-                  children: [
-                    const SizedBox(width: 22),
-                    for (int j = 0; j < colCount; j++)
-                      SizedBox(
-                        width: _colW,
-                        child: Center(
-                          child: _TableMiniBtn(
-                            icon: LucideIcons.x,
-                            tip: '열 삭제',
-                            onTap: () => _delCol(j),
+    final colCount = _cells.isNotEmpty && _cells[0].isNotEmpty ? _cells[0].length : 1;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: _bdr),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    clipBehavior: Clip.hardEdge,
+                    child: Column(
+                      children: [
+                        for (int i = 0; i < _cells.length; i++)
+                          IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (int j = 0; j < colCount; j++)
+                                  Stack(
+                                    children: [
+                                      Container(
+                                        width: _colW,
+                                        decoration: BoxDecoration(
+                                          color: i == 0 ? _bg3.withValues(alpha: 0.6) : null,
+                                          border: Border(
+                                            left: j == 0 ? BorderSide.none : BorderSide(color: _bdr.withValues(alpha: 0.6)),
+                                            top: i == 0 ? BorderSide.none : BorderSide(color: _bdr.withValues(alpha: 0.6)),
+                                          ),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                        child: TextField(
+                                          controller: _cells[i][j],
+                                          maxLines: null,
+                                          onChanged: (_) => _sync(),
+                                          style: GoogleFonts.inter(
+                                            fontSize: 13,
+                                            height: 1.4,
+                                            color: i == 0 ? _txt0 : _txt1,
+                                            fontWeight: i == 0 ? FontWeight.w700 : FontWeight.w400,
+                                          ),
+                                          decoration: const InputDecoration(
+                                            isDense: true,
+                                            border: InputBorder.none,
+                                            enabledBorder: InputBorder.none,
+                                            focusedBorder: InputBorder.none,
+                                            contentPadding: EdgeInsets.zero,
+                                            hintText: '',
+                                          ),
+                                        ),
+                                      ),
+                                      // 열 삭제 (첫 행에만)
+                                      if (i == 0 && _hover && colCount > 1)
+                                        Positioned(
+                                          top: 2,
+                                          right: 2,
+                                          child: _TableHoverBtn(icon: LucideIcons.x, onTap: () => _delCol(j)),
+                                        ),
+                                      // 행 삭제 (첫 열에만)
+                                      if (j == 0 && _hover && _cells.length > 1)
+                                        Positioned(
+                                          top: 2,
+                                          left: 2,
+                                          child: _TableHoverBtn(icon: LucideIcons.x, onTap: () => _delRow(i)),
+                                        ),
+                                    ],
+                                  ),
+                              ],
+                            ),
                           ),
+                      ],
+                    ),
+                  ),
+                  // 우측 가장자리 열 추가 버튼
+                  if (_hover)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Container(
+                        height: 34,
+                        width: 24,
+                        decoration: BoxDecoration(
+                          color: _bg3,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: _bdr),
+                        ),
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: Icon(LucideIcons.plus, size: 14, color: _txt1),
+                          onPressed: _addCol,
                         ),
                       ),
-                  ],
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: _bdr),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  clipBehavior: Clip.hardEdge,
-                  child: Column(
-                    children: [
-                      for (int i = 0; i < _cells.length; i++)
-                        IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // 행 삭제 거터
-                              SizedBox(
-                                width: 22,
-                                child: Center(
-                                  child: _TableMiniBtn(
-                                    icon: LucideIcons.x,
-                                    tip: '행 삭제',
-                                    onTap: () => _delRow(i),
-                                  ),
-                                ),
-                              ),
-                              for (int j = 0; j < colCount; j++)
-                                Container(
-                                  width: _colW,
-                                  decoration: BoxDecoration(
-                                    color: i == 0
-                                        ? _bg3.withValues(alpha: 0.6)
-                                        : null,
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: _bdr.withValues(alpha: 0.6),
-                                      ),
-                                      top: i == 0
-                                          ? BorderSide.none
-                                          : BorderSide(
-                                              color:
-                                                  _bdr.withValues(alpha: 0.6),
-                                            ),
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 7,
-                                  ),
-                                  child: TextField(
-                                    controller: _cells[i][j],
-                                    maxLines: null,
-                                    onChanged: (_) => _sync(),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 13,
-                                      height: 1.4,
-                                      color: i == 0 ? _txt0 : _txt1,
-                                      fontWeight: i == 0
-                                          ? FontWeight.w700
-                                          : FontWeight.w400,
-                                    ),
-                                    decoration: const InputDecoration(
-                                      isDense: true,
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      contentPadding: EdgeInsets.zero,
-                                      hintText: '',
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                    ],
+                    ),
+                ],
+              ),
+              // 하단 가장자리 행 추가 버튼
+              if (_hover)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Container(
+                    height: 24,
+                    width: _colW,
+                    decoration: BoxDecoration(
+                      color: _bg3,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: _bdr),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(LucideIcons.plus, size: 14, color: _txt1),
+                      onPressed: _addRow,
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _TableAddBtn(label: '행 추가', icon: LucideIcons.plus, onTap: _addRow),
-              const SizedBox(width: 8),
-              _TableAddBtn(label: '열 추가', icon: LucideIcons.plus, onTap: _addCol),
             ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TableHoverBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _TableHoverBtn({required this.icon, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: AppTheme.red.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Icon(icon, size: 10, color: Colors.white),
+        ),
       ),
     );
   }

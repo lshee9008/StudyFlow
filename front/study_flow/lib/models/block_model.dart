@@ -11,6 +11,7 @@ enum BlockType {
   image,     // 이미지
   table,     // 테이블
   hr,        // 수평선
+  pdf,       // PDF 문서
 }
 
 class Block {
@@ -19,6 +20,7 @@ class Block {
   TextEditingController controller;
   FocusNode focusNode;
   bool isChecked;
+  Map<String, dynamic>? metadata;
   final LayerLink layerLink = LayerLink();
 
   Block({
@@ -26,6 +28,7 @@ class Block {
     this.type = BlockType.text,
     String content = '',
     this.isChecked = false,
+    this.metadata,
   }) : controller = TextEditingController(text: content),
        focusNode = FocusNode();
 
@@ -36,6 +39,7 @@ class Block {
       'type': type.index, // Enum을 숫자로 저장 (0, 1, 2...)
       'content': controller.text,
       'isChecked': isChecked,
+      'metadata': metadata,
     };
   }
 
@@ -46,6 +50,7 @@ class Block {
       type: BlockType.values[json['type']], // 숫자를 다시 Enum으로
       content: json['content'] ?? '',
       isChecked: json['isChecked'] ?? false,
+      metadata: json['metadata'] != null ? Map<String, dynamic>.from(json['metadata']) : null,
     );
   }
 
