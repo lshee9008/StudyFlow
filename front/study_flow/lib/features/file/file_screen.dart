@@ -113,6 +113,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   OverlayEntry? _slash;
   int _slashIdx = 0;
   int _slashBlockIdx = -1; // 슬래시 메뉴가 열린 블록 인덱스
+  int _slashGen = 0; // 지연 삽입 경합 방지용 세대 카운터
   List<_Opt> _slashOpts = [];
 
   late AnimationController _saveAc;
@@ -784,8 +785,9 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   // ── 텍스트 변경 ────────────────────────────────────
   void _onText(String text, int i) {
     final bt = ref.read(fileEditorProvider).blocks[i].type;
-    // 코드 블록: 줄바꿈 허용 (분리 안 함)
-    if (bt == BlockType.code) {
+    // 코드/표 블록: 슬래시 메뉴 비활성 + 줄바꿈 허용 (분리 안 함)
+    if (bt == BlockType.code || bt == BlockType.table) {
+      _removeSlash();
       _chg(ft: text);
       return;
     }
@@ -889,9 +891,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     _slashBlockIdx = i;
     _slash?.remove();
     _slash = null;
+    final gen = ++_slashGen; // 이번 표시 요청의 세대
     final bl = ref.read(fileEditorProvider).blocks;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      // 그 사이 메뉴가 닫혔거나(_removeSlash) 다른 요청이 들어오면 삽입 취소
+      if (!mounted || gen != _slashGen) return;
       // GlobalKey 기반으로 위치 계산 (더 정확)
       final blkKey = _blockKeys[i];
       double left = 100, top = 200;
@@ -979,6 +983,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   }
 
   void _removeSlash() {
+    _slashGen++; // 예약된 지연 삽입 무효화
     _slash?.remove();
     _slash = null;
   }
@@ -5071,9 +5076,16 @@ class _EditableTableState extends State<_EditableTable> {
     _sync();
   }
 
+  static const double _gutter = 22;
+
   @override
   Widget build(BuildContext context) {
-    final colCount = _cells.isNotEmpty && _cells[0].isNotEmpty ? _cells[0].length : 1;
+    final rows = _cells.length;
+    final cols = _cells.isNotEmpty && _cells[0].isNotEmpty ? _cells[0].length : 1;
+    final line = BorderSide(color: _bdr.withValues(alpha: 0.75));
+    final showColDel = _hover && cols > 1;
+    final showRowDel = _hover && rows > 1;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -5083,120 +5095,123 @@ class _EditableTableState extends State<_EditableTable> {
           scrollDirection: Axis.horizontal,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // ── 상단 열 삭제 거터 ──
+              SizedBox(
+                height: showColDel ? 20 : 4,
+                child: showColDel
+                    ? Row(
+                        children: [
+                          const SizedBox(width: _gutter),
+                          for (int j = 0; j < cols; j++)
+                            SizedBox(
+                              width: _colW,
+                              child: Center(
+                                child: _TableHoverBtn(
+                                  icon: LucideIcons.x,
+                                  tip: '열 삭제',
+                                  onTap: () => _delCol(j),
+                                ),
+                              ),
+                            ),
+                        ],
+                      )
+                    : null,
+              ),
+              // ── 본문(좌측 행 거터 + 셀) + 우측 열추가 ──
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: _bdr),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    clipBehavior: Clip.hardEdge,
-                    child: Column(
-                      children: [
-                        for (int i = 0; i < _cells.length; i++)
-                          IntrinsicHeight(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                for (int j = 0; j < colCount; j++)
-                                  Stack(
-                                    children: [
-                                      Container(
-                                        width: _colW,
-                                        decoration: BoxDecoration(
-                                          color: i == 0 ? _bg3.withValues(alpha: 0.6) : null,
-                                          border: Border(
-                                            left: j == 0 ? BorderSide.none : BorderSide(color: _bdr.withValues(alpha: 0.6)),
-                                            top: i == 0 ? BorderSide.none : BorderSide(color: _bdr.withValues(alpha: 0.6)),
-                                          ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (int i = 0; i < rows; i++)
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // 좌측 행 삭제 거터
+                              SizedBox(
+                                width: _gutter,
+                                child: showRowDel
+                                    ? Center(
+                                        child: _TableHoverBtn(
+                                          icon: LucideIcons.x,
+                                          tip: '행 삭제',
+                                          onTap: () => _delRow(i),
                                         ),
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                                        child: TextField(
-                                          controller: _cells[i][j],
-                                          maxLines: null,
-                                          onChanged: (_) => _sync(),
-                                          style: GoogleFonts.inter(
-                                            fontSize: 13,
-                                            height: 1.4,
-                                            color: i == 0 ? _txt0 : _txt1,
-                                            fontWeight: i == 0 ? FontWeight.w700 : FontWeight.w400,
-                                          ),
-                                          decoration: const InputDecoration(
-                                            isDense: true,
-                                            border: InputBorder.none,
-                                            enabledBorder: InputBorder.none,
-                                            focusedBorder: InputBorder.none,
-                                            contentPadding: EdgeInsets.zero,
-                                            hintText: '',
-                                          ),
-                                        ),
-                                      ),
-                                      // 열 삭제 (첫 행에만)
-                                      if (i == 0 && _hover && colCount > 1)
-                                        Positioned(
-                                          top: 2,
-                                          right: 2,
-                                          child: _TableHoverBtn(icon: LucideIcons.x, onTap: () => _delCol(j)),
-                                        ),
-                                      // 행 삭제 (첫 열에만)
-                                      if (j == 0 && _hover && _cells.length > 1)
-                                        Positioned(
-                                          top: 2,
-                                          left: 2,
-                                          child: _TableHoverBtn(icon: LucideIcons.x, onTap: () => _delRow(i)),
-                                        ),
-                                    ],
+                                      )
+                                    : null,
+                              ),
+                              for (int j = 0; j < cols; j++)
+                                Container(
+                                  width: _colW,
+                                  constraints: const BoxConstraints(minHeight: 44),
+                                  decoration: BoxDecoration(
+                                    color: i == 0
+                                        ? _bg3.withValues(alpha: 0.5)
+                                        : null,
+                                    border: Border(
+                                      left: line,
+                                      top: line,
+                                      right: j == cols - 1 ? line : BorderSide.none,
+                                      bottom: i == rows - 1 ? line : BorderSide.none,
+                                    ),
                                   ),
-                              ],
-                            ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  alignment: Alignment.centerLeft,
+                                  child: TextField(
+                                    controller: _cells[i][j],
+                                    maxLines: null,
+                                    onChanged: (_) => _sync(),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13.5,
+                                      height: 1.45,
+                                      color: i == 0 ? _txt0 : _txt1,
+                                      fontWeight: i == 0
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      contentPadding: EdgeInsets.zero,
+                                      hintText: '',
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
-                      ],
+                        ),
+                    ],
+                  ),
+                  // 우측 열 추가
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6, top: 0),
+                    child: _TableEdgeAddBtn(
+                      vertical: true,
+                      tip: '새 열 추가',
+                      onTap: _addCol,
                     ),
                   ),
-                  // 우측 가장자리 열 추가 버튼
-                  if (_hover)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: Container(
-                        height: 34,
-                        width: 24,
-                        decoration: BoxDecoration(
-                          color: _bg3,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: _bdr),
-                        ),
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          tooltip: '새 열 추가',
-                          icon: Icon(LucideIcons.plus, size: 14, color: _txt1),
-                          onPressed: _addCol,
-                        ),
-                      ),
-                    ),
                 ],
               ),
-              // 하단 가장자리 행 추가 버튼
-              if (_hover)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Container(
-                    height: 24,
-                    width: _colW,
-                    decoration: BoxDecoration(
-                      color: _bg3,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: _bdr),
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      tooltip: '새 행 추가',
-                      icon: Icon(LucideIcons.plus, size: 14, color: _txt1),
-                      onPressed: _addRow,
-                    ),
-                  ),
+              // ── 하단 행 추가 ──
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: _gutter),
+                child: _TableEdgeAddBtn(
+                  vertical: false,
+                  width: cols * _colW,
+                  tip: '새 행 추가',
+                  onTap: _addRow,
                 ),
+              ),
             ],
           ),
         ),
@@ -5205,27 +5220,93 @@ class _EditableTableState extends State<_EditableTable> {
   }
 }
 
-class _TableHoverBtn extends StatelessWidget {
-  final IconData icon;
+// 표 가장자리 추가 버튼 (열=세로 막대 / 행=가로 막대)
+class _TableEdgeAddBtn extends StatefulWidget {
+  final bool vertical;
+  final double? width;
+  final String tip;
   final VoidCallback onTap;
-  const _TableHoverBtn({required this.icon, required this.onTap});
+  const _TableEdgeAddBtn({
+    required this.vertical,
+    required this.tip,
+    required this.onTap,
+    this.width,
+  });
+  @override
+  State<_TableEdgeAddBtn> createState() => _TableEdgeAddBtnState();
+}
+
+class _TableEdgeAddBtnState extends State<_TableEdgeAddBtn> {
+  bool _h = false;
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
+    return Tooltip(
+      message: widget.tip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _h = true),
+        onExit: (_) => setState(() => _h = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: widget.vertical ? 22 : widget.width,
+            height: widget.vertical ? 44 : 22,
+            decoration: BoxDecoration(
+              color: _h ? _acc.withValues(alpha: 0.14) : _bg3.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: _h ? _acc.withValues(alpha: 0.4) : _bdr.withValues(alpha: 0.7),
+              ),
+            ),
+            child: Icon(LucideIcons.plus,
+                size: 14, color: _h ? _acc : _txt2),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TableHoverBtn extends StatefulWidget {
+  final IconData icon;
+  final String tip;
+  final VoidCallback onTap;
+  const _TableHoverBtn({required this.icon, required this.onTap, this.tip = ''});
+  @override
+  State<_TableHoverBtn> createState() => _TableHoverBtnState();
+}
+
+class _TableHoverBtnState extends State<_TableHoverBtn> {
+  bool _h = false;
+  @override
+  Widget build(BuildContext context) {
+    final btn = MouseRegion(
       cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _h = true),
+      onExit: (_) => setState(() => _h = false),
       child: GestureDetector(
-        onTap: onTap,
+        onTap: widget.onTap,
         child: Container(
           width: 16,
           height: 16,
           decoration: BoxDecoration(
-            color: AppTheme.red.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(4),
+            color: _h
+                ? AppTheme.red.withValues(alpha: 0.9)
+                : _bg3.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(
+              color: _h
+                  ? AppTheme.red.withValues(alpha: 0.6)
+                  : _bdr.withValues(alpha: 0.8),
+            ),
           ),
-          child: Icon(icon, size: 10, color: Colors.white),
+          child: Icon(widget.icon,
+              size: 10, color: _h ? Colors.white : _txt2),
         ),
       ),
     );
+    return widget.tip.isEmpty ? btn : Tooltip(message: widget.tip, child: btn);
   }
 }
 
