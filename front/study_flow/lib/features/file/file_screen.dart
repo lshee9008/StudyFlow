@@ -4666,7 +4666,17 @@ class _NBState extends State<_NBlock> {
   /// 포커스 없음 → 렌더링(표/인라인 마크다운), 포커스 → raw TextField
   Widget _buildBlockContent() {
     final text = widget.block.controller.text;
-    
+
+    // 표 블록: 항상 편집 가능한 표 위젯 (노션식 — 셀 입력 / 행·열 추가·삭제)
+    // 코드 검사보다 먼저 → AI가 만든 표(코드+파이프)도 표로 렌더
+    if (_isTableBlock && text.trim().isNotEmpty) {
+      return _EditableTable(
+        source: widget.block.controller,
+        onChanged: () =>
+            widget.onText(widget.block.controller.text, widget.idx),
+      );
+    }
+
     // 코드 블록: 언어 선택 및 구문 강조 지원
     if (widget.block.type == BlockType.code) {
       return _CodeBlockWidget(
@@ -4674,15 +4684,6 @@ class _NBState extends State<_NBlock> {
         isFocused: _foc,
         onChanged: (val) => widget.onText(val, widget.idx),
         onFocusRequest: () => widget.block.focusNode.requestFocus(),
-      );
-    }
-    
-    // 표 블록: 항상 편집 가능한 표 위젯 (노션식 — 셀 입력 / 행·열 추가·삭제)
-    if (_isTableBlock && text.trim().isNotEmpty) {
-      return _EditableTable(
-        source: widget.block.controller,
-        onChanged: () =>
-            widget.onText(widget.block.controller.text, widget.idx),
       );
     }
     if (!_foc && text.trim().isNotEmpty) {
@@ -5168,6 +5169,7 @@ class _EditableTableState extends State<_EditableTable> {
                         ),
                         child: IconButton(
                           padding: EdgeInsets.zero,
+                          tooltip: '새 열 추가',
                           icon: Icon(LucideIcons.plus, size: 14, color: _txt1),
                           onPressed: _addCol,
                         ),
@@ -5189,6 +5191,7 @@ class _EditableTableState extends State<_EditableTable> {
                     ),
                     child: IconButton(
                       padding: EdgeInsets.zero,
+                      tooltip: '새 행 추가',
                       icon: Icon(LucideIcons.plus, size: 14, color: _txt1),
                       onPressed: _addRow,
                     ),
