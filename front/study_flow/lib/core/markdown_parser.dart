@@ -238,6 +238,9 @@ class MarkdownParser {
           html.writeln('</table>');
         case BlockType.hr:
           html.writeln('<hr />');
+        case BlockType.pdf:
+          final url = block['url'] as String? ?? content;
+          html.writeln('<a href="$url">$url</a>');
         case BlockType.checkbox:
           final isChecked = block['isChecked'] as bool? ?? false;
           final checked = isChecked ? 'checked' : '';

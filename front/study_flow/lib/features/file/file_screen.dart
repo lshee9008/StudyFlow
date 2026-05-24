@@ -1592,6 +1592,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           ],
         ), // Stack 닫기
       ), // SafeArea 닫기
+      ), // DropTarget 닫기
     );
   }
 
