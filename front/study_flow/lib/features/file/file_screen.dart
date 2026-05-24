@@ -4676,6 +4676,8 @@ class _NBState extends State<_NBlock> {
     // 코드 검사보다 먼저 → AI가 만든 표(코드+파이프)도 표로 렌더
     if (_isTableBlock && text.trim().isNotEmpty) {
       return _EditableTable(
+        // 블록 id 기반 고정 key → 입력 중 재생성/포커스 유실 방지
+        key: ValueKey('tbl_${widget.block.id}'),
         source: widget.block.controller,
         onChanged: () =>
             widget.onText(widget.block.controller.text, widget.idx),
@@ -4980,14 +4982,15 @@ class _BlockTypeBadge extends StatelessWidget {
 class _EditableTable extends StatefulWidget {
   final TextEditingController source; // 블록 마크다운
   final VoidCallback onChanged;
-  const _EditableTable({required this.source, required this.onChanged});
+  const _EditableTable({super.key, required this.source, required this.onChanged});
   @override
   State<_EditableTable> createState() => _EditableTableState();
 }
 
 class _EditableTableState extends State<_EditableTable> {
   late List<List<TextEditingController>> _cells;
-  static const double _colW = 150;
+  late List<List<FocusNode>> _focus; // 셀별 고정 포커스 노드
+  static const double _colW = 160;
   bool _hover = false;
 
   @override
@@ -5018,12 +5021,16 @@ class _EditableTableState extends State<_EditableTable> {
             TextEditingController(text: c < r.length ? r[c] : ''),
         ],
     ];
+    _focus = [for (final r in _cells) [for (var _ in r) FocusNode()]];
   }
 
   @override
   void dispose() {
     for (final r in _cells) {
       for (final c in r) c.dispose();
+    }
+    for (final r in _focus) {
+      for (final f in r) f.dispose();
     }
     super.dispose();
   }
@@ -5045,13 +5052,17 @@ class _EditableTableState extends State<_EditableTable> {
   }
 
   void _addRow() {
-    setState(() => _cells.add([for (var _ in _cells[0]) TextEditingController()]));
+    setState(() {
+      _cells.add([for (var _ in _cells[0]) TextEditingController()]);
+      _focus.add([for (var _ in _cells[0]) FocusNode()]);
+    });
     _sync();
   }
 
   void _addCol() {
     setState(() {
       for (final r in _cells) r.add(TextEditingController());
+      for (final r in _focus) r.add(FocusNode());
     });
     _sync();
   }
@@ -5060,7 +5071,9 @@ class _EditableTableState extends State<_EditableTable> {
     if (_cells.length <= 1) return;
     setState(() {
       for (final c in _cells[i]) c.dispose();
+      for (final f in _focus[i]) f.dispose();
       _cells.removeAt(i);
+      _focus.removeAt(i);
     });
     _sync();
   }
@@ -5069,6 +5082,10 @@ class _EditableTableState extends State<_EditableTable> {
     if (_cells[0].length <= 1) return;
     setState(() {
       for (final r in _cells) {
+        r[j].dispose();
+        r.removeAt(j);
+      }
+      for (final r in _focus) {
         r[j].dispose();
         r.removeAt(j);
       }
@@ -5166,6 +5183,7 @@ class _EditableTableState extends State<_EditableTable> {
                                   alignment: Alignment.centerLeft,
                                   child: TextField(
                                     controller: _cells[i][j],
+                                    focusNode: _focus[i][j],
                                     maxLines: null,
                                     onChanged: (_) => _sync(),
                                     style: GoogleFonts.inter(
