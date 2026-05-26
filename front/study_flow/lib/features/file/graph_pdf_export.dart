@@ -1,8 +1,19 @@
-import 'dart:typed_data';
-
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+
+/// assets에 번들된 NotoSansKR 폰트를 로드한다 (한국어 완전 지원).
+/// 로드 실패 시 PdfGoogleFonts fallback.
+Future<pw.Font> _loadKrFont(String asset) async {
+  try {
+    final data = await rootBundle.load(asset);
+    return pw.Font.ttf(data);
+  } catch (_) {
+    // fallback: 네트워크에서 NotoSansKR 다운로드
+    return PdfGoogleFonts.notoSansKRRegular();
+  }
+}
 
 /// 캡처한 PNG(마인드맵 화면)를 한 페이지 PDF로 만들어 다운로드/공유한다.
 /// 웹에서는 브라우저 다운로드, 네이티브에서는 공유 시트로 동작한다.
@@ -205,11 +216,10 @@ Future<void> exportMarkdownAsPdf(
 }) async {
   final doc = pw.Document();
 
-  // 한국어 포함 폰트 (NotoSansKR은 한글·영문·숫자 모두 지원)
-  final base = await PdfGoogleFonts.notoSansKRRegular();
-  final bold = await PdfGoogleFonts.notoSansKRBold();
-  // KR italic 없으므로 Regular로 대체
-  final italic = await PdfGoogleFonts.notoSansKRRegular();
+  // 번들된 NotoSansKR 폰트 로드 (한글·영문·숫자 완전 지원)
+  final base   = await _loadKrFont('assets/fonts/NotoSansKR-Regular.ttf');
+  final bold   = await _loadKrFont('assets/fonts/NotoSansKR-Bold.ttf');
+  final italic = base; // KR italic 없으므로 Regular 사용
 
   final lines = markdownText.split('\n');
 

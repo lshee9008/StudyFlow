@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(flutter analyze:*)",
-      "Bash(flutter build:*)"
+      "Bash(flutter build:*)",
+      "Bash(curl -L \"https://fonts.gstatic.com/s/notosanskr/v36/PbyxFmXiEBPT4ITbgNA5Cgn3-9wcnHiM7A.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Regular.ttf --max-time 20 -s)",
+      "Bash(curl -L \"https://fonts.gstatic.com/s/notosanskr/v36/PbyxFmXiEBPT4ITbgNA5CgmOipqvTg.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Bold.ttf --max-time 20 -s)",
+      "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700\")",
+      "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.gstatic.com/s/notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLQ.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Regular.ttf --max-time 30 -s)",
+      "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@700\")",
+      "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.gstatic.com/s/notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzg01eLQ.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Bold.ttf --max-time 30 -s)"
     ]
   }
 }

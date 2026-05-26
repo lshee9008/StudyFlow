@@ -4071,36 +4071,64 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                 ),
               ),
             ),
-            // 본문
-            GestureDetector(
-              onTap: widget.onFocusRequest,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: widget.isFocused
-                    ? TextField(
-                        controller: widget.block.controller,
-                        focusNode: widget.block.focusNode,
-                        maxLines: null,
-                        autofocus: true,
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: 13,
-                          color: const Color(0xFFD4BBFF),
-                          height: 1.5,
-                        ),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        onChanged: widget.onChanged,
-                      )
-                    : HighlightView(
-                        widget.block.controller.text.isEmpty ? '// 코드를 입력하세요' : widget.block.controller.text,
-                        language: _lang,
-                        theme: atomOneDarkTheme,
-                        padding: EdgeInsets.zero,
-                        textStyle: GoogleFonts.jetBrainsMono(fontSize: 13, height: 1.5),
+            // 본문: TextField는 항상 트리에 유지 (포커스 안정성 보장)
+            // 포커스 없을 때는 HighlightView를 IgnorePointer로 덮어서
+            // 클릭이 항상 TextField에 전달되도록 함
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Stack(
+                children: [
+                  // ① 항상 존재하는 TextField (포커스 및 입력 처리)
+                  TextField(
+                    controller: widget.block.controller,
+                    focusNode: widget.block.focusNode,
+                    maxLines: null,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 13,
+                      // 포커스 중일 때만 텍스트 보임, 아니면 투명 (HighlightView가 덮음)
+                      color: widget.isFocused
+                          ? const Color(0xFFD4BBFF)
+                          : Colors.transparent,
+                      height: 1.5,
+                    ),
+                    cursorColor: widget.isFocused ? _acc : Colors.transparent,
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      hintText: widget.isFocused ? '// 코드를 입력하세요' : null,
+                      hintStyle: GoogleFonts.jetBrainsMono(
+                        fontSize: 13,
+                        color: _txt2.withValues(alpha: 0.4),
+                        height: 1.5,
                       ),
+                    ),
+                    onChanged: widget.onChanged,
+                  ),
+                  // ② 포커스 없을 때 HighlightView 덮기 (클릭은 TextField로 전달)
+                  if (!widget.isFocused)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: widget.block.controller.text.isEmpty
+                            ? Text(
+                                '// 코드를 입력하세요',
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 13,
+                                  color: _txt2.withValues(alpha: 0.4),
+                                  height: 1.5,
+                                ),
+                              )
+                            : HighlightView(
+                                widget.block.controller.text,
+                                language: _lang,
+                                theme: atomOneDarkTheme,
+                                padding: EdgeInsets.zero,
+                                textStyle: GoogleFonts.jetBrainsMono(
+                                    fontSize: 13, height: 1.5),
+                              ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
