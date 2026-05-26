@@ -9109,14 +9109,14 @@ class _GCS extends State<_GraphCanvas> {
       maxY = math.max(maxY, n.rect.bottom);
     }
 
-    final padding = 120.0;
+    final padding = 100.0;
     final contentW = (maxX - minX) + padding * 2;
     final contentH = (maxY - minY) + padding * 2;
 
     final scale = math.min(
       viewSize.width / contentW,
       viewSize.height / contentH,
-    ).clamp(0.12, 0.9);
+    ).clamp(0.35, 0.9);  // 최소 0.35 보장 — 초기/재정렬 시 노드가 너무 작아지지 않도록
 
     // 콘텐츠 중심을 뷰포트 중심에 맞춤
     final cx = (minX - padding) + contentW / 2;
@@ -9166,28 +9166,28 @@ class _GCS extends State<_GraphCanvas> {
     }
   }
 
-  /// univai식 드릴다운: 특정 노드를 화면 좌측(32%) 지점에 맞춰 이동시켜
-  /// 펼쳐진 자식들(오른쪽)이 자연스럽게 보이도록 한다. 현재 배율은 유지.
-  void _centerOnNodeId(String id, {double leftBias = 0.32}) {
+  /// 특정 노드를 화면 중앙으로 패닝한다.
+  /// 현재 배율은 절대 변경하지 않는다 (확대/축소 없음).
+  void _centerOnNodeId(String id) {
     _GraphNodeLayout? node;
     for (final n in ns) {
       if (n.id == id) { node = n; break; }
     }
-    if (node == null) { _fitBoard(); return; }
+    if (node == null) return;
 
     final box = context.findRenderObject() as RenderBox?;
     final viewSize = box?.size ?? const Size(800, 600);
 
-    // 현재 배율 유지 (너무 작거나 크지 않게 클램프)
-    final current = _controller.value.getMaxScaleOnAxis();
-    final scale = current.clamp(0.45, 1.2);
+    // 현재 배율 그대로 유지 — 축소/확대 없음
+    final scale = _controller.value.getMaxScaleOnAxis();
 
     final c = node.rect.center;
-    final targetX = viewSize.width * leftBias;
-    final targetY = viewSize.height / 2;
-
     _controller.value = Matrix4.identity()
-      ..translateByDouble(targetX - c.dx * scale, targetY - c.dy * scale, 0, 1)
+      ..translateByDouble(
+        viewSize.width / 2 - c.dx * scale,
+        viewSize.height / 2 - c.dy * scale,
+        0, 1,
+      )
       ..scaleByDouble(scale, scale, 1, 1);
   }
 
@@ -9331,9 +9331,9 @@ class _GCS extends State<_GraphCanvas> {
                             _collapsed.add(node.id);
                           }
                           _build(); // 내부에서 setState 호출 (ns 갱신)
-                          // 펼친/접은 후 모든 노드가 화면 안에 들어오도록 맞춤
+                          // 펼친/접은 노드를 화면 중앙으로 패닝 — 배율 변경 없음
                           WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) _fitBoard();
+                            if (mounted) _centerOnNodeId(node.id);
                           });
                         },
                         onSelect: () => _handleNodeTap(node),
