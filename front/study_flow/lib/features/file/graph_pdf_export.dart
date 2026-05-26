@@ -87,7 +87,14 @@ List<pw.InlineSpan> _parseInline(String raw, pw.Font baseFont,
 pw.Widget _mdLine(String line, pw.Font base, pw.Font bold, pw.Font italic) {
   final trimmed = line.trimRight();
 
-  // 제목
+  // 제목 (####, ###, ##, # 모두 처리)
+  if (trimmed.startsWith('#### ')) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 6, bottom: 2),
+      child: pw.Text(trimmed.substring(5),
+          style: pw.TextStyle(font: bold, fontSize: 12)),
+    );
+  }
   if (trimmed.startsWith('### ')) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(top: 8, bottom: 2),
@@ -147,6 +154,26 @@ pw.Widget _mdLine(String line, pw.Font base, pw.Font bold, pw.Font italic) {
     );
   }
 
+  // 인용구 (> text)
+  if (trimmed.startsWith('> ')) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(left: 10, bottom: 2),
+      child: pw.Container(
+        decoration: const pw.BoxDecoration(
+          border: pw.Border(
+            left: pw.BorderSide(color: PdfColors.grey400, width: 2),
+          ),
+        ),
+        padding: const pw.EdgeInsets.only(left: 8),
+        child: pw.RichText(
+          text: pw.TextSpan(
+            children: _parseInline(trimmed.substring(2), base, bold, italic, 11),
+          ),
+        ),
+      ),
+    );
+  }
+
   // 구분선
   if (trimmed == '---' || trimmed == '***') {
     return pw.Divider(color: PdfColors.grey400, thickness: 0.5);
@@ -178,9 +205,11 @@ Future<void> exportMarkdownAsPdf(
 }) async {
   final doc = pw.Document();
 
-  final base = await PdfGoogleFonts.notoSansRegular();
-  final bold = await PdfGoogleFonts.notoSansBold();
-  final italic = await PdfGoogleFonts.notoSansItalic();
+  // 한국어 포함 폰트 (NotoSansKR은 한글·영문·숫자 모두 지원)
+  final base = await PdfGoogleFonts.notoSansKRRegular();
+  final bold = await PdfGoogleFonts.notoSansKRBold();
+  // KR italic 없으므로 Regular로 대체
+  final italic = await PdfGoogleFonts.notoSansKRRegular();
 
   final lines = markdownText.split('\n');
 

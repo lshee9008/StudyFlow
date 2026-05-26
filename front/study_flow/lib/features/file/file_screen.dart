@@ -4026,8 +4026,10 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 언어 선택 헤더 (항상 표시)
-            Container(
+            // 언어 선택 헤더 (항상 표시, 클릭 시 블록 포커스 진입)
+            GestureDetector(
+              onTap: widget.onFocusRequest,
+              child: Container(
                 color: Colors.black26,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 child: Row(
@@ -4046,7 +4048,12 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                               widget.block.metadata ??= {};
                               widget.block.metadata!['language'] = val;
                             });
-                            widget.onChanged(widget.block.controller.text); // trigger save
+                            widget.onChanged(widget.block.controller.text);
+                            // 언어 선택 후 코드 편집 영역으로 포커스 이동
+                            widget.onFocusRequest();
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              widget.block.focusNode.requestFocus();
+                            });
                           }
                         },
                         items: _languages.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
@@ -4063,6 +4070,7 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                   ],
                 ),
               ),
+            ),
             // 본문
             GestureDetector(
               onTap: widget.onFocusRequest,
@@ -4073,6 +4081,7 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
                         controller: widget.block.controller,
                         focusNode: widget.block.focusNode,
                         maxLines: null,
+                        autofocus: true,
                         style: GoogleFonts.jetBrainsMono(
                           fontSize: 13,
                           color: const Color(0xFFD4BBFF),
