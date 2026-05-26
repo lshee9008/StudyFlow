@@ -4026,49 +4026,49 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 언어 선택 헤더 (항상 표시, 클릭 시 블록 포커스 진입)
-            GestureDetector(
-              onTap: widget.onFocusRequest,
-              child: Container(
-                color: Colors.black26,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _languages.contains(_lang) ? _lang : 'dart',
-                        dropdownColor: _bg3,
-                        icon: Icon(Icons.arrow_drop_down, color: _txt2, size: 16),
-                        style: TextStyle(color: _txt2, fontSize: 12),
-                        isDense: true,
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() {
-                              widget.block.metadata ??= {};
-                              widget.block.metadata!['language'] = val;
-                            });
-                            widget.onChanged(widget.block.controller.text);
-                            // 언어 선택 후 코드 편집 영역으로 포커스 이동
-                            widget.onFocusRequest();
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
+            // 언어 선택 헤더 (항상 표시)
+            Container(
+              color: Colors.black26,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _languages.contains(_lang) ? _lang : 'dart',
+                      dropdownColor: _bg3,
+                      icon: Icon(Icons.arrow_drop_down, color: _txt2, size: 16),
+                      style: TextStyle(color: _txt2, fontSize: 12),
+                      isDense: true,
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            widget.block.metadata ??= {};
+                            widget.block.metadata!['language'] = val;
+                          });
+                          widget.onChanged(widget.block.controller.text);
+                          // 드롭다운 닫힘 애니메이션(~300ms) 완료 후 포커스 요청
+                          // addPostFrameCallback은 너무 빨라서 애니메이션 도중에 포커스가 다시 빼앗김
+                          Future.delayed(const Duration(milliseconds: 350), () {
+                            if (mounted) {
+                              widget.onFocusRequest();
                               widget.block.focusNode.requestFocus();
-                            });
-                          }
-                        },
-                        items: _languages.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.copy, size: 14, color: _txt2),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: widget.block.controller.text));
+                            }
+                          });
+                        }
                       },
+                      items: _languages.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
                     ),
-                  ],
-                ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.copy, size: 14, color: _txt2),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: widget.block.controller.text));
+                    },
+                  ),
+                ],
               ),
             ),
             // 본문: TextField는 항상 트리에 유지 (포커스 안정성 보장)
