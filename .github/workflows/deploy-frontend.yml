@@ -24,8 +24,7 @@ jobs:
         with:
           flutter-version: "3.27.4"
           channel: stable
-          cache: true
-          cache-key: "flutter-:os:-:channel:-:version:-:arch:-:hash:"
+          cache: false
 
       - name: Install dependencies
         run: flutter pub get

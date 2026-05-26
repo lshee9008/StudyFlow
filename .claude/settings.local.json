@@ -8,7 +8,8 @@
       "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700\")",
       "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.gstatic.com/s/notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLQ.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Regular.ttf --max-time 30 -s)",
       "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@700\")",
-      "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.gstatic.com/s/notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzg01eLQ.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Bold.ttf --max-time 30 -s)"
+      "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.gstatic.com/s/notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzg01eLQ.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Bold.ttf --max-time 30 -s)",
+      "Bash(gh run *)"
     ]
   }
 }
