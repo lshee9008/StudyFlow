@@ -1489,6 +1489,23 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                       }
                     },
                     onProofread: () => _showProofreadMenu(),
+                    onPdfExport: () async {
+                      final blocks = ref.read(fileEditorProvider).blocks;
+                      final blockData = blocks
+                          .map((b) => {
+                                'type': b.type.name,
+                                'content': b.controller.text,
+                              })
+                          .toList();
+                      final title = _tCtrl.text.trim().isEmpty
+                          ? '노트'
+                          : _tCtrl.text.trim();
+                      await exportNotesAsPdf(
+                        blockData,
+                        title: title,
+                        filename: '${title}_노트.pdf',
+                      );
+                    },
                   ),
                 ),
                 // 상단 포맷 툴바 제거 — 슬래시(/) 메뉴·단축키·선택 툴바로 대체
@@ -2070,7 +2087,7 @@ class _AppBar extends StatelessWidget {
   final int charCount, view;
   final String title;
   final String subtitle;
-  final VoidCallback onBack, onCopy, onMdCopy, onView, onMindmap, onProofread;
+  final VoidCallback onBack, onCopy, onMdCopy, onView, onMindmap, onProofread, onPdfExport;
   const _AppBar({
     required this.saving,
     this.savedAt,
@@ -2085,6 +2102,7 @@ class _AppBar extends StatelessWidget {
     required this.onView,
     required this.onMindmap,
     required this.onProofread,
+    required this.onPdfExport,
   });
 
   @override
@@ -2176,12 +2194,14 @@ class _AppBar extends StatelessWidget {
                 onMdCopy: onMdCopy,
                 onView: onView,
                 onMindmap: onMindmap,
+                onPdfExport: onPdfExport,
                 charCount: charCount,
               )
             else ...[
               _TBtn(Icons.spellcheck_rounded, '글 교정', onProofread),
               _TBtn(Icons.copy_rounded, '복사', onCopy),
               _TBtn(Icons.download_outlined, 'MD', onMdCopy),
+              _TBtn(Icons.picture_as_pdf_rounded, 'PDF', onPdfExport),
               _TBtn(
                 view == 0
                     ? Icons.crop_square_rounded
@@ -2299,7 +2319,7 @@ class _TBtn extends StatelessWidget {
 // ══════════════════ 모바일 더보기 버튼 ══════════════════
 class _MobileMoreBtn extends StatelessWidget {
   final int view, charCount;
-  final VoidCallback onProofread, onCopy, onMdCopy, onView, onMindmap;
+  final VoidCallback onProofread, onCopy, onMdCopy, onView, onMindmap, onPdfExport;
   const _MobileMoreBtn({
     required this.view,
     required this.charCount,
@@ -2308,6 +2328,7 @@ class _MobileMoreBtn extends StatelessWidget {
     required this.onMdCopy,
     required this.onView,
     required this.onMindmap,
+    required this.onPdfExport,
   });
 
   @override
@@ -2334,6 +2355,7 @@ class _MobileMoreBtn extends StatelessWidget {
       _mi(context, 0, Icons.spellcheck_rounded, '글 교정'),
       _mi(context, 1, Icons.copy_rounded, '복사'),
       _mi(context, 2, Icons.download_outlined, 'MD 복사'),
+      _mi(context, 5, Icons.picture_as_pdf_rounded, 'PDF 내보내기'),
       _mi(
         context,
         3,
@@ -2358,6 +2380,9 @@ class _MobileMoreBtn extends StatelessWidget {
           break;
         case 4:
           onMindmap();
+          break;
+        case 5:
+          onPdfExport();
           break;
       }
     },
@@ -4001,9 +4026,8 @@ class _CodeBlockWidgetState extends State<_CodeBlockWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 언어 선택 헤더
-            if (_hover || widget.isFocused)
-              Container(
+            // 언어 선택 헤더 (항상 표시)
+            Container(
                 color: Colors.black26,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 child: Row(
@@ -6594,51 +6618,99 @@ class _SumPanel extends StatelessWidget {
                 ),
               )
             else
-              InkWell(
-                onTap: () async {
-                  await ref
-                      .read(fileEditorProvider.notifier)
-                      .requestSummary(
-                        title: tCtrl.text,
-                        tags: gCtrl.text,
-                        force: true,
-                      );
-                  onChanged();
-                },
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _bg3.withValues(alpha: 0.82),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _bdr.withValues(alpha: 0.9)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.refresh_rounded,
-                          size: 12,
-                          color: _txt2.withValues(alpha: 0.6),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '재요약',
-                          style: GoogleFonts.inter(
-                            color: _txt1,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // PDF 내보내기 버튼
+                  if (st.summaryBlocks.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: InkWell(
+                        onTap: () async {
+                          final content = st.summaryBlocks
+                              .map((b) => b.content)
+                              .join('\n\n---\n\n');
+                          await exportMarkdownAsPdf(
+                            content,
+                            title: tCtrl.text.isEmpty ? '요약' : tCtrl.text,
+                            filename: '${tCtrl.text.isEmpty ? "summary" : tCtrl.text}_요약.pdf',
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _bg3.withValues(alpha: 0.82),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _bdr.withValues(alpha: 0.9)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.picture_as_pdf_rounded,
+                                  size: 12,
+                                  color: _txt2.withValues(alpha: 0.6)),
+                              const SizedBox(width: 4),
+                              Text('PDF',
+                                style: GoogleFonts.inter(
+                                  color: _txt1,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                )),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
+                    ),
+                  // 재요약 버튼
+                  InkWell(
+                    onTap: () async {
+                      await ref
+                          .read(fileEditorProvider.notifier)
+                          .requestSummary(
+                            title: tCtrl.text,
+                            tags: gCtrl.text,
+                            force: true,
+                          );
+                      onChanged();
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _bg3.withValues(alpha: 0.82),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _bdr.withValues(alpha: 0.9)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.refresh_rounded,
+                              size: 12,
+                              color: _txt2.withValues(alpha: 0.6),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '재요약',
+                              style: GoogleFonts.inter(
+                                color: _txt1,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
           ],
         ),
@@ -6816,47 +6888,128 @@ class _SCState extends State<_SumCard> {
                       );
                       await showDialog(
                         context: context,
-                        builder: (dialogContext) => Dialog(
-                          backgroundColor: AppTheme.bgSecondary,
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('요약 수정', style: AppTheme.headingSmall),
-                                const SizedBox(height: 14),
-                                TextField(
-                                  controller: ctrl,
-                                  maxLines: 14,
-                                  style: AppTheme.bodyMedium.copyWith(
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                  decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
+                        builder: (dialogContext) => StatefulBuilder(
+                          builder: (ctx, setSt) => Dialog(
+                            backgroundColor: AppTheme.bgSecondary,
+                            insetPadding: const EdgeInsets.symmetric(
+                              horizontal: 40, vertical: 60),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: 720, maxHeight: 680),
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    SFButton(
-                                      label: '취소',
-                                      outlined: true,
-                                      onPressed: () =>
-                                          Navigator.pop(dialogContext),
+                                    // ── 헤더 ─────────────────────
+                                    Text('요약 수정', style: AppTheme.headingSmall),
+                                    const SizedBox(height: 16),
+                                    // ── 에디터 + 미리보기 (좌우 분할) ──
+                                    Expanded(
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          // 왼쪽: 편집창
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('편집',
+                                                  style: GoogleFonts.inter(
+                                                    color: _txt2,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: 0.5,
+                                                  )),
+                                                const SizedBox(height: 6),
+                                                Expanded(
+                                                  child: TextField(
+                                                    controller: ctrl,
+                                                    maxLines: null,
+                                                    expands: true,
+                                                    textAlignVertical: TextAlignVertical.top,
+                                                    style: GoogleFonts.inter(
+                                                      color: AppTheme.textPrimary,
+                                                      fontSize: 13,
+                                                      height: 1.6,
+                                                    ),
+                                                    decoration: InputDecoration(
+                                                      border: OutlineInputBorder(
+                                                        borderSide: BorderSide(color: _bdr2),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                      ),
+                                                      enabledBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(color: _bdr),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                      ),
+                                                      contentPadding: const EdgeInsets.all(12),
+                                                    ),
+                                                    onChanged: (_) => setSt(() {}),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 14),
+                                          // 오른쪽: 마크다운 미리보기
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('미리보기',
+                                                  style: GoogleFonts.inter(
+                                                    color: _txt2,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: 0.5,
+                                                  )),
+                                                const SizedBox(height: 6),
+                                                Expanded(
+                                                  child: Container(
+                                                    decoration: BoxDecoration(
+                                                      color: _bg3.withValues(alpha: 0.6),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      border: Border.all(color: _bdr),
+                                                    ),
+                                                    padding: const EdgeInsets.all(12),
+                                                    child: SingleChildScrollView(
+                                                      child: MarkdownBody(
+                                                        data: ctrl.text,
+                                                        styleSheet: _md(),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    SFButton(
-                                      label: '저장',
-                                      onPressed: () {
-                                        widget.onEdit(ctrl.text.trim());
-                                        Navigator.pop(dialogContext);
-                                      },
+                                    const SizedBox(height: 16),
+                                    // ── 버튼 ─────────────────────
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        SFButton(
+                                          label: '취소',
+                                          outlined: true,
+                                          onPressed: () =>
+                                              Navigator.pop(dialogContext),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        SFButton(
+                                          label: '저장',
+                                          onPressed: () {
+                                            widget.onEdit(ctrl.text.trim());
+                                            Navigator.pop(dialogContext);
+                                          },
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
