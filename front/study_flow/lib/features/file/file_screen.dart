@@ -2201,7 +2201,7 @@ class _AppBar extends StatelessWidget {
               _TBtn(Icons.spellcheck_rounded, '글 교정', onProofread),
               _TBtn(Icons.copy_rounded, '복사', onCopy),
               _TBtn(Icons.download_outlined, 'MD', onMdCopy),
-              _TBtn(Icons.picture_as_pdf_rounded, 'PDF', onPdfExport),
+              _TBtn(Icons.picture_as_pdf_rounded, 'PDF', onPdfExport, iconColor: Colors.white),
               _TBtn(
                 view == 0
                     ? Icons.crop_square_rounded
@@ -2300,14 +2300,15 @@ class _TBtn extends StatelessWidget {
   final IconData icon;
   final String tip;
   final VoidCallback onTap;
-  const _TBtn(this.icon, this.tip, this.onTap);
+  final Color? iconColor;
+  const _TBtn(this.icon, this.tip, this.onTap, {this.iconColor});
   @override
   Widget build(BuildContext context) => Tooltip(
     message: tip,
     child: IconButton(
       icon: Icon(icon, size: 16),
       onPressed: onTap,
-      color: _txt2,
+      color: iconColor ?? _txt2,
       hoverColor: _bg4,
       splashRadius: 16,
       padding: const EdgeInsets.all(6),
@@ -2355,7 +2356,7 @@ class _MobileMoreBtn extends StatelessWidget {
       _mi(context, 0, Icons.spellcheck_rounded, '글 교정'),
       _mi(context, 1, Icons.copy_rounded, '복사'),
       _mi(context, 2, Icons.download_outlined, 'MD 복사'),
-      _mi(context, 5, Icons.picture_as_pdf_rounded, 'PDF 내보내기'),
+      _mi(context, 5, Icons.picture_as_pdf_rounded, 'PDF 내보내기', iconColor: Colors.white),
       _mi(
         context,
         3,
@@ -2388,13 +2389,13 @@ class _MobileMoreBtn extends StatelessWidget {
     },
   );
 
-  PopupMenuItem<int> _mi(BuildContext ctx, int v, IconData ic, String label) =>
+  PopupMenuItem<int> _mi(BuildContext ctx, int v, IconData ic, String label, {Color? iconColor}) =>
       PopupMenuItem<int>(
         value: v,
         height: 44,
         child: Row(
           children: [
-            Icon(ic, size: 15, color: _txt1),
+            Icon(ic, size: 15, color: iconColor ?? _txt1),
             const SizedBox(width: 12),
             Text(
               label,
@@ -6687,11 +6688,11 @@ class _SumPanel extends StatelessWidget {
                             children: [
                               Icon(Icons.picture_as_pdf_rounded,
                                   size: 12,
-                                  color: _txt2.withValues(alpha: 0.6)),
+                                  color: Colors.white),
                               const SizedBox(width: 4),
                               Text('PDF',
                                 style: GoogleFonts.inter(
-                                  color: _txt1,
+                                  color: Colors.white,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                 )),
@@ -9456,6 +9457,7 @@ class _GCS extends State<_GraphCanvas> {
                     icon: _exporting ? LucideIcons.loader : LucideIcons.download,
                     tip: 'PDF로 다운로드',
                     onTap: _exportPdf,
+                    iconColor: Colors.white,
                   ),
                   const _PillDivider(),
                   _PillBtn(icon: LucideIcons.rotateCcw, tip: '레이아웃 재정렬', onTap: _resetLayout),
@@ -10035,7 +10037,8 @@ class _PillBtn extends StatelessWidget {
   final String tip;
   final VoidCallback onTap;
   final bool isActive;
-  const _PillBtn({required this.icon, required this.tip, required this.onTap, this.isActive = false});
+  final Color? iconColor;
+  const _PillBtn({required this.icon, required this.tip, required this.onTap, this.isActive = false, this.iconColor});
 
   @override
   Widget build(BuildContext context) {
@@ -10050,7 +10053,7 @@ class _PillBtn extends StatelessWidget {
             color: isActive ? _acc.withValues(alpha: 0.18) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, size: 16, color: isActive ? _acc : _txt1),
+          child: Icon(icon, size: 16, color: isActive ? _acc : (iconColor ?? _txt1)),
         ),
       ),
     );
