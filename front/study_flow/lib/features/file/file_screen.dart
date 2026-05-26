@@ -9440,17 +9440,29 @@ class _GCS extends State<_GraphCanvas> {
                   _PillBtn(icon: LucideIcons.maximize2, tip: '화면 맞춤', onTap: _fitBoard),
                   _PillBtn(icon: LucideIcons.zoomOut, tip: '축소', onTap: _zoomOut),
                   const _PillDivider(),
-                  _PillBtn(
-                    icon: _isTreeLayout ? LucideIcons.share2 : LucideIcons.gitBranch,
-                    tip: _isTreeLayout ? '방사형으로 전환' : '트리형으로 전환',
-                    onTap: () => setState(() {
-                      _isTreeLayout = !_isTreeLayout;
-                      _build();
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) _fitBoard();
-                      });
-                    }),
-                    isActive: _isTreeLayout,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: _LayoutTabToggle(
+                      isTreeLayout: _isTreeLayout,
+                      onSelectTree: () {
+                        if (!_isTreeLayout) setState(() {
+                          _isTreeLayout = true;
+                          _build();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _fitBoard();
+                          });
+                        });
+                      },
+                      onSelectRadial: () {
+                        if (_isTreeLayout) setState(() {
+                          _isTreeLayout = false;
+                          _build();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _fitBoard();
+                          });
+                        });
+                      },
+                    ),
                   ),
                   const _PillDivider(),
                   _PillBtn(
@@ -10067,6 +10079,66 @@ class _PillDivider extends StatelessWidget {
     width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 2),
     color: _bdr.withValues(alpha: 0.7),
   );
+}
+
+/// 레이아웃 모드 탭 토글 (트리형 | 방사형)
+class _LayoutTabToggle extends StatelessWidget {
+  final bool isTreeLayout;
+  final VoidCallback onSelectTree;
+  final VoidCallback onSelectRadial;
+  const _LayoutTabToggle({
+    required this.isTreeLayout,
+    required this.onSelectTree,
+    required this.onSelectRadial,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      decoration: BoxDecoration(
+        color: _bg4.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _tab(Icons.account_tree_rounded, '트리형', isTreeLayout, onSelectTree),
+          _tab(Icons.hub_rounded, '방사형', !isTreeLayout, onSelectRadial),
+        ],
+      ),
+    );
+  }
+
+  Widget _tab(IconData icon, String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: active ? _acc.withValues(alpha: 0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
+          border: active ? Border.all(color: _acc.withValues(alpha: 0.45), width: 1) : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: active ? _acc : _txt2),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                color: active ? _acc : _txt2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// 노드 카드 내 액션 버튼
