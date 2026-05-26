@@ -22,11 +22,14 @@ jobs:
       # subosito/flutter-action 대신 직접 설치 (Node.js 버전 의존성 없음)
       - name: Install Flutter
         run: |
-          FLUTTER_VERSION="3.27.4"
+          FLUTTER_VERSION="3.44.0"
           curl -fsSL \
             "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
             | tar xJ -C "$HOME"
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+          # git safe.directory 설정 (flutter SDK 내부 git 명령 실패 방지)
+          git config --global --add safe.directory "$HOME/flutter"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Flutter version check
         run: flutter --version
