@@ -9109,14 +9109,14 @@ class _GCS extends State<_GraphCanvas> {
       maxY = math.max(maxY, n.rect.bottom);
     }
 
-    final padding = 60.0;
+    final padding = 120.0;
     final contentW = (maxX - minX) + padding * 2;
     final contentH = (maxY - minY) + padding * 2;
 
     final scale = math.min(
       viewSize.width / contentW,
       viewSize.height / contentH,
-    ).clamp(0.12, 1.0);
+    ).clamp(0.12, 0.9);
 
     // 콘텐츠 중심을 뷰포트 중심에 맞춤
     final cx = (minX - padding) + contentW / 2;
@@ -9291,7 +9291,7 @@ class _GCS extends State<_GraphCanvas> {
           onTap: () => setState(() => _selectedNodeId = null),
           child: InteractiveViewer(
             constrained: false,
-            boundaryMargin: const EdgeInsets.all(600),
+            boundaryMargin: const EdgeInsets.all(1200),
             minScale: 0.08,
             maxScale: 3.0,
             transformationController: _controller,
@@ -9331,9 +9331,9 @@ class _GCS extends State<_GraphCanvas> {
                             _collapsed.add(node.id);
                           }
                           _build(); // 내부에서 setState 호출 (ns 갱신)
-                          // 펼친/접은 노드를 화면에 맞춰 드릴다운 포커스
+                          // 펼친/접은 후 모든 노드가 화면 안에 들어오도록 맞춤
                           WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) _centerOnNodeId(node.id);
+                            if (mounted) _fitBoard();
                           });
                         },
                         onSelect: () => _handleNodeTap(node),
