@@ -9220,60 +9220,10 @@ class _GCS extends State<_GraphCanvas> {
       ..scaleByDouble(scale, scale, 1, 1);
   }
 
-  /// 노드를 펼쳤을 때: 펼친 노드 + 직계 자식 전체가 뷰포트에 보이도록 패닝.
-  /// 현재 배율에서 모두 들어오면 배율 유지, 너무 넓으면 최소한으로만 축소.
+  /// 노드를 펼쳤을 때: 전체 가시 노드(조상 포함)가 보이도록 fitBoard.
+  /// — 트리에서 루트가 왼쪽으로 잘리는 문제 방지.
   void _centerOnExpanded(String id) {
-    _GraphNodeLayout? parent;
-    for (final n in ns) {
-      if (n.id == id) { parent = n; break; }
-    }
-    if (parent == null) { _centerOnNodeId(id); return; }
-
-    // 직계 자식 수집 (엣지 기준)
-    final childIds = es.where((e) => e.s == id).map((e) => e.t).toSet();
-    final childNodes = ns.where((n) => childIds.contains(n.id)).toList();
-
-    if (childNodes.isEmpty) { _centerOnNodeId(id); return; }
-
-    // 부모 + 자식의 bounding box
-    double minX = parent.rect.left,  minY = parent.rect.top;
-    double maxX = parent.rect.right, maxY = parent.rect.bottom;
-    for (final c in childNodes) {
-      minX = math.min(minX, c.rect.left);
-      minY = math.min(minY, c.rect.top);
-      maxX = math.max(maxX, c.rect.right);
-      maxY = math.max(maxY, c.rect.bottom);
-    }
-
-    final box = context.findRenderObject() as RenderBox?;
-    final viewSize = box?.size ?? const Size(800, 600);
-    final scale = _controller.value.getMaxScaleOnAxis();
-
-    const pad = 60.0;
-    final contentW = (maxX - minX) + pad * 2;
-    final contentH = (maxY - minY) + pad * 2;
-    final cx = (minX + maxX) / 2;
-    final cy = (minY + maxY) / 2;
-
-    // 현재 배율에서 bbox가 뷰포트에 들어오면 그대로 패닝
-    final fitsInView =
-        contentW * scale <= viewSize.width &&
-        contentH * scale <= viewSize.height;
-
-    final useScale = fitsInView
-        ? scale
-        : math.min(
-            viewSize.width / contentW,
-            viewSize.height / contentH,
-          ).clamp(scale * 0.45, scale); // 최대 55% 축소까지만 허용
-
-    _controller.value = Matrix4.identity()
-      ..translateByDouble(
-        viewSize.width  / 2 - cx * useScale,
-        viewSize.height / 2 - cy * useScale,
-        0, 1,
-      )
-      ..scaleByDouble(useScale, useScale, 1, 1);
+    _fitBoard();
   }
 
   void _zoomIn() {
@@ -9445,8 +9395,8 @@ class _GCS extends State<_GraphCanvas> {
                           WidgetsBinding.instance.addPostFrameCallback((_) {
                             if (!mounted) return;
                             if (isExpanding) {
-                              // 펼침: 부모+자식이 모두 보이도록 패닝
-                              _centerOnExpanded(node.id);
+                              // 펼침: 루트 포함 모든 가시 노드가 보이도록 전체 맞춤
+                              _fitBoard();
                             } else {
                               // 접음: 해당 노드만 중앙으로
                               _centerOnNodeId(node.id);
