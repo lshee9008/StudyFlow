@@ -240,7 +240,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   }
 
   // ── 저장 ─────────────────────────────────────────
-  void _chg({String? ft}) {
+  void _chg({String? ft, int blockIndex = -1}) {
     if (ft != null) {
       _focTextT?.cancel();
       _focTextT = Timer(const Duration(milliseconds: 800), () {
@@ -250,6 +250,9 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
               .read(fileEditorProvider)
               .copyWith(focusedText: ft);
       });
+      // 타이핑 중 분석 재트리거 (2.5s 디바운스) — 포커스 트리거(400ms)와 별개 타이머 불필요
+      // _focT 가 400ms 포커스 타이머를 공유하므로 타이핑 중 재시작만 해도 충분
+      _onFocus(ft, blockIndex: blockIndex);
     }
     _savingN.value = true;
     _saveT?.cancel();
@@ -326,7 +329,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   void _onFocus(String text, {int blockIndex = -1}) {
     _focT?.cancel();
-    _focT = Timer(const Duration(milliseconds: 800), () {
+    _focT = Timer(const Duration(milliseconds: 400), () {
       // 마크다운 기호 제거
       final clean = text
           .replaceAll(RegExp(r'\*+'), '')
@@ -334,7 +337,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           .replaceAll(RegExp(r'~~|__'), '')
           .replaceAll('`', '')
           .trim();
-      // ✅ 5자 이상이면 분석 (짧은 블록도 허용)
+      // 5자 이상이면 분석
       if (clean.length >= 5) {
         ref
             .read(fileEditorProvider.notifier)
@@ -815,7 +818,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     // 코드/표 블록: 슬래시 메뉴 비활성 + 줄바꿈 허용 (분리 안 함)
     if (bt == BlockType.code || bt == BlockType.table) {
       _removeSlash();
-      _chg(ft: text);
+      _chg(ft: text, blockIndex: i);
       return;
     }
     if (text.contains('\n')) {
@@ -838,7 +841,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           }
         });
       }
-      _chg(ft: lines[0]);
+      _chg(ft: lines[0], blockIndex: i);
       return;
     }
 
@@ -881,7 +884,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => c.selection = TextSelection.collapsed(offset: _nc.length),
       );
-      _chg(ft: _nc);
+      _chg(ft: _nc, blockIndex: i);
       return;
     }
 
@@ -894,7 +897,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     else
       _removeSlash();
 
-    _chg(ft: text);
+    _chg(ft: text, blockIndex: i);
   }
 
   // ── 슬래시 메뉴 ────────────────────────────────────
@@ -1911,8 +1914,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                     if (_selectedBlocks.isNotEmpty || _focusedIdx != i) {
                       setState(() { _selectedBlocks.clear(); _focusedIdx = i; });
                     }
-                    _chg(ft: blocks[i].controller.text);
-                    _onFocus(blocks[i].controller.text, blockIndex: i);
+                    // _chg 내부에서 _onFocus(ft, blockIndex) 호출로 분석 트리거
+                    _chg(ft: blocks[i].controller.text, blockIndex: i);
                   },
                   onBlur: _removeSlash,
                   onSelect: () => setState(() {

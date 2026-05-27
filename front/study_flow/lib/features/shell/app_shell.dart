@@ -105,21 +105,28 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   Future<void> _deleteProject(BuildContext ctx, ProjectModel project) async {
-    await ref.read(projectProvider.notifier).deleteProject(project);
+    final ok = await ref.read(projectProvider.notifier).deleteProject(project);
     if (!mounted) return;
     // ignore: use_build_context_synchronously
     ScaffoldMessenger.of(ctx)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text('${project.name} 삭제됨'),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          action: SnackBarAction(
-            label: '실행취소',
-            onPressed: () => ref.read(projectProvider.notifier).addProject(project),
-          ),
-        ),
+        ok
+            ? SnackBar(
+                content: Text('${project.name} 삭제됨'),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                action: SnackBarAction(
+                  label: '실행취소',
+                  onPressed: () => ref.read(projectProvider.notifier).addProject(project),
+                ),
+              )
+            : SnackBar(
+                content: const Text('프로젝트 삭제에 실패했습니다. 다시 시도해주세요.'),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                backgroundColor: const Color(0xFFE8705E),
+              ),
       );
   }
 

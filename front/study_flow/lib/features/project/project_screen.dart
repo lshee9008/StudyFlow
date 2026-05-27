@@ -171,16 +171,34 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
       await FilesDBHelper.deleteFile(file.id);
     } else {
       try {
-        await http.delete(Uri.parse('$baseUrl/api/files/${file.id}'));
+        final res = await http
+            .delete(Uri.parse('$baseUrl/api/files/${file.id}'))
+            .timeout(const Duration(seconds: 15));
+        if (res.statusCode != 200 && res.statusCode != 204) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(
+              content: const Text('파일 삭제에 실패했습니다. 다시 시도해주세요.'),
+              backgroundColor: const Color(0xFFE8705E),
+            ));
+          return; // 실패 시 _reloadFiles 건너뜀 (현재 목록 유지)
+        }
       } catch (error) {
         debugPrint('deleteFile error: $error');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: const Text('파일 삭제 중 오류가 발생했습니다.'),
+            backgroundColor: const Color(0xFFE8705E),
+          ));
+        return;
       }
     }
 
     await _reloadFiles();
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()

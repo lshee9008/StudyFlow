@@ -886,6 +886,8 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
     _lastAnalyzedText = text;
     // ✅ currentAnalysis를 null로 리셋해서 이전 결과 지우기
     // 이전 분석 결과 초기화 후 로딩 시작
+    // copyWith 는 null을 "미제공"으로 처리해 currentAnalysis를 null로 못 내리므로
+    // 직접 생성하되 userMemo 등 모든 필드를 명시적으로 유지한다.
     state = FileEditorState(
       blocks: state.blocks,
       isLoading: state.isLoading,
@@ -911,7 +913,9 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       fileTags: state.fileTags,
       proofreadResult: state.proofreadResult,
       isProofreadLoading: state.isProofreadLoading,
+      summaryProgress: state.summaryProgress,
       analyzingBlockIndex: blockIndex,
+      userMemo: state.userMemo, // ✅ 메모 유실 방지
     );
     try {
       final res = await http
@@ -1448,18 +1452,27 @@ class FilesNotifier extends StateNotifier<List<FileModel>> {
     state = [f, ...state];
   }
 
-  Future<void> remove(String id) async {
-    if (!kIsWeb)
+  Future<bool> remove(String id) async {
+    if (!kIsWeb) {
       await FilesDBHelper.deleteFile(id);
-    else {
-      try {
-        await http
-            .delete(Uri.parse('$_api/api/files/$id'))
-            .timeout(const Duration(seconds: 10));
-      } catch (e) {
-        print('deleteFile: $e');
-      }
+      state = state.where((f) => f.id != id).toList();
+      return true;
     }
+    // 웹: 낙관적 제거 후 서버 요청 — 실패 시 복원
+    final prev = List<FileModel>.from(state);
     state = state.where((f) => f.id != id).toList();
+    try {
+      final res = await http
+          .delete(Uri.parse('$_api/api/files/$id'))
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode == 200 || res.statusCode == 204) return true;
+      // 서버 오류: 복원
+      state = prev;
+      return false;
+    } catch (e) {
+      print('deleteFile: $e');
+      state = prev; // 복원
+      return false;
+    }
   }
 }

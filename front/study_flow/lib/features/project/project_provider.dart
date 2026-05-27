@@ -150,29 +150,39 @@ class ProjectNotifier extends StateNotifier<List<ProjectModel>> {
   }
 
   // ── 삭제 ──────────────────────────────────────
-  Future<String?> deleteProject(ProjectModel project) async {
-    // 낙관적 업데이트
+  Future<bool> deleteProject(ProjectModel project) async {
+    // 낙관적 업데이트 (즉시 UI 반영)
+    final prev = List<ProjectModel>.from(state);
     state = state.where((p) => p.id != project.id).toList();
 
     if (isOnlineMode) {
       try {
         final res = await http.delete(
           Uri.parse('$baseUrl/api/projects/${project.id}'),
-        );
+        ).timeout(const Duration(seconds: 15));
         print('deleteProject Status: ${res.statusCode}');
-        if (res.statusCode == 200 && !kIsWeb) {
-          await ProjectsDBHelper.deleteProject(project.id);
+
+        if (res.statusCode == 200 || res.statusCode == 204) {
+          if (!kIsWeb) await ProjectsDBHelper.deleteProject(project.id);
+          return true;
+        } else {
+          // 서버 오류 → 낙관적 업데이트 복원
+          state = prev;
+          if (!kIsWeb) await ProjectsDBHelper.updateProject(project.id, isSync: 0);
+          return false;
         }
       } catch (e) {
         print('deleteProject error: $e');
-        if (!kIsWeb) {
-          await ProjectsDBHelper.updateProject(project.id, isSync: 2);
-        }
+        // 네트워크 오류 → 복원
+        state = prev;
+        if (!kIsWeb) await ProjectsDBHelper.updateProject(project.id, isSync: 2);
+        return false;
       }
     } else if (!kIsWeb) {
       await ProjectsDBHelper.updateProject(project.id, isSync: 2);
+      return true;
     }
-    return null;
+    return true;
   }
 
   // ── 전체 업데이트 ──────────────────────────────
