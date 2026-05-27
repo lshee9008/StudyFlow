@@ -8536,8 +8536,9 @@ class _GCS extends State<_GraphCanvas> {
           + minGap * (curr.length - 1).toDouble();
 
       // r_n ≥ √2·(m_prev + m_curr)/2 (문서 조건, + 최소간격)
+      // mCurr * 0.5: 레벨 CENTER 배치 (_placeSubtreeLinear 와 동일 공식 유지)
       final rn = math.sqrt2 * (mPrev + mCurr) / 2 + minGap;
-      totalR += rn + mCurr;        // 레벨 간 거리 + 현 레벨 높이
+      totalR += rn + mCurr * 0.5;  // 레벨 간 거리 + 현 레벨 반높이 (중심까지)
       maxHalfW = math.max(maxHalfW, lCurr / 2);
     }
 
@@ -8598,8 +8599,10 @@ class _GCS extends State<_GraphCanvas> {
       final mPrev = prev.fold(0.0, (m, id) => math.max(m, (halfSide[id] ?? 84.0))) * math.sqrt2;
       final mCurr = curr.fold(0.0, (m, id) => math.max(m, (halfSide[id] ?? 84.0))) * math.sqrt2;
 
+      // rn: 레벨 간 중심거리. mCurr*0.5만 더해 레벨 CENTER에 배치
+      // (이전: rn + mCurr로 레벨 BOTTOM에 배치해 과도하게 벌어지던 문제 수정)
       final rn = math.sqrt2 * (mPrev + mCurr) / 2 + minGap;
-      cumulativeR += rn + mCurr;
+      cumulativeR += rn + mCurr * 0.5;
 
       // 이 레벨의 중심 좌표 (basePos 기준 y축 방향 cumulativeR)
       final cx = basePos.dx + ax * cumulativeR;
@@ -8739,6 +8742,10 @@ class _GCS extends State<_GraphCanvas> {
 
       double r;
 
+      // 루트 레벨은 첫 간선이 지나치게 길어지지 않도록
+      // 자식의 서브트리 전체 boundary 대신 자식 노드 크기만 사용한다.
+      final isRootLevel = (id == rootId);
+
       if (hasAny) {
         // 삼각형 반각
         final tanHa = math.tan(math.pi / n);
@@ -8747,36 +8754,56 @@ class _GCS extends State<_GraphCanvas> {
 
         for (final cid in children) {
           if (needsIns[cid] == true) {
-            final tri = _computeTriangleNeeded(cid, childrenMap, halfSide);
-            final rNeeded = tanHa > 1e-6
-                ? math.max(tri.r, tri.halfW / tanHa)
-                : tri.r;
-            final effB = math.sqrt(rNeeded * rNeeded + tri.halfW * tri.halfW);
-            maxEffB = math.max(maxEffB, effB);
-            // 가장 큰 삼각형 기준: 오버플로우시 r 결정에 사용
-            maxTriR = math.max(maxTriR, rNeeded);
+            if (isRootLevel) {
+              // 루트 레벨: 노드 크기만 사용 (서브트리 크기는 무시)
+              final effB = (halfSide[cid] ?? 72.0) * math.sqrt2;
+              maxEffB = math.max(maxEffB, effB);
+            } else {
+              final tri = _computeTriangleNeeded(cid, childrenMap, halfSide);
+              final rNeeded = tanHa > 1e-6
+                  ? math.max(tri.r, tri.halfW / tanHa)
+                  : tri.r;
+              final effB = math.sqrt(rNeeded * rNeeded + tri.halfW * tri.halfW);
+              maxEffB = math.max(maxEffB, effB);
+              // 가장 큰 삼각형 기준: 오버플로우시 r 결정에 사용
+              maxTriR = math.max(maxTriR, rNeeded);
+            }
           } else {
-            maxEffB = math.max(maxEffB, boundary[cid] ?? a * math.sqrt2);
+            final effB = isRootLevel
+                ? (halfSide[cid] ?? 72.0) * math.sqrt2
+                : (boundary[cid] ?? a * math.sqrt2);
+            maxEffB = math.max(maxEffB, effB);
           }
         }
 
         final sinHalf = math.sin(math.pi / n);
-        final r1 = 2 * math.sqrt2 * a;
+        // 루트 레벨: r1 계수를 줄여 첫 간선 단축 (2√2 → √2+0.5)
+        final r1 = isRootLevel
+            ? (a + (children.fold(0.0, (m, c) => math.max(m, halfSide[c] ?? 72.0)) + 40))
+            : 2 * math.sqrt2 * a;
         final r2 = sinHalf > 1e-6 ? maxEffB / sinHalf : double.infinity;
-        // 가장 큰 삼각형이 기준: r_polygon과 r_triangle_overflow 중 최대값
-        r = math.max(math.max(r1, r2), maxTriR) * 1.15;
-        r = r.clamp(80.0, 3000.0);
+        r = math.max(math.max(r1, r2), maxTriR) * (isRootLevel ? 1.05 : 1.15);
+        r = r.clamp(80.0, isRootLevel ? 420.0 : 3000.0);
       } else {
         // 기존 정다각형법
-        final maxCB = children.fold(0.0, (prev, c) => math.max(prev, boundary[c] ?? a));
+        // 루트 레벨은 자식 노드 크기만으로 r 결정 (서브트리 boundary 무시)
+        final maxCB = children.fold(0.0, (prev, c) {
+          final b = isRootLevel
+              ? (halfSide[c] ?? 72.0) * math.sqrt2
+              : (boundary[c] ?? a);
+          return math.max(prev, b);
+        });
         if (n == 1) {
           r = math.max(2 * math.sqrt2 * a, a + maxCB * 1.3 + 20);
+          if (isRootLevel) r = r.clamp(80.0, 380.0);
         } else {
           final sinHalf = math.sin(math.pi / n);
-          final r1 = 2 * math.sqrt2 * a;
+          final r1 = isRootLevel
+              ? (a + (children.fold(0.0, (m, c) => math.max(m, halfSide[c] ?? 72.0)) + 40))
+              : 2 * math.sqrt2 * a;
           final r2 = sinHalf > 1e-6 ? maxCB / sinHalf : double.infinity;
-          r = math.max(r1, r2) * 1.15;
-          r = r.clamp(80.0, 3000.0);
+          r = math.max(r1, r2) * (isRootLevel ? 1.05 : 1.15);
+          r = r.clamp(80.0, isRootLevel ? 420.0 : 3000.0);
         }
       }
 
@@ -9191,6 +9218,62 @@ class _GCS extends State<_GraphCanvas> {
       ..scaleByDouble(scale, scale, 1, 1);
   }
 
+  /// 노드를 펼쳤을 때: 펼친 노드 + 직계 자식 전체가 뷰포트에 보이도록 패닝.
+  /// 현재 배율에서 모두 들어오면 배율 유지, 너무 넓으면 최소한으로만 축소.
+  void _centerOnExpanded(String id) {
+    _GraphNodeLayout? parent;
+    for (final n in ns) {
+      if (n.id == id) { parent = n; break; }
+    }
+    if (parent == null) { _centerOnNodeId(id); return; }
+
+    // 직계 자식 수집 (엣지 기준)
+    final childIds = es.where((e) => e.s == id).map((e) => e.t).toSet();
+    final childNodes = ns.where((n) => childIds.contains(n.id)).toList();
+
+    if (childNodes.isEmpty) { _centerOnNodeId(id); return; }
+
+    // 부모 + 자식의 bounding box
+    double minX = parent.rect.left,  minY = parent.rect.top;
+    double maxX = parent.rect.right, maxY = parent.rect.bottom;
+    for (final c in childNodes) {
+      minX = math.min(minX, c.rect.left);
+      minY = math.min(minY, c.rect.top);
+      maxX = math.max(maxX, c.rect.right);
+      maxY = math.max(maxY, c.rect.bottom);
+    }
+
+    final box = context.findRenderObject() as RenderBox?;
+    final viewSize = box?.size ?? const Size(800, 600);
+    final scale = _controller.value.getMaxScaleOnAxis();
+
+    const pad = 60.0;
+    final contentW = (maxX - minX) + pad * 2;
+    final contentH = (maxY - minY) + pad * 2;
+    final cx = (minX + maxX) / 2;
+    final cy = (minY + maxY) / 2;
+
+    // 현재 배율에서 bbox가 뷰포트에 들어오면 그대로 패닝
+    final fitsInView =
+        contentW * scale <= viewSize.width &&
+        contentH * scale <= viewSize.height;
+
+    final useScale = fitsInView
+        ? scale
+        : math.min(
+            viewSize.width / contentW,
+            viewSize.height / contentH,
+          ).clamp(scale * 0.45, scale); // 최대 55% 축소까지만 허용
+
+    _controller.value = Matrix4.identity()
+      ..translateByDouble(
+        viewSize.width  / 2 - cx * useScale,
+        viewSize.height / 2 - cy * useScale,
+        0, 1,
+      )
+      ..scaleByDouble(useScale, useScale, 1, 1);
+  }
+
   void _zoomIn() {
     final box = context.findRenderObject() as RenderBox?;
     final viewSize = box?.size ?? const Size(800, 600);
@@ -9325,15 +9408,22 @@ class _GCS extends State<_GraphCanvas> {
                         hasChildren: _hasKids.contains(node.id),
                         isCollapsed: _collapsed.contains(node.id),
                         onToggleCollapse: () {
-                          if (_collapsed.contains(node.id)) {
+                          final isExpanding = _collapsed.contains(node.id);
+                          if (isExpanding) {
                             _collapsed.remove(node.id);
                           } else {
                             _collapsed.add(node.id);
                           }
                           _build(); // 내부에서 setState 호출 (ns 갱신)
-                          // 펼친/접은 노드를 화면 중앙으로 패닝 — 배율 변경 없음
                           WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) _centerOnNodeId(node.id);
+                            if (!mounted) return;
+                            if (isExpanding) {
+                              // 펼침: 부모+자식이 모두 보이도록 패닝
+                              _centerOnExpanded(node.id);
+                            } else {
+                              // 접음: 해당 노드만 중앙으로
+                              _centerOnNodeId(node.id);
+                            }
                           });
                         },
                         onSelect: () => _handleNodeTap(node),
