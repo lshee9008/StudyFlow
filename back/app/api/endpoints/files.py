@@ -235,10 +235,15 @@ async def proofread_content(req: ProofreadRequest):
 def _update_vector(file: Files):
     try:
         from app.core.vector_store import get_vector_store
+        from app.crud.crud_files import _extract_plain_text
         import langchain_core.documents
         vector_store = get_vector_store()
+        # JSON 블록 배열 → 순수 텍스트로 임베딩 (검색 품질 향상)
+        plain_text = _extract_plain_text(file.content or "")
+        if not plain_text.strip():
+            return
         doc = langchain_core.documents.Document(
-            page_content=file.content or "",
+            page_content=plain_text,
             metadata={
                 "file_id": str(file.id),
                 "project_id": str(file.project_id),

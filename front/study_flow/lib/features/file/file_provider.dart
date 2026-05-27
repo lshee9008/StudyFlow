@@ -12,6 +12,31 @@ import '../../models/block_model.dart';
 import '../../core/markdown_parser.dart';
 import 'file_model.dart';
 
+// ─────────────────────────────────────────────────────────
+// QA 채팅 메시지 모델
+// ─────────────────────────────────────────────────────────
+class QAMessage {
+  final String role; // 'user' | 'assistant'
+  final String content;
+  final DateTime timestamp;
+
+  QAMessage({required this.role, required this.content, required this.timestamp});
+
+  Map<String, dynamic> toJson() => {
+    'role': role,
+    'content': content,
+    'timestamp': timestamp.toIso8601String(),
+  };
+
+  factory QAMessage.fromJson(Map<String, dynamic> j) => QAMessage(
+    role: j['role'] as String? ?? 'assistant',
+    content: j['content'] as String? ?? '',
+    timestamp: j['timestamp'] != null
+        ? DateTime.tryParse(j['timestamp'] as String) ?? DateTime.now()
+        : DateTime.now(),
+  );
+}
+
 // provider_config.dart 의 baseUrl 을 사용 (dart-define API_BASE 로 주입 가능)
 const String _api = baseUrl;
 
@@ -46,7 +71,7 @@ class FileEditorState {
   final String? currentMemo;
   final List<dynamic>? quizData;
   final Map<int, int> quizAnswers;
-  final String? qaAnswer;
+  final List<QAMessage> qaMessages; // 채팅 히스토리 (user + assistant)
   final Map<String, dynamic>? graphData;
   final String? graphError;
 
@@ -85,7 +110,7 @@ class FileEditorState {
     this.currentMemo,
     this.quizData,
     this.quizAnswers = const {},
-    this.qaAnswer,
+    this.qaMessages = const [],
     this.graphData,
     this.graphError,
     this.focusedText = '',
@@ -116,7 +141,7 @@ class FileEditorState {
     String? currentMemo,
     List<dynamic>? quizData,
     Map<int, int>? quizAnswers,
-    String? qaAnswer,
+    List<QAMessage>? qaMessages,
     Map<String, dynamic>? graphData,
     String? graphError,
     bool clearGraphError = false,
@@ -146,7 +171,7 @@ class FileEditorState {
     currentMemo: currentMemo ?? this.currentMemo,
     quizData: quizData ?? this.quizData,
     quizAnswers: quizAnswers ?? this.quizAnswers,
-    qaAnswer: qaAnswer ?? this.qaAnswer,
+    qaMessages: qaMessages ?? this.qaMessages,
     graphData: graphData ?? this.graphData,
     graphError: clearGraphError ? null : (graphError ?? this.graphError),
     focusedText: focusedText ?? this.focusedText,
@@ -904,7 +929,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       currentMemo: state.currentMemo,
       quizData: state.quizData,
       quizAnswers: state.quizAnswers,
-      qaAnswer: state.qaAnswer,
+      qaMessages: state.qaMessages,
       graphData: state.graphData,
       focusedText: text,
       lastSavedAt: state.lastSavedAt,
@@ -1018,7 +1043,16 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
   // ─── Ask AI ─────────────────────────────────────────
   Future<void> askAI(String query, String projectId) async {
     if (query.trim().isEmpty) return;
-    state = state.copyWith(isQALoading: true);
+    // 사용자 메시지 즉시 추가
+    final userMsg = QAMessage(
+      role: 'user',
+      content: query.trim(),
+      timestamp: DateTime.now(),
+    );
+    state = state.copyWith(
+      isQALoading: true,
+      qaMessages: [...state.qaMessages, userMsg],
+    );
     try {
       final res = await http
           .post(
@@ -1034,16 +1068,42 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
       if (!mounted) return;
       if (res.statusCode == 200) {
         final d = jsonDecode(utf8.decode(res.bodyBytes));
+        final src = d['source'] as String?;
+        final answer = d['answer'] as String? ?? '';
+        final assistantContent = src != null && src.isNotEmpty
+            ? '$answer\n\n_출처: ${src}_'
+            : answer;
+        final assistantMsg = QAMessage(
+          role: 'assistant',
+          content: assistantContent,
+          timestamp: DateTime.now(),
+        );
         state = state.copyWith(
-          qaAnswer: '**출처: ${d['source']}**\n\n${d['answer']}',
+          qaMessages: [...state.qaMessages, assistantMsg],
           isQALoading: false,
         );
       } else {
-        state = state.copyWith(isQALoading: false, qaAnswer: '응답 실패');
+        final errMsg = QAMessage(
+          role: 'assistant',
+          content: '응답에 실패했습니다. 잠시 후 다시 시도해주세요.',
+          timestamp: DateTime.now(),
+        );
+        state = state.copyWith(
+          isQALoading: false,
+          qaMessages: [...state.qaMessages, errMsg],
+        );
       }
     } catch (_) {
       if (!mounted) return;
-      state = state.copyWith(isQALoading: false, qaAnswer: '연결 오류');
+      final errMsg = QAMessage(
+        role: 'assistant',
+        content: '연결 오류가 발생했습니다.',
+        timestamp: DateTime.now(),
+      );
+      state = state.copyWith(
+        isQALoading: false,
+        qaMessages: [...state.qaMessages, errMsg],
+      );
     }
   }
 

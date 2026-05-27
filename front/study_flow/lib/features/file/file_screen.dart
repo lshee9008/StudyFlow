@@ -1417,7 +1417,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           quizData: s.quizData,
           quizAnswers: s.quizAnswers,
           isQuizLoading: s.isQuizLoading,
-          qaAnswer: s.qaAnswer,
+          qaMessages: s.qaMessages,
           isQALoading: s.isQALoading,
           graphData: s.graphData,
           isGraphLoading: s.isGraphLoading,
@@ -1637,7 +1637,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                                 quizData: panelState.quizData,
                                 quizAnswers: panelState.quizAnswers,
                                 isQuizLoading: panelState.isQuizLoading,
-                                qaAnswer: panelState.qaAnswer,
+                                qaMessages: panelState.qaMessages,
                                 isQALoading: panelState.isQALoading,
                                 graphData: panelState.graphData,
                                 isGraphLoading: panelState.isGraphLoading,
@@ -8169,59 +8169,294 @@ class _QuizResultBar extends StatelessWidget {
   }
 }
 
-class _AskPanel extends StatelessWidget {
+class _AskPanel extends StatefulWidget {
   final FileEditorState st;
   final TextEditingController ctrl;
   final void Function(String) onAsk;
   const _AskPanel({required this.st, required this.ctrl, required this.onAsk});
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Expanded(
-        child: st.isQALoading
-            ? const _Load('검색 중...')
-            : st.qaAnswer != null
-            ? SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(14, 16, 14, 20),
-                child: MarkdownBody(data: st.qaAnswer!, styleSheet: _md()),
-              )
-            : const _Empty(
-                icon: Icons.chat_bubble_outline_rounded,
-                title: '빠른 질문',
-                desc: '내 노트 + 웹으로\n무엇이든 답합니다.',
-              ),
-      ),
-      Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-        decoration: BoxDecoration(
-          color: _bg2.withValues(alpha: 0.92),
-          border: const Border(top: BorderSide(color: _bdr)),
+  State<_AskPanel> createState() => _AskPanelState();
+}
+
+class _AskPanelState extends State<_AskPanel> {
+  final _scrollCtrl = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AskPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 새 메시지 추가 시 자동 스크롤 맨 아래
+    if (widget.st.qaMessages.length != oldWidget.st.qaMessages.length ||
+        widget.st.isQALoading != oldWidget.st.isQALoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollCtrl.hasClients) {
+          _scrollCtrl.animateTo(
+            _scrollCtrl.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
+  void _send() {
+    final q = widget.ctrl.text.trim();
+    if (q.isEmpty) return;
+    widget.onAsk(q);
+    widget.ctrl.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final msgs = widget.st.qaMessages;
+    return Column(
+      children: [
+        // ── 채팅 영역 ──────────────────────────────
+        Expanded(
+          child: msgs.isEmpty && !widget.st.isQALoading
+              ? const _Empty(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  title: '빠른 질문',
+                  desc: '내 노트 + 웹으로\n무엇이든 답합니다.',
+                )
+              : ListView.builder(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                  itemCount: msgs.length + (widget.st.isQALoading ? 1 : 0),
+                  itemBuilder: (ctx, i) {
+                    if (i == msgs.length) {
+                      // 로딩 버블
+                      return const Padding(
+                        padding: EdgeInsets.only(bottom: 10),
+                        child: _QABubble(
+                          role: 'assistant',
+                          content: '',
+                          isLoading: true,
+                          timestamp: null,
+                        ),
+                      );
+                    }
+                    final m = msgs[i];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _QABubble(
+                        role: m.role,
+                        content: m.content,
+                        isLoading: false,
+                        timestamp: m.timestamp,
+                      ),
+                    );
+                  },
+                ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: AppInput(
-                controller: ctrl,
-                hintText: '노트에 대해 물어보세요',
-                onSubmitted: (v) {
-                  onAsk(v);
-                  ctrl.clear();
-                },
+        // ── 입력창 ─────────────────────────────────
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+          decoration: BoxDecoration(
+            color: _bg2.withValues(alpha: 0.92),
+            border: const Border(top: BorderSide(color: _bdr)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: AppInput(
+                  controller: widget.ctrl,
+                  hintText: '노트에 대해 물어보세요',
+                  onSubmitted: (_) => _send(),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            AppButton(
-              label: '질문',
-              icon: LucideIcons.arrowUp,
-              onPressed: () {
-                onAsk(ctrl.text);
-                ctrl.clear();
-              },
-            ),
-          ],
+              const SizedBox(width: 8),
+              AppButton(
+                label: '전송',
+                icon: LucideIcons.arrowUp,
+                onPressed: _send,
+              ),
+            ],
+          ),
         ),
+      ],
+    );
+  }
+}
+
+// ── QA 말풍선 ────────────────────────────────────────────
+class _QABubble extends StatelessWidget {
+  final String role;
+  final String content;
+  final bool isLoading;
+  final DateTime? timestamp;
+  const _QABubble({
+    required this.role,
+    required this.content,
+    required this.isLoading,
+    required this.timestamp,
+  });
+
+  bool get isUser => role == 'user';
+
+  String _fmt(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    final timeStr =
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    if (diff.inDays == 0) return timeStr;
+    if (diff.inDays == 1) return '어제 $timeStr';
+    return '${dt.month}/${dt.day} $timeStr';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: [
+        // AI 아이콘 (왼쪽)
+        if (!isUser) ...[
+          Container(
+            width: 26,
+            height: 26,
+            margin: const EdgeInsets.only(right: 7, bottom: 2),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF7C6FFF), Color(0xFF9B8BFF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(LucideIcons.sparkles, size: 13, color: Colors.white),
+          ),
+        ],
+
+        // 말풍선
+        Flexible(
+          child: Column(
+            crossAxisAlignment:
+                isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              Container(
+                constraints: const BoxConstraints(maxWidth: 280),
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isUser
+                      ? _acc.withValues(alpha: 0.18)
+                      : _bg3.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(14),
+                    topRight: const Radius.circular(14),
+                    bottomLeft: Radius.circular(isUser ? 14 : 4),
+                    bottomRight: Radius.circular(isUser ? 4 : 14),
+                  ),
+                  border: Border.all(
+                    color: isUser
+                        ? _acc.withValues(alpha: 0.28)
+                        : _bdr.withValues(alpha: 0.7),
+                  ),
+                ),
+                child: isLoading
+                    ? SizedBox(
+                        width: 36,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: List.generate(3, (i) => _Dot(delay: i * 160)),
+                        ),
+                      )
+                    : isUser
+                        ? Text(
+                            content,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              height: 1.55,
+                              color: _txt0,
+                              letterSpacing: -0.1,
+                            ),
+                          )
+                        : MarkdownBody(data: content, styleSheet: _md()),
+              ),
+              if (timestamp != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, left: 2, right: 2),
+                  child: Text(
+                    _fmt(timestamp!),
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: _txt2.withValues(alpha: 0.45),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // 사용자 아이콘 (오른쪽)
+        if (isUser) ...[
+          Container(
+            width: 26,
+            height: 26,
+            margin: const EdgeInsets.only(left: 7, bottom: 2),
+            decoration: BoxDecoration(
+              color: _bg3.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _bdr),
+            ),
+            child: Icon(LucideIcons.user, size: 13, color: _txt2),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// 로딩 도트 애니메이션
+class _Dot extends StatefulWidget {
+  final int delay;
+  const _Dot({required this.delay});
+  @override
+  State<_Dot> createState() => _DotState();
+}
+
+class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
+  late AnimationController _ac;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ac = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    Future.delayed(Duration(milliseconds: widget.delay), () {
+      if (mounted) _ac.repeat(reverse: true);
+    });
+    _anim = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _ac, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _anim,
+    builder: (_, __) => Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: _txt2.withValues(alpha: _anim.value),
+        shape: BoxShape.circle,
       ),
-    ],
+    ),
   );
 }
 
