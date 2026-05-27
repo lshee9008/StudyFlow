@@ -8742,75 +8742,47 @@ class _GCS extends State<_GraphCanvas> {
 
       double r;
 
-      // 루트 레벨은 첫 간선이 지나치게 길어지지 않도록
-      // 자식의 서브트리 전체 boundary 대신 자식 노드 크기만 사용한다.
+      // 팬-호(fan-arc) 기반 r 계산:
+      // 자식 노드 크기 기반으로만 간격 결정 → 지수적 boundary 누적 방지
+      // root: 360° 전방위, 그 외: ±90° 전방 부채꼴(180°)
       final isRootLevel = (id == rootId);
+      final fanAngle = isRootLevel ? 2 * math.pi : math.pi;
 
+      // 자식 중 최대 halfSide (노드 크기)
+      final maxChildHS = children.fold(0.0, (m, c) => math.max(m, halfSide[c] ?? 72.0));
+
+      // 호-호 비겹침 r: 부채꼴을 n등분했을 때 인접 자식 사이 간격 ≥ 자식 크기
+      final r_arc = n > 1
+          ? (n * 2 * maxChildHS * math.sqrt2) / fanAngle
+          : 0.0;
+
+      // 직선 최소 r: 부모 크기 + 자식 크기 + 여백
+      final r_direct = a + maxChildHS + 40.0;
+
+      // 부분트리삽입 노드가 있으면 삼각형 깊이도 고려
+      double maxTriR = 0.0;
       if (hasAny) {
-        // 삼각형 반각
-        final tanHa = math.tan(math.pi / n);
-        double maxEffB = 0.0;
-        double maxTriR = 0.0; // 가장 큰 삼각형의 r (오버플로우 기준점)
-
+        final tanHa = n > 1 ? math.tan(math.pi / n) : 1.0;
         for (final cid in children) {
           if (needsIns[cid] == true) {
-            if (isRootLevel) {
-              // 루트 레벨: 노드 크기만 사용 (서브트리 크기는 무시)
-              final effB = (halfSide[cid] ?? 72.0) * math.sqrt2;
-              maxEffB = math.max(maxEffB, effB);
-            } else {
-              final tri = _computeTriangleNeeded(cid, childrenMap, halfSide);
-              final rNeeded = tanHa > 1e-6
-                  ? math.max(tri.r, tri.halfW / tanHa)
-                  : tri.r;
-              final effB = math.sqrt(rNeeded * rNeeded + tri.halfW * tri.halfW);
-              maxEffB = math.max(maxEffB, effB);
-              // 가장 큰 삼각형 기준: 오버플로우시 r 결정에 사용
-              maxTriR = math.max(maxTriR, rNeeded);
-            }
-          } else {
-            final effB = isRootLevel
-                ? (halfSide[cid] ?? 72.0) * math.sqrt2
-                : (boundary[cid] ?? a * math.sqrt2);
-            maxEffB = math.max(maxEffB, effB);
+            final tri = _computeTriangleNeeded(cid, childrenMap, halfSide);
+            final rNeeded = tanHa > 1e-6
+                ? math.max(tri.r, tri.halfW / tanHa)
+                : tri.r;
+            maxTriR = math.max(maxTriR, rNeeded);
           }
-        }
-
-        final sinHalf = math.sin(math.pi / n);
-        // 루트 레벨: r1 계수를 줄여 첫 간선 단축 (2√2 → √2+0.5)
-        final r1 = isRootLevel
-            ? (a + (children.fold(0.0, (m, c) => math.max(m, halfSide[c] ?? 72.0)) + 40))
-            : 2 * math.sqrt2 * a;
-        final r2 = sinHalf > 1e-6 ? maxEffB / sinHalf : double.infinity;
-        r = math.max(math.max(r1, r2), maxTriR) * (isRootLevel ? 1.05 : 1.15);
-        r = r.clamp(80.0, isRootLevel ? 420.0 : 3000.0);
-      } else {
-        // 기존 정다각형법
-        // 루트 레벨은 자식 노드 크기만으로 r 결정 (서브트리 boundary 무시)
-        final maxCB = children.fold(0.0, (prev, c) {
-          final b = isRootLevel
-              ? (halfSide[c] ?? 72.0) * math.sqrt2
-              : (boundary[c] ?? a);
-          return math.max(prev, b);
-        });
-        if (n == 1) {
-          r = math.max(2 * math.sqrt2 * a, a + maxCB * 1.3 + 20);
-          if (isRootLevel) r = r.clamp(80.0, 380.0);
-        } else {
-          final sinHalf = math.sin(math.pi / n);
-          final r1 = isRootLevel
-              ? (a + (children.fold(0.0, (m, c) => math.max(m, halfSide[c] ?? 72.0)) + 40))
-              : 2 * math.sqrt2 * a;
-          final r2 = sinHalf > 1e-6 ? maxCB / sinHalf : double.infinity;
-          r = math.max(r1, r2) * (isRootLevel ? 1.05 : 1.15);
-          r = r.clamp(80.0, isRootLevel ? 420.0 : 3000.0);
         }
       }
 
+      r = math.max(math.max(r_arc, r_direct), maxTriR) * 1.1;
+      r = r.clamp(80.0, 600.0);
+
       for (int k = 0; k < n; k++) {
         final cid = children[k];
-        // 12시 방향 시작, 시계방향
-        final angle = k * 2 * math.pi / n - math.pi / 2;
+        // 부채꼴 중심 = incomingAngle (루트는 -π/2 고정)
+        // 자식들을 fanAngle 범위 내에서 균등 배분
+        final step = n > 1 ? fanAngle / n : 0.0;
+        final angle = incomingAngle + (k - (n - 1) / 2.0) * step;
         final childPos = Offset(
           pos.dx + r * math.cos(angle),
           pos.dy + r * math.sin(angle),
