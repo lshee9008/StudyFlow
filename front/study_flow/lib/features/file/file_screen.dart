@@ -604,18 +604,36 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       return KeyEventResult.handled;
     }
 
-    // ── Enter ─────────────────────────────────────────
-    if (e.logicalKey == LogicalKeyboardKey.enter && !meta && !ctrl) {
+    // ── Shift+Enter: 소프트 개행 (블록 분리 없이 줄바꿈) ──────
+    if (e.logicalKey == LogicalKeyboardKey.enter && !meta && !ctrl && shift) {
+      final text = bc.text;
+      final sel  = bc.selection;
+      final start = sel.isValid ? sel.start.clamp(0, text.length) : text.length;
+      final end2  = sel.isValid ? sel.end.clamp(0, text.length)   : start;
+      final newText = text.substring(0, start) + '\n' + text.substring(end2);
+      bc.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: start + 1),
+      );
+      _chg();
+      return KeyEventResult.handled;
+    }
+
+    // ── Enter: 블록 분리 / 코드 줄바꿈 / 리스트 연속 생성 ────
+    if (e.logicalKey == LogicalKeyboardKey.enter && !meta && !ctrl && !shift) {
       final text = bc.text;
       final pos = bc.selection.baseOffset.clamp(0, text.length);
 
-      // 코드 블록: Enter → 줄바꿈 (블록 분리 안 함)
+      // 코드 블록: Enter → 줄바꿈 (블록 분리 안 함, KeyRepeat 허용)
       if (bt == BlockType.code) {
         bc.text = '${text.substring(0, pos)}\n${text.substring(pos)}';
         bc.selection = TextSelection.collapsed(offset: pos + 1);
         _chg();
         return KeyEventResult.handled;
       }
+
+      // 홀드 Enter 방지: 코드 블록 외에는 KeyRepeat 무시 (블록 쏟아짐 차단)
+      if (e is KeyRepeatEvent) return KeyEventResult.handled;
 
       // 빈 리스트 → 탈출 (text로 전환)
       if (text.isEmpty &&
@@ -707,7 +725,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       // 현재 줄의 시작으로
       final lineStart = text.lastIndexOf('\n', pos > 0 ? pos - 1 : 0);
       final target = lineStart == -1 ? 0 : lineStart + 1;
-      bc.selection = TextSelection.collapsed(offset: target);
+      if (shift) {
+        bc.selection = TextSelection(baseOffset: bc.selection.baseOffset, extentOffset: target);
+      } else {
+        bc.selection = TextSelection.collapsed(offset: target);
+      }
       return KeyEventResult.handled;
     }
     if (e.logicalKey == LogicalKeyboardKey.end) {
@@ -715,12 +737,17 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       final pos = bc.selection.baseOffset.clamp(0, text.length);
       final lineEnd = text.indexOf('\n', pos);
       final target = lineEnd == -1 ? text.length : lineEnd;
-      bc.selection = TextSelection.collapsed(offset: target);
+      if (shift) {
+        bc.selection = TextSelection(baseOffset: bc.selection.baseOffset, extentOffset: target);
+      } else {
+        bc.selection = TextSelection.collapsed(offset: target);
+      }
       return KeyEventResult.handled;
     }
 
     // ── 방향키: 텍스트 경계에서만 블록 이동 ─────────
-    if (e.logicalKey == LogicalKeyboardKey.arrowUp && i > 0) {
+    // Shift를 누른 경우 선택 확장 중이므로 블록 경계 이동 차단
+    if (e.logicalKey == LogicalKeyboardKey.arrowUp && i > 0 && !shift) {
       final sel = bc.selection;
       if (sel.isCollapsed && sel.baseOffset == 0) {
         _foc(i - 1);
@@ -728,7 +755,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       }
       return KeyEventResult.ignored;
     }
-    if (e.logicalKey == LogicalKeyboardKey.arrowDown && i < blocks.length - 1) {
+    if (e.logicalKey == LogicalKeyboardKey.arrowDown && i < blocks.length - 1 && !shift) {
       final sel = bc.selection;
       if (sel.isCollapsed && sel.baseOffset == bc.text.length) {
         _focStart(i + 1);
@@ -9302,6 +9329,31 @@ class _GCS extends State<_GraphCanvas> {
     });
   }
 
+  /// 모든 노드 펼치기
+  void _expandAll() {
+    setState(() => _collapsed.clear());
+    _build();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _fitBoard();
+    });
+  }
+
+  /// 루트 직계(1레벨)만 보이도록 모두 접기
+  void _collapseAll() {
+    setState(() {
+      _collapsed.clear();
+      for (final id in _hasKids) {
+        if (!ns.any((n) => n.id == id && n.style == _GraphCardStyle.core)) {
+          _collapsed.add(id);
+        }
+      }
+    });
+    _build();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _fitBoard();
+    });
+  }
+
   void _addNode() {
     final root = ns.firstWhere(
       (node) => node.style == _GraphCardStyle.core,
@@ -9535,6 +9587,10 @@ class _GCS extends State<_GraphCanvas> {
                   ),
                   const _PillDivider(),
                   _PillBtn(icon: LucideIcons.rotateCcw, tip: '레이아웃 재정렬', onTap: _resetLayout),
+                  const _PillDivider(),
+                  _PillBtn(icon: LucideIcons.chevronsDown, tip: '전체 펼치기', onTap: _expandAll),
+                  _PillBtn(icon: LucideIcons.chevronsUp, tip: '전체 접기', onTap: _collapseAll),
+                  const _PillDivider(),
                   _PillBtn(
                     icon: LucideIcons.gitBranchPlus,
                     tip: _connectSourceId == null ? '엣지 연결' : '연결 취소',
@@ -10127,7 +10183,7 @@ class _PillBtn extends StatelessWidget {
             color: isActive ? _acc.withValues(alpha: 0.18) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, size: 16, color: isActive ? _acc : (iconColor ?? _txt1)),
+          child: Icon(icon, size: 16, color: isActive ? _acc : (iconColor ?? Colors.white.withValues(alpha: 0.72))),
         ),
       ),
     );
@@ -10186,14 +10242,14 @@ class _LayoutTabToggle extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 12, color: active ? _acc : _txt2),
+            Icon(icon, size: 12, color: active ? _acc : Colors.white.withValues(alpha: 0.72)),
             const SizedBox(width: 4),
             Text(
               label,
               style: GoogleFonts.inter(
                 fontSize: 11,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                color: active ? _acc : _txt2,
+                color: active ? _acc : Colors.white.withValues(alpha: 0.72),
               ),
             ),
           ],
