@@ -9007,7 +9007,11 @@ class _GCS extends State<_GraphCanvas> {
     }
 
     // ── 7. 보드 크기 계산 & 루트를 보드 중앙으로 이동 ────────
-    const margin = 200.0;
+    // 노드는 boardW/2 기준(centerX)으로 배치되므로:
+    //   오른쪽 한계: centerX + maxX + nodeHW ≤ boardW  →  boardW ≥ 2*(maxX + margin)
+    //   왼쪽  한계: centerX + minX - nodeHW ≥ 0        →  boardW ≥ 2*(margin - minX)
+    // 두 조건을 동시에 만족: boardW ≥ 2 * max(maxX+margin, margin-minX)
+    const margin = 300.0; // 노드 폭 여유까지 흡수할 수 있는 여백
     double minX = 0, minY = 0, maxX = 0, maxY = 0;
     for (final pos in relativePositions.values) {
       minX = math.min(minX, pos.dx);
@@ -9016,11 +9020,11 @@ class _GCS extends State<_GraphCanvas> {
       maxY = math.max(maxY, pos.dy);
     }
 
-    final treeW = maxX - minX + margin * 2;
-    final treeH = maxY - minY + margin * 2;
-    // 보드 크기: 트리 너비와 높이에 맞춤 (과도한 확장 방지)
-    final boardW = math.max(3200.0, treeW);
-    final boardH = math.max(2400.0, treeH);
+    // 보드는 노드 배치 범위의 2배 + 여백으로 설정 (경계 잘림 방지)
+    final boardW = math.max(3200.0,
+        2.0 * math.max(maxX + margin, margin - minX));
+    final boardH = math.max(2400.0,
+        2.0 * math.max(maxY + margin, margin - minY));
     _boardSize = Size(boardW, boardH);
 
     final centerX = boardW / 2;
