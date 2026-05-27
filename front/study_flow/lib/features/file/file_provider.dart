@@ -373,7 +373,7 @@ class FileEditorNotifier extends StateNotifier<FileEditorState> {
         print('saveFile error: $e');
       }
     }
-    state = state.copyWith(lastSavedAt: DateTime.now());
+    if (mounted) state = state.copyWith(lastSavedAt: DateTime.now());
   }
 
   // ─── 콘텐츠 해시 (변경 감지용) ─────────────────────

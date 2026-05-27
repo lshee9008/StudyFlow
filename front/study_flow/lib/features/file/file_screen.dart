@@ -221,6 +221,17 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    // 미저장 변경사항이 있으면 즉시 flush (화면 이탈 전 저장 보장)
+    if (_saveT?.isActive == true) {
+      _saveT!.cancel();
+      ref.read(fileEditorProvider.notifier).saveFile(
+        fileId: widget.fileId,
+        title: _tCtrl.text,
+        tags: _gCtrl.text,
+        prompt: _pCtrl.text,
+        updateAt: DateTime.now(),
+      );
+    }
     _saveT?.cancel();
     _focT?.cancel();
     _sumT?.cancel();
@@ -1413,6 +1424,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
           proofreadResult: s.proofreadResult,
           isProofreadLoading: s.isProofreadLoading,
           analyzingBlockIndex: s.analyzingBlockIndex,
+          userMemo: s.userMemo, // ✅ 메모 필드 리셋 방지
         ),
       ),
     );
@@ -1634,6 +1646,7 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                                     panelState.isProofreadLoading,
                                 analyzingBlockIndex:
                                     panelState.analyzingBlockIndex,
+                                userMemo: panelState.userMemo, // ✅ 메모 보존
                               ),
                             ),
                           ),
