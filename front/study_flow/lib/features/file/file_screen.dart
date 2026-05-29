@@ -89,14 +89,6 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
   Offset? _dragCurrent;
   bool _isDragging = false;
   final GlobalKey _dragLayerKey = GlobalKey();
-  // Pomodoro
-  Timer? _pomT;
-  int _pomSecs = 25 * 60; // 25분
-  bool _pomRunning = false;
-  bool _pomIsWork = true; // true=집중, false=휴식
-  static const _pomWork = 25 * 60;
-  static const _pomRest = 5 * 60;
-
   // Proofread
   // ignore: unused_field
   bool _proofreadMode = false;
@@ -237,7 +229,6 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     _sumT?.cancel();
     _focTextT?.cancel();
     _syncT?.cancel();
-    _pomT?.cancel();
     _tCtrl.dispose();
     _gCtrl.dispose();
     _pCtrl.dispose();
@@ -387,6 +378,25 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         setState(() => _selectedBlocks.clear());
         // 키 이벤트는 그냥 통과시켜 편집 처리
       }
+    }
+
+    // Ctrl/Cmd+Z: 실행 취소 (블록 단위)
+    if ((meta || ctrl) && !shift && e.logicalKey == LogicalKeyboardKey.keyZ) {
+      final blocks = ref.read(fileEditorProvider).blocks;
+      if (i >= 0 && i < blocks.length) {
+        blocks[i].undoController.undo();
+      }
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl/Cmd+Shift+Z 또는 Ctrl+Y: 다시 실행
+    if (((meta || ctrl) && shift && e.logicalKey == LogicalKeyboardKey.keyZ) ||
+        (ctrl && !meta && e.logicalKey == LogicalKeyboardKey.keyY)) {
+      final blocks = ref.read(fileEditorProvider).blocks;
+      if (i >= 0 && i < blocks.length) {
+        blocks[i].undoController.redo();
+      }
+      return KeyEventResult.handled;
     }
 
     // Ctrl/Cmd+A: 2단계 선택 (노션 방식)
@@ -1350,52 +1360,19 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── 뽀모도로 ─────────────────────────────────────
-  void _pomToggle() {
-    if (_pomRunning) {
-      _pomT?.cancel();
-      setState(() => _pomRunning = false);
-    } else {
-      setState(() => _pomRunning = true);
-      _pomT = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
-        setState(() {
-          if (_pomSecs > 0) {
-            _pomSecs--;
-          } else {
-            _pomT?.cancel();
-            _pomRunning = false;
-            _pomIsWork = !_pomIsWork;
-            _pomSecs = _pomIsWork ? _pomWork : _pomRest;
-            _snack(
-              _pomIsWork ? '🔔 휴식 종료! 집중 모드를 시작합니다.' : '🔔 집중 완료! 5분 휴식하세요.',
-            );
-          }
-        });
-      });
+  // ── 실행 취소 / 다시 실행 ────────────────────────
+  void _doUndo() {
+    final blocks = ref.read(fileEditorProvider).blocks;
+    if (_focusedIdx >= 0 && _focusedIdx < blocks.length) {
+      blocks[_focusedIdx].undoController.undo();
     }
   }
 
-  void _pomReset() {
-    _pomT?.cancel();
-    setState(() {
-      _pomRunning = false;
-      _pomIsWork = true;
-      _pomSecs = _pomWork;
-    });
-  }
-
-  String get _pomLabel {
-    final m = (_pomSecs ~/ 60).toString().padLeft(2, '0');
-    final s = (_pomSecs % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  Color get _pomColor {
-    if (!_pomIsWork) return _blu;
-    if (_pomSecs < 5 * 60) return _red;
-    if (_pomSecs < 10 * 60) return _yel;
-    return _acc;
+  void _doRedo() {
+    final blocks = ref.read(fileEditorProvider).blocks;
+    if (_focusedIdx >= 0 && _focusedIdx < blocks.length) {
+      blocks[_focusedIdx].undoController.redo();
+    }
   }
 
   // ══════════════════ BUILD ══════════════════════════
@@ -1439,17 +1416,6 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
     return Scaffold(
       backgroundColor: _bg0,
       resizeToAvoidBottomInset: true,
-      // 데스크톱/태블릿에서만 포모도로 FAB 표시 (모바일은 하단바에 통합)
-      floatingActionButton: isMobile
-          ? null
-          : _PomFAB(
-              label: _pomLabel,
-              color: _pomColor,
-              running: _pomRunning,
-              onTap: _pomToggle,
-              onLongPress: _pomReset,
-            ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: DropTarget(
         onDragDone: (detail) {
           final blocksLen = ref.read(fileEditorProvider).blocks.length;
@@ -1548,6 +1514,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                         filename: '${title}_노트.pdf',
                       );
                     },
+                    onUndo: _doUndo,
+                    onRedo: _doRedo,
                   ),
                 ),
                 // 상단 포맷 툴바 제거 — 슬래시(/) 메뉴·단축키·선택 툴바로 대체
@@ -1578,16 +1546,6 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                         )
                       : const SizedBox.shrink(key: ValueKey('no-sel')),
                 ),
-                // 뽀모도로 타이머
-                if (_pomRunning || _pomSecs != _pomWork)
-                  _PomodoroBar(
-                    label: _pomLabel,
-                    color: _pomColor,
-                    running: _pomRunning,
-                    isWork: _pomIsWork,
-                    onToggle: _pomToggle,
-                    onReset: _pomReset,
-                  ),
                 // 교정 결과 배너
                 if (_proofreadResult.isNotEmpty)
                   _ProofreadBanner(
@@ -1611,11 +1569,6 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
                       : MediaQuery.of(context).size.width < 700
                       ? _MobileEditorView(
                           editor: _buildEditor(),
-                          pomLabel: _pomLabel,
-                          pomColor: _pomColor,
-                          pomRunning: _pomRunning,
-                          onPomTap: _pomToggle,
-                          onPomReset: _pomReset,
                           onAiTap: () {
                             final st = ref.read(fileEditorProvider);
                             _showMobilePanel(context, st);
@@ -2131,6 +2084,7 @@ class _AppBar extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onBack, onCopy, onMdCopy, onView, onMindmap, onProofread, onPdfExport;
+  final VoidCallback onUndo, onRedo;
   const _AppBar({
     required this.saving,
     this.savedAt,
@@ -2146,6 +2100,8 @@ class _AppBar extends StatelessWidget {
     required this.onMindmap,
     required this.onProofread,
     required this.onPdfExport,
+    required this.onUndo,
+    required this.onRedo,
   });
 
   @override
@@ -2241,6 +2197,8 @@ class _AppBar extends StatelessWidget {
                 charCount: charCount,
               )
             else ...[
+              _TBtn(Icons.undo_rounded, '취소', onUndo),
+              _TBtn(Icons.redo_rounded, '재실행', onRedo),
               _TBtn(Icons.spellcheck_rounded, '글 교정', onProofread),
               _TBtn(Icons.copy_rounded, '복사', onCopy),
               _TBtn(Icons.download_outlined, 'MD', onMdCopy),
@@ -3458,223 +3416,32 @@ class _PSChipState extends State<_PSChip> {
   );
 }
 
-// ══════════════════ POMODORO BAR ═══════════════════
-class _PomodoroBar extends StatelessWidget {
-  final String label;
-  final Color color;
-  final bool running, isWork;
-  final VoidCallback onToggle, onReset;
-  const _PomodoroBar({
-    required this.label,
-    required this.color,
-    required this.running,
-    required this.isWork,
-    required this.onToggle,
-    required this.onReset,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 36,
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    decoration: BoxDecoration(
-      color: _bg2,
-      border: Border(bottom: BorderSide(color: _bdr.withValues(alpha: 0.5))),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: running ? color : color.withValues(alpha: 0.3),
-            shape: BoxShape.circle,
-            boxShadow: running
-                ? [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.6),
-                      blurRadius: 6,
-                    ),
-                  ]
-                : [],
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          isWork ? '집중' : '휴식',
-          style: GoogleFonts.inter(
-            color: _txt2,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          label,
-          style: GoogleFonts.inter(
-            color: color,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            fontFeatures: [const FontFeature.tabularFigures()],
-          ),
-        ),
-        const Spacer(),
-        GestureDetector(
-          onTap: onToggle,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: running ? _bg4 : color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: running ? _bdr2 : color.withValues(alpha: 0.4),
-              ),
-            ),
-            child: Text(
-              running ? '일시정지' : '시작',
-              style: GoogleFonts.inter(
-                color: running ? _txt1 : color,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: onReset,
-          child: Icon(
-            Icons.refresh_rounded,
-            size: 14,
-            color: _txt2.withValues(alpha: 0.5),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-// ══════════════════ POMODORO FAB ════════════════════
-class _PomFAB extends StatefulWidget {
-  final String label;
-  final Color color;
-  final bool running;
-  final VoidCallback onTap, onLongPress;
-  const _PomFAB({
-    required this.label,
-    required this.color,
-    required this.running,
-    required this.onTap,
-    required this.onLongPress,
-  });
-  @override
-  State<_PomFAB> createState() => _PomFABState();
-}
-
-class _PomFABState extends State<_PomFAB> {
-  bool _h = false;
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-    onEnter: (_) => setState(() => _h = true),
-    onExit: (_) => setState(() => _h = false),
-    child: GestureDetector(
-      onTap: widget.onTap,
-      onLongPress: widget.onLongPress,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: widget.running ? widget.color.withValues(alpha: 0.15) : _bg3,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: widget.running
-                ? widget.color.withValues(alpha: 0.5)
-                : (_h ? _bdr2 : _bdr),
-            width: widget.running ? 1.5 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-            if (widget.running)
-              BoxShadow(
-                color: widget.color.withValues(alpha: 0.15),
-                blurRadius: 16,
-              ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              widget.running ? Icons.pause_rounded : Icons.timer_outlined,
-              size: 13,
-              color: widget.running ? widget.color : _txt2,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              widget.label,
-              style: GoogleFonts.inter(
-                color: widget.running ? widget.color : _txt1,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                fontFeatures: [const FontFeature.tabularFigures()],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
 
 // ══════════════════ 모바일 에디터 뷰 ════════════════════
-// 에디터 + 하단 액션바 + AI 버튼 통합
-// 키보드 표시 시 자동으로 bar 숨김 (tap-to-toggle 제거 → 텍스트 입력 방해 없음)
+// 에디터 + 하단 AI 버튼 통합
+// 키보드 표시 시 자동으로 bar 숨김
 class _MobileEditorView extends StatelessWidget {
   final Widget editor;
-  final String pomLabel;
-  final Color pomColor;
-  final bool pomRunning;
-  final VoidCallback onPomTap, onPomReset, onAiTap;
+  final VoidCallback onAiTap;
   const _MobileEditorView({
     required this.editor,
-    required this.pomLabel,
-    required this.pomColor,
-    required this.pomRunning,
-    required this.onPomTap,
-    required this.onPomReset,
     required this.onAiTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    // 키보드가 100px 이상 올라오면 bar 숨김
     final keyboardUp = MediaQuery.of(context).viewInsets.bottom > 100;
-    // bar 높이 = 56px content + 홈 인디케이터
     final barH = 56.0 + MediaQuery.of(context).padding.bottom;
     return Stack(
       children: [
-        // 에디터 (전체)
         editor,
-        // 하단 액션 바 - 키보드 열리면 자동 hide
         AnimatedPositioned(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           bottom: keyboardUp ? -barH : 0,
           left: 0,
           right: 0,
-          child: _MobileBottomBar(
-            pomLabel: pomLabel,
-            pomColor: pomColor,
-            pomRunning: pomRunning,
-            onPomTap: onPomTap,
-            onPomReset: onPomReset,
-            onAiTap: onAiTap,
-          ),
+          child: _MobileBottomBar(onAiTap: onAiTap),
         ),
       ],
     );
@@ -3682,18 +3449,8 @@ class _MobileEditorView extends StatelessWidget {
 }
 
 class _MobileBottomBar extends StatelessWidget {
-  final String pomLabel;
-  final Color pomColor;
-  final bool pomRunning;
-  final VoidCallback onPomTap, onPomReset, onAiTap;
-  const _MobileBottomBar({
-    required this.pomLabel,
-    required this.pomColor,
-    required this.pomRunning,
-    required this.onPomTap,
-    required this.onPomReset,
-    required this.onAiTap,
-  });
+  final VoidCallback onAiTap;
+  const _MobileBottomBar({required this.onAiTap});
 
   @override
   Widget build(BuildContext context) {
@@ -3712,92 +3469,29 @@ class _MobileBottomBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 56, // 고정 56px (SafeArea가 홈 인디케이터 처리)
+          height: 56,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                // 포모도로 버튼
-                GestureDetector(
-                  onTap: onPomTap,
-                  onLongPress: onPomReset,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: pomRunning
-                          ? pomColor.withValues(alpha: 0.12)
-                          : _bg3,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: pomRunning
-                            ? pomColor.withValues(alpha: 0.4)
-                            : _bdr2,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          pomRunning
-                              ? Icons.pause_rounded
-                              : Icons.timer_outlined,
-                          size: 15,
-                          color: pomRunning ? pomColor : _txt2,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          pomLabel,
-                          style: GoogleFonts.inter(
-                            color: pomRunning ? pomColor : _txt1,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: [const FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const Spacer(),
                 // AI 패널 버튼
                 GestureDetector(
                   onTap: onAiTap,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     decoration: BoxDecoration(
                       color: _accD,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: _acc.withValues(alpha: 0.5),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _acc.withValues(alpha: 0.15),
-                          blurRadius: 10,
-                        ),
-                      ],
+                      border: Border.all(color: _acc.withValues(alpha: 0.5), width: 1.5),
+                      boxShadow: [BoxShadow(color: _acc.withValues(alpha: 0.15), blurRadius: 10)],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.auto_awesome_rounded, size: 15, color: _acc),
                         const SizedBox(width: 7),
-                        Text(
-                          'AI 패널',
-                          style: GoogleFonts.inter(
-                            color: _acc,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                        Text('AI 패널', style: GoogleFonts.inter(color: _acc, fontSize: 13, fontWeight: FontWeight.w700)),
                       ],
                     ),
                   ),
@@ -4385,11 +4079,10 @@ class _NBState extends State<_NBlock> {
     ),
   };
 
-  // ── 테이블 감지 (코드 블록 내 마크다운 표) ──────
+  // ── 테이블 감지 (타입 무관 — | 로 시작하는 줄 2개 이상) ──
   bool get _isTable {
     if (widget.block.type == BlockType.table) return true;
-    if (widget.block.type != BlockType.code) return false;
-    // |로 시작하는 줄이 2줄 이상이면 표로 인식 (--- 구분선 없어도 OK)
+    // code, text 등 어떤 타입이든 파이프 줄이 2개 이상이면 표로 렌더링
     final t = widget.block.controller.text;
     final pipeLines =
         t.split('\n').where((l) => l.trim().startsWith('|')).length;
@@ -4813,7 +4506,17 @@ class _NBState extends State<_NBlock> {
       if (_hasInlineMarkdown(text)) {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => widget.block.focusNode.requestFocus(),
+          onTap: () {
+            widget.block.focusNode.requestFocus();
+            // TextField가 다음 프레임에 빌드된 후 커서를 끝에 배치
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              final c = widget.block.controller;
+              if (!c.selection.isValid || c.selection.baseOffset < 0) {
+                c.selection = TextSelection.collapsed(offset: c.text.length);
+              }
+            });
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Text.rich(
@@ -4829,6 +4532,7 @@ class _NBState extends State<_NBlock> {
   Widget _buildTextField() {
     return TextField(
       controller: widget.block.controller,
+      undoController: widget.block.undoController,
       focusNode: widget.block.focusNode,
       maxLines: null,
       style: _style().copyWith(
@@ -7155,20 +6859,16 @@ class _SCState extends State<_SumCard> {
               ),
             ),
           ),
-          AnimatedCrossFade(
-            duration: const Duration(milliseconds: 180),
-            crossFadeState: _expanded
-                ? CrossFadeState.showFirst
-                : CrossFadeState.showSecond,
-            firstChild: Padding(
+          // AnimatedCrossFade 대신 단순 조건 분기 — 스트리밍 중 내용 잘림 방지
+          if (_expanded)
+            Padding(
               padding: const EdgeInsets.all(16),
               child: MarkdownBody(
                 data: widget.block.content,
                 styleSheet: _md(),
+                softLineBreak: true,
               ),
             ),
-            secondChild: const SizedBox.shrink(),
-          ),
         ],
       ),
     );

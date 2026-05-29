@@ -18,6 +18,7 @@ class Block {
   String id;
   BlockType type;
   TextEditingController controller;
+  UndoHistoryController undoController;
   FocusNode focusNode;
   bool isChecked;
   Map<String, dynamic>? metadata;
@@ -30,6 +31,7 @@ class Block {
     this.isChecked = false,
     this.metadata,
   }) : controller = TextEditingController(text: content),
+       undoController = UndoHistoryController(),
        focusNode = FocusNode();
 
   // 1. DB에 저장하기 위해 JSON으로 변환 (Serialization)
@@ -56,6 +58,7 @@ class Block {
 
   void dispose() {
     controller.dispose();
+    undoController.dispose();
     focusNode.dispose();
   }
 }

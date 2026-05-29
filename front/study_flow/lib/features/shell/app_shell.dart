@@ -411,13 +411,6 @@ class _ShellSidebarState extends State<_ShellSidebar>
                   onTap: widget.onSearch,
                 ),
                 const SizedBox(height: 2),
-                _SidebarNavItem(
-                  icon: LucideIcons.timer,
-                  label: '포커스',
-                  selected: false,
-                  collapsed: widget.collapsed,
-                  onTap: widget.onFocus,
-                ),
               ],
             ),
           ),
@@ -629,16 +622,13 @@ class _GlowWordmarkState extends State<_GlowWordmark>
       children: [
         _GlowWordmarkIcon(ctrl: _ctrl),
         const SizedBox(width: 10),
-        ShaderMask(
-          shaderCallback: (bounds) => AppGradients.accent.createShader(bounds),
-          blendMode: BlendMode.srcIn,
-          child: Text(
-            AppTheme.brandName,
-            style: GoogleFonts.inter(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-            ),
+        Text(
+          AppTheme.brandName,
+          style: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+            color: Colors.white,
           ),
         ),
       ],
@@ -684,8 +674,8 @@ class _GlowWordmarkIconState extends State<_GlowWordmarkIcon>
       builder: (_, child) {
         final t = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut).value;
         return SizedBox(
-          width: 30,
-          height: 30,
+          width: 36,
+          height: 36,
           child: DecoratedBox(
             decoration: BoxDecoration(
               boxShadow: [
@@ -698,8 +688,8 @@ class _GlowWordmarkIconState extends State<_GlowWordmarkIcon>
             ),
             child: Image.asset(
               'assets/images/logo_icon.png',
-              width: 30,
-              height: 30,
+              width: 36,
+              height: 36,
               fit: BoxFit.contain,
             ),
           ),
@@ -1398,13 +1388,6 @@ class _CompactBottomNav extends StatelessWidget {
                 onTap: onNewProject,
                 colors: colors,
                 highlight: true,
-              ),
-              _BottomNavItem(
-                icon: LucideIcons.timer,
-                label: '포커스',
-                selected: false,
-                onTap: onFocus,
-                colors: colors,
               ),
             ],
           ),
