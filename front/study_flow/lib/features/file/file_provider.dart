@@ -196,6 +196,11 @@ class FileEditorState {
       blocks.map((b) {
         final j = b.toJson();
         j['content'] = b.controller.text;
+        // 이미지 블록: AI가 인식할 수 있도록 설명 추가
+        if (b.type == BlockType.image && b.controller.text.trim().isNotEmpty) {
+          final src = b.controller.text.trim();
+          j['image_description'] = src.startsWith('data:') ? '[첨부된 이미지]' : '[이미지: $src]';
+        }
         return j;
       }).toList(),
     );

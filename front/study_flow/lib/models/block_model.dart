@@ -12,6 +12,7 @@ enum BlockType {
   table,     // 테이블
   hr,        // 수평선
   pdf,       // PDF 문서
+  math,      // LaTeX 수식
 }
 
 class Block {

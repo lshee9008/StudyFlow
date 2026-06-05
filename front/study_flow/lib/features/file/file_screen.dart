@@ -20,6 +20,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_highlighter/flutter_highlighter.dart';
 import 'package:flutter_highlighter/themes/atom-one-dark.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 
 import '../../models/block_model.dart';
 import '../../core/db_helper/files_db_helper.dart';
@@ -162,6 +163,8 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       '특수',
     ),
     _Opt('image', '이미지', Icons.image_outlined, '', '이미지 파일 삽입', '특수'),
+    _Opt('pdf', 'PDF', Icons.picture_as_pdf_rounded, '', 'PDF 파일 첨부', '특수'),
+    _Opt('math', '수식', Icons.functions_rounded, r'$$', 'LaTeX 수식 블록', '특수'),
   ];
 
   @override
@@ -898,6 +901,11 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
       _nt = BlockType.code;
       _nc = '';
     }
+    // $$ → 수식 블록
+    if (text.trimRight() == r'$$') {
+      _nt = BlockType.math;
+      _nc = '';
+    }
     if (_nt != null) {
       final c = ref.read(fileEditorProvider).blocks[i].controller;
       c.text = _nc;
@@ -1026,6 +1034,12 @@ class _FS extends ConsumerState<FileScreen> with TickerProviderStateMixin {
         break;
       case 'image':
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.image);
+        break;
+      case 'pdf':
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.pdf);
+        break;
+      case 'math':
+        ref.read(fileEditorProvider.notifier).setType(i, BlockType.math);
         break;
       default:
         ref.read(fileEditorProvider.notifier).setType(i, BlockType.text);
@@ -3570,7 +3584,71 @@ class _ImageBlock extends StatefulWidget {
 
 class _IBState extends State<_ImageBlock> {
   bool _hover = false;
+  bool _picking = false;
   String get _url => widget.controller.text.trim();
+
+  Future<void> _pickImage() async {
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
+        withData: true,
+      );
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (file.bytes != null) {
+          final ext = (file.extension ?? 'png').toLowerCase();
+          final mime = (ext == 'jpg' || ext == 'jpeg') ? 'image/jpeg'
+              : ext == 'gif' ? 'image/gif'
+              : ext == 'webp' ? 'image/webp'
+              : 'image/png';
+          final b64 = base64Encode(file.bytes!);
+          final dataUrl = 'data:$mime;base64,$b64';
+          widget.controller.text = dataUrl;
+          widget.onChanged?.call(dataUrl);
+        } else if (file.path != null) {
+          widget.controller.text = file.path!;
+          widget.onChanged?.call(file.path!);
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  Widget _buildImage() {
+    final url = _url;
+    if (url.startsWith('data:')) {
+      try {
+        final comma = url.indexOf(',');
+        final bytes = base64Decode(url.substring(comma + 1));
+        return Image.memory(bytes, fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => _broken());
+      } catch (_) {
+        return _broken();
+      }
+    } else if (url.startsWith('http')) {
+      return Image.network(url, fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => _broken());
+    } else {
+      return Image.file(File(url), fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => _broken());
+    }
+  }
+
+  Widget _broken() => Padding(
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.broken_image_outlined, color: _txt2, size: 28),
+        const SizedBox(height: 8),
+        Text('이미지를 불러올 수 없습니다', style: TextStyle(color: _txt2, fontSize: 12)),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => MouseRegion(
@@ -3623,58 +3701,96 @@ class _IBState extends State<_ImageBlock> {
                       ),
                       onChanged: widget.onChanged,
                     ),
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      onPressed: _picking ? null : _pickImage,
+                      icon: _picking
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white))
+                          : const Icon(Icons.upload_file_rounded, size: 14),
+                      label: Text(_picking ? '선택 중...' : '파일에서 선택', style: const TextStyle(fontSize: 13)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _bg4,
+                        foregroundColor: _txt0,
+                        elevation: 0,
+                        side: BorderSide(color: _bdr2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                    ),
                   ],
                 ),
               )
-            : (_url.startsWith('http') || kIsWeb)
-                ? Image.network(
-                    _url,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.broken_image_outlined, color: _txt2, size: 28),
-                          const SizedBox(height: 8),
-                          Text(
-                            '이미지를 불러올 수 없습니다',
-                            style: TextStyle(color: _txt2, fontSize: 12),
+            : Stack(
+                children: [
+                  _buildImage(),
+                  if (_hover)
+                    Positioned(
+                      top: 8, right: 8,
+                      child: GestureDetector(
+                        onTap: () {
+                          widget.controller.clear();
+                          widget.onChanged?.call('');
+                          setState(() {});
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _bg3.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: _bdr2),
                           ),
-                        ],
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.swap_horiz_rounded, size: 13, color: _txt1),
+                              const SizedBox(width: 5),
+                              Text('변경', style: GoogleFonts.inter(color: _txt1, fontSize: 12)),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  )
-                : Image.file(
-                    File(_url),
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.broken_image_outlined, color: _txt2, size: 28),
-                          const SizedBox(height: 8),
-                          Text(
-                            '로컬 이미지를 불러올 수 없습니다',
-                            style: TextStyle(color: _txt2, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                ],
+              ),
       ),
     ),
   );
 }
 
-class _PdfBlock extends StatelessWidget {
+class _PdfBlock extends StatefulWidget {
   final TextEditingController controller;
-  const _PdfBlock({required this.controller});
-  
+  final ValueChanged<String>? onChanged;
+  const _PdfBlock({required this.controller, this.onChanged});
+  @override
+  State<_PdfBlock> createState() => _PdfBlockState();
+}
+
+class _PdfBlockState extends State<_PdfBlock> {
+  bool _picking = false;
+
+  Future<void> _pickPdf() async {
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        withData: false,
+      );
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final path = file.path ?? file.name;
+        widget.controller.text = path;
+        widget.onChanged?.call(path);
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final path = controller.text.trim();
+    final path = widget.controller.text.trim();
     final filename = path.split('/').last.split('\\').last;
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -3693,23 +3809,23 @@ class _PdfBlock extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  filename.isEmpty ? 'PDF 문서' : filename,
+                  filename.isEmpty ? 'PDF 파일을 선택하세요' : filename,
                   style: GoogleFonts.inter(color: _txt0, fontSize: 14, fontWeight: FontWeight.w500),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (path.isNotEmpty)
-                  Text(
-                    'PDF 첨부됨',
-                    style: GoogleFonts.inter(color: _txt2, fontSize: 12),
-                  ),
+                  Text('PDF 첨부됨', style: GoogleFonts.inter(color: _txt2, fontSize: 12)),
               ],
             ),
           ),
-          ElevatedButton(
-            onPressed: () {
-              // PDF 열기 기능 (나중에 구현)
-            },
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: _picking ? null : _pickPdf,
+            icon: _picking
+                ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white))
+                : Icon(path.isEmpty ? Icons.upload_file_rounded : Icons.swap_horiz_rounded, size: 13),
+            label: Text(_picking ? '선택 중...' : (path.isEmpty ? '파일 선택' : '변경'), style: const TextStyle(fontSize: 12)),
             style: ElevatedButton.styleFrom(
               backgroundColor: _bg2,
               foregroundColor: _txt1,
@@ -3717,7 +3833,6 @@ class _PdfBlock extends StatelessWidget {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
               side: BorderSide(color: _bdr2),
             ),
-            child: Text('열기', style: TextStyle(fontSize: 12)),
           ),
         ],
       ),
@@ -4049,6 +4164,7 @@ class _NBState extends State<_NBlock> {
       fontWeight: FontWeight.w400,
     ),
     BlockType.image => GoogleFonts.inter(fontSize: 14, color: _txt2),
+    BlockType.math => GoogleFonts.jetBrainsMono(fontSize: 14, color: const Color(0xFFA8D4FF), height: 1.6),
     BlockType.table => GoogleFonts.jetBrainsMono(
       fontSize: 13,
       color: const Color(0xFFA8D4FF),
@@ -4403,11 +4519,18 @@ class _NBState extends State<_NBlock> {
                 // PDF 블록
                 if (widget.block.type == BlockType.pdf)
                   Expanded(
-                    child: _PdfBlock(controller: widget.block.controller),
+                    child: _PdfBlock(
+                      controller: widget.block.controller,
+                      onChanged: (val) => widget.onText(val, widget.idx),
+                    ),
                   ),
 
-                // 텍스트 입력 (이미지, PDF, HR 제외)
-                if (widget.block.type != BlockType.image && widget.block.type != BlockType.pdf && widget.block.type != BlockType.hr)
+                // 수식 블록
+                if (widget.block.type == BlockType.math)
+                  Expanded(child: _buildMathBlock()),
+
+                // 텍스트 입력 (이미지, PDF, HR, math 제외)
+                if (widget.block.type != BlockType.image && widget.block.type != BlockType.pdf && widget.block.type != BlockType.hr && widget.block.type != BlockType.math)
                   Expanded(
                     child: Listener(
                       // ✅ onPointerUp: 브라우저 드래그 선택을 Flutter가 직접 감지
@@ -4464,11 +4587,17 @@ class _NBState extends State<_NBlock> {
       t.contains('**') ||
       t.contains('~~') ||
       t.contains('`') ||
-      RegExp(r'(?<!\*)\*(?!\*)[^*\n]+\*(?!\*)').hasMatch(t);
+      RegExp(r'(?<!\*)\*(?!\*)[^*\n]+\*(?!\*)').hasMatch(t) ||
+      RegExp(r'\$[^$\n]+\$').hasMatch(t);
 
   /// 포커스 없음 → 렌더링(표/인라인 마크다운), 포커스 → raw TextField
   Widget _buildBlockContent() {
     final text = widget.block.controller.text;
+
+    // 수식 블록
+    if (widget.block.type == BlockType.math) {
+      return _buildMathBlock();
+    }
 
     // 표 블록: 항상 편집 가능한 표 위젯 (노션식 — 셀 입력 / 행·열 추가·삭제)
     // 코드 검사보다 먼저 → AI가 만든 표(코드+파이프)도 표로 렌더
@@ -4529,6 +4658,51 @@ class _NBState extends State<_NBlock> {
     return _buildTextField();
   }
 
+  Widget _buildMathBlock() {
+    final formula = widget.block.controller.text.trim();
+    if (_foc || formula.isEmpty) {
+      return _buildTextField();
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        widget.block.focusNode.requestFocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final c = widget.block.controller;
+          if (!c.selection.isValid || c.selection.baseOffset < 0) {
+            c.selection = TextSelection.collapsed(offset: c.text.length);
+          }
+        });
+      },
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D0D1A),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF3B3B6B)),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Math.tex(
+            formula,
+            textStyle: const TextStyle(color: Colors.white, fontSize: 20),
+            onErrorFallback: (err) => Text(
+              formula,
+              style: const TextStyle(
+                color: Color(0xFFFF6B6B),
+                fontFamily: 'JetBrains Mono',
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTextField() {
     return TextField(
       controller: widget.block.controller,
@@ -4577,8 +4751,8 @@ class _NBState extends State<_NBlock> {
   List<InlineSpan> _inlineSpans(String text, TextStyle base) {
     final spans = <InlineSpan>[];
     final pattern = RegExp(
-      r'(\*\*(.+?)\*\*|~~(.+?)~~|`([^`]+)`|\*(.+?)\*)',
-      dotAll: true,
+      r'(\*\*(.+?)\*\*|~~(.+?)~~|`([^`]+)`|\*(.+?)\*|\$([^$\n]+)\$)',
+      dotAll: false,
     );
     int last = 0;
     for (final m in pattern.allMatches(text)) {
@@ -4612,6 +4786,18 @@ class _NBState extends State<_NBlock> {
         spans.add(TextSpan(
           text: m.group(5),
           style: base.copyWith(fontStyle: FontStyle.italic),
+        ));
+      } else if (m.group(6) != null) {
+        spans.add(WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Math.tex(
+            m.group(6)!,
+            textStyle: base.copyWith(fontSize: (base.fontSize ?? 15) * 0.95),
+            onErrorFallback: (e) => Text(
+              '\$${m.group(6)}\$',
+              style: base.copyWith(color: const Color(0xFFFF6B6B)),
+            ),
+          ),
         ));
       }
       last = m.end;
@@ -4706,6 +4892,7 @@ class _NBState extends State<_NBlock> {
     BlockType.image => 'https://example.com/image.png',
     BlockType.table => '|컬럼1|컬럼2|\n|---|---|\n|데이터|데이터|',
     BlockType.hr => '---',
+    BlockType.math => r'e.g. E = mc^2 또는 \int_0^\infty',
     _ => _foc ? "내용 입력 또는  /  블록 타입 변경" : "",
   };
 
@@ -4758,6 +4945,7 @@ class _BlockTypeBadge extends StatelessWidget {
       BlockType.image => ('Image', LucideIcons.image),
       BlockType.pdf => ('PDF Document', LucideIcons.file),
       BlockType.hr => ('Divider', LucideIcons.minus),
+      BlockType.math => ('Math', Icons.functions_rounded),
       _ => ('Text', LucideIcons.text),
     };
     return Container(

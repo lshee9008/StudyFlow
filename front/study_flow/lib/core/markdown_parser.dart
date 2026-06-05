@@ -247,6 +247,8 @@ class MarkdownParser {
           html.writeln('<input type="checkbox" $checked /> $content');
         case BlockType.text:
           html.writeln('<p>$content</p>');
+        case BlockType.math:
+          html.writeln('<p>\\($content\\)</p>');
       }
     }
 
