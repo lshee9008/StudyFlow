@@ -9,7 +9,22 @@
       "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.gstatic.com/s/notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLQ.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Regular.ttf --max-time 30 -s)",
       "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@700\")",
       "Bash(curl -A \"Mozilla/5.0\" \"https://fonts.gstatic.com/s/notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzg01eLQ.ttf\" -o /Users/lsh/Docs/StudyFlow/front/study_flow/assets/fonts/NotoSansKR-Bold.ttf --max-time 30 -s)",
-      "Bash(gh run *)"
+      "Bash(gh run *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "WebFetch(domain:storage.googleapis.com)",
+      "Read(//Users/lsh/Downloads/**)",
+      "Read(//private/tmp/**)",
+      "Bash(cp \"/Users/lsh/Downloads/그래프 초기 위치 지정 방식-2.hwpx\" doc.hwpx)",
+      "Bash(unzip -o doc.hwpx -d hwpx_extracted)",
+      "Bash(python3 -c ' *)",
+      "Bash(git -C /Users/lsh/Docs/StudyFlow diff front/study_flow/lib/features/file/file_screen.dart)",
+      "Bash(xargs cat)",
+      "Bash(xargs ls)",
+      "Bash(flutter pub *)",
+      "Bash(ls ~/.pub-cache/hosted/pub.dev/ | grep flutter_math)",
+      "Bash(grep -n \"\\\\\\\\\\\\$\\\\\\\\\\\\$\\\\|'\\\\\\\\$\\\\\\\\$'\\\\|r'\\\\\\\\$\\\\\\\\$'\\\\|_hasInlineMarkdown\\\\|dotAll\\\\|group\\(6\\)\" /Users/lsh/Docs/StudyFlow/front/study_flow/lib/features/file/file_screen.dart)"
     ]
   }
 }

@@ -15,9 +15,7 @@ import 'features/home/home_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('ko_KR', null);
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   if (kIsWeb) {
     // 일반 브라우저에 남은 IndexedDB/localStorage auth 찌꺼기가 로그인 흐름을
     // 막는 경우가 있어, 웹은 탭 세션 단위로 인증 상태를 관리합니다.
