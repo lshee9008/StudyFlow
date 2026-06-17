@@ -24,7 +24,14 @@
       "Bash(xargs ls)",
       "Bash(flutter pub *)",
       "Bash(ls ~/.pub-cache/hosted/pub.dev/ | grep flutter_math)",
-      "Bash(grep -n \"\\\\\\\\\\\\$\\\\\\\\\\\\$\\\\|'\\\\\\\\$\\\\\\\\$'\\\\|r'\\\\\\\\$\\\\\\\\$'\\\\|_hasInlineMarkdown\\\\|dotAll\\\\|group\\(6\\)\" /Users/lsh/Docs/StudyFlow/front/study_flow/lib/features/file/file_screen.dart)"
+      "Bash(grep -n \"\\\\\\\\\\\\$\\\\\\\\\\\\$\\\\|'\\\\\\\\$\\\\\\\\$'\\\\|r'\\\\\\\\$\\\\\\\\$'\\\\|_hasInlineMarkdown\\\\|dotAll\\\\|group\\(6\\)\" /Users/lsh/Docs/StudyFlow/front/study_flow/lib/features/file/file_screen.dart)",
+      "Bash(unzip -p \"졸업작품 프로젝트 계획서.hwpx\" \"Preview/PrvText.txt\")",
+      "Bash(cp \"/Users/lsh/Downloads/졸업작품 프로젝트 계획서.hwpx\" plan.hwpx)",
+      "Bash(unzip -o plan.hwpx -d plan_extracted/)",
+      "Bash(python3 -c \"import docx; print\\('ok'\\)\")",
+      "Bash(pip3 install *)",
+      "Bash(ls -la *.xlsx)",
+      "Bash(python3 -c \"import openpyxl; print\\('openpyxl ok'\\)\")"
     ]
   }
 }
